@@ -18,6 +18,7 @@ fn main() {
     let total_cells = (width * height) / 4;
     println!("total_cells = {}", &total_cells);
 
+    // Testing, testing, 1, 2, 3.
     let pixel = img.get_pixel(0, 0);
 
     println!("rgba = {}, {}, {}, {}", pixel[0], pixel[1], pixel[2], pixel[3]);
