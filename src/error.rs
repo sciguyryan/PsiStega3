@@ -6,8 +6,8 @@ pub type Result<T> = core::result::Result<T, Error>;
 /// Error type.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum Error {
-    /// Image file path does not exist.
-    ImagePathInvalid,
+    /// Image loading error.
+    ImageLoading,
     /// Invalid version number.
     VersionInvalid,
 }
@@ -15,7 +15,7 @@ pub enum Error {
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
-            Error::ImagePathInvalid => "invalid image path specified",
+            Error::ImageLoading => "unable to load the specified image file",
             Error::VersionInvalid => "invalid version number",
         })
     }

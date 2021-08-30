@@ -9,6 +9,8 @@ use argon2::{Argon2, Version};
 
 use core::fmt::Write;
 
+use crate::steganography::Steganography;
+
 use image::{DynamicImage, GenericImage, GenericImageView};
 
 use sha3::{Digest, Sha3_256, Sha3_512};
@@ -41,6 +43,12 @@ fn main() {
     // Fill the unused cells with a random noise to ensure that they cannot be differentiated.
 
     let input_img_path = "D:\\GitHub\\PsiStega3\\test-images\\b.jpg";
+
+    let img_test = Steganography::new(input_img_path, 1);
+    match img_test {
+        Ok(_) => println!("Loading successful."),
+        _ => println!("Loading failed.")
+    }
 
     let mut img = image::open(input_img_path).unwrap();
 

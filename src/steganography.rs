@@ -5,13 +5,14 @@ use crate::error::{Error, Result};
 
 use image::{DynamicImage, GenericImage, GenericImageView};
 
-struct Steganography {
+#[derive(Debug)]
+pub struct Steganography {
     version: Version,
     image: DynamicImage
 }
 
 impl Steganography {
-    fn new(original_file_path: &str, version: u32) -> Result<Self>{
+    pub fn new(original_file_path: &str, version: u32) -> Result<Self>{
         let mut v = Self {
             version: Version::default(),
             // Create a dummy image.
@@ -24,17 +25,24 @@ impl Steganography {
         Ok(v)
     }
 
-    fn load_original_image(&mut self, original_file_path: &str) -> Result<()> {
-        Ok(())
+    fn load_original_image(&mut self, file_path: &str) -> Result<()> {
+        match image::open(file_path) {
+            Ok(r) => {
+                self.image = r;
+                Ok(())
+            },
+            // TODO: add more granularity to the errors here.
+            Err(_) => Err(Error::ImageLoading)
+        }
     }
 
     fn set_version(&mut self, version: u32) -> Result<()> {
         match Version::try_from(version) {
-            Err(e) => Err(e),
             Ok(r) => {
                 self.version = r;
                 Ok(())
-            }
+            },
+            Err(e) => Err(e)
         }
     }
 
