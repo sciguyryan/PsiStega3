@@ -2,24 +2,18 @@ mod steganography;
 mod error;
 mod version;
 
-use aes_gcm::{Aes256Gcm, Key, Nonce};
-use aes_gcm::aead::{Aead, NewAead};
-
-use argon2::{Argon2, Version};
-
-use core::fmt::Write;
-
 use crate::steganography::Steganography;
 
-use image::{DynamicImage, GenericImage, GenericImageView};
-
+use aes_gcm::{Aes256Gcm, Key, Nonce};
+use aes_gcm::aead::{Aead, NewAead};
+use argon2::{Argon2, Version};
+use core::fmt::Write;
+use image::{GenericImage, GenericImageView};
 use sha3::{Digest, Sha3_256, Sha3_512};
-
+use simple_logger::SimpleLogger;
 use std::convert::TryFrom;
-
 use std::io::prelude::*;
 use std::io::stdin;
-
 use rand_chacha::ChaCha20Rng;
 use rand_core::{RngCore, OsRng};
 use rand::prelude::*;
@@ -29,6 +23,8 @@ const ARGON_P_COST: u32 = 3;
 const ARGON_M_COST: u32 = 4096;
 
 fn main() {
+    SimpleLogger::new().init().unwrap();
+
     // Generate a hash of the input file.
     // Generate a random pair from the hash.
     // Generate a cryptographic random seed.
@@ -42,29 +38,26 @@ fn main() {
     // Write the byte and the XOR byte into the output image file (in a random cell), add the cell numbers to a list to ensure they are not reused.
     // Fill the unused cells with a random noise to ensure that they cannot be differentiated.
 
+    let seperator = "-".repeat(64);
+
     let input_img_path = "D:\\GitHub\\PsiStega3\\test-images\\b.jpg";
 
-    let img_test = Steganography::new(input_img_path, 1);
-    match img_test {
-        Ok(_) => println!("Loading successful."),
-        _ => println!("Loading failed.")
-    }
+    let stega = match Steganography::new(input_img_path, 1) {
+        Ok(s) =>  {
+            log::debug!("Successfully loaded the reference image file.");
+            s
+        }
+        Err(e) => {
+            log::debug!("Failed to load the reference image file. {:?}", e);
+            return;
+        }
+    };
 
     let mut img = image::open(input_img_path).unwrap();
 
-    let (width, height) =  img.dimensions();
-    println!("dimensions {:?}", img.dimensions());
-
-    // The total number of pixels must be divisible by two.
-    let total_pixels = width * height;
-    if total_pixels % 2 > 0 {
-        println!("Total number of pixels in the target image must be divisible by 2.");
-        return;
-    }
-
-    // Each cell is 2x1 pixels in size.
-    let total_cells: usize = total_pixels as usize / 2;
-    println!("Total available cells = {:?}", &total_cells);
+    let total_cells: usize = stega.total_cells() as usize;
+    log::debug!("Total available cells = {:?}", &total_cells);
+    log::debug!("{}", &seperator);
 
     //*************************** SHA3-256 input file hashing ***************************//
     let file_hash_bytes = sha512_file(input_img_path);

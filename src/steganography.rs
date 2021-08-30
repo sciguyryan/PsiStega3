@@ -1,15 +1,16 @@
-use std::convert::TryFrom;
 
 use crate::version::Version;
 use crate::error::{Error, Result};
 
 use image::{DynamicImage, GenericImage, GenericImageView};
+use log::debug;
+use std::convert::TryFrom;
 
 #[derive(Debug)]
 pub struct Steganography {
     version: Version,
-    original_image: DynamicImage,
-    modified_image: DynamicImage
+    pub reference_image: DynamicImage,
+    pub modified_image: DynamicImage
 }
 
 impl Steganography {
@@ -19,13 +20,13 @@ impl Steganography {
 
             // Create a dummy image for the two potential input images.
             // These will be replaced with the relevant method calls.
-            original_image: image::DynamicImage::new_bgr8(1, 1),
+            reference_image: image::DynamicImage::new_bgr8(1, 1),
             modified_image: image::DynamicImage::new_bgr8(1, 1),
         };
 
         // TODO: handle the error results from these functions.
         v.set_version(version);
-        v.load_original_image(original_file_path);
+        v.load_reference_image(original_file_path);
         Ok(v)
     }
 
@@ -50,10 +51,12 @@ impl Steganography {
         }
     }
 
-    fn load_original_image(&mut self, file_path: &str) -> Result<()> {
+    fn load_reference_image(&mut self, file_path: &str) -> Result<()> {
+        log::debug!("Loading (reference) image file @ {}", &file_path);
+
         match Steganography::load_image(file_path) {
             Ok(img) => {
-                self.original_image = img;
+                self.reference_image = img;
                 Ok(())
             },
             Err(e) => {
@@ -63,10 +66,16 @@ impl Steganography {
     }
 
     fn load_modified_image(&mut self, file_path: &str) -> Result<()> {
+        debug!("Loading (modified) image file @ {}", &file_path);
+
         match Steganography::load_image(file_path) {
             Ok(img) => {
-                self.modified_image = img;
-                Ok(())
+                if img.dimensions() == self.reference_image.dimensions() {
+                    self.modified_image = img;
+                    Ok(())
+                } else {
+                    Err(Error::ImageDimensionsMismatch)
+                }
             },
             Err(e) => {
                 Err(e)
@@ -84,8 +93,16 @@ impl Steganography {
         }
     }
 
+    /// Validate if the image can be used with our steganography algorithms.
+    ///
+    /// # Arguments
+    ///
+    /// * `image` - A reference to a [`DynamicImage`] object.
+    ///
     fn validate_image(image: &DynamicImage) -> Result<()> {
         let (w, h) =  image.dimensions();
+
+        log::debug!("Image dimensions: ({},{})", w, h);
 
         let pixels = w * h;
         if pixels % 2 == 0 {
@@ -97,4 +114,15 @@ impl Steganography {
         // TODO: validate that the image has RGBA.
     }
 
+    /// Calculate the total number of pixels available in the reference image.
+    pub fn total_pixels(&self) -> u32 {
+        let (w, h) =  self.reference_image.dimensions();
+        w * h
+    }
+
+    /// Calculate the total number of cells available in the reference image.
+    pub fn total_cells(&self) -> u32 {
+        // Each cell is 2x1 pixels in size.
+        self.total_pixels() / 2
+    }
 }

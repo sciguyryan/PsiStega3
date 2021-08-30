@@ -8,6 +8,8 @@ pub type Result<T> = core::result::Result<T, Error>;
 pub enum Error {
     /// Invalid image dimensions.
     ImageDimensionsInvalid,
+    /// The dimensions of the modified image is not the same as that of the reference image.
+    ImageDimensionsMismatch,
     /// Generic image loading error (will need to be made more granular).
     ImageLoading,
     /// Invalid version number.
@@ -18,6 +20,7 @@ impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
             Error::ImageDimensionsInvalid => "invalid image dimensions: the total number of pixels must be divisible by two",
+            Error::ImageDimensionsMismatch => "the dimensions of the modified image are not equal to the original image",
             Error::ImageLoading => "unable to load the specified image file",
             Error::VersionInvalid => "invalid version number",
         })
