@@ -7,5 +7,17 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+aes-gcm = "0.9.4"
+argon2 = "0.3.0"
+byteorder = "1.4.3"
+hex-literal = "0.3.3"
 image = "0.23.14"
-argon2 = "0.2.0"
+log = "0.4.14"
+rand = "0.8.4"
+rand_core = { version = "0.6.3", features = ["std"] }
+rand_chacha = "0.3.1"
+sha3 = "0.9.1"
+simple_logger = "1.13.0"
+
+[target.'cfg(windows)'.build-dependencies]
+winres = "0.1.11"
