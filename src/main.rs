@@ -1,4 +1,4 @@
-mod steganography;
+pub mod steganography;
 mod error;
 mod version;
 
