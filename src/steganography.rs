@@ -103,7 +103,7 @@ impl Steganography {
         }
     }
 
-    fn decode_v1(&mut self) -> Result<&'static str> {
+    fn decode_v1(&mut self) -> Result<&str> {
         Ok("")
     }
 
