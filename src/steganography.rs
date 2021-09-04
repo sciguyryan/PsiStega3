@@ -1,9 +1,15 @@
 
-use crate::version::Version;
 use crate::error::{Error, Result};
+use crate::hashers::*;
+use crate::version::Version;
 
 use image::{DynamicImage, GenericImageView};
 use std::convert::TryFrom;
+
+pub const V1_ARGON_T_COST: u32 = 6;
+pub const V1_ARGON_P_COST: u32 = 3;
+pub const V1_ARGON_M_COST: u32 = 4096;
+pub const V1_ARGON_VERSION: argon2::Version = argon2::Version::V0x13;
 
 #[derive(Debug)]
 pub struct Steganography {
@@ -17,7 +23,7 @@ impl Default for Steganography {
 }
 
 impl Steganography {
-    pub fn new() -> Self{
+    pub fn new() -> Self {
        Self {
             // Create a dummy image for the two potential input images.
             // These will be replaced with the relevant method calls.
@@ -38,12 +44,11 @@ impl Steganography {
     /// Note: When using this method the first image in the `images` array will be the reference image and the second will be the output image.
     pub fn encode(&mut self, version: u32, input_path: &str, key: &str, plaintext: &str, output_path: &str) -> Result<()> {
         log::debug!("Loading (reference) image file @ {}", &input_path);
-        let v = match Steganography::validate_version(version) {
-            Ok(v) => {
-                v
-            }
+
+        let v = match Version::try_from(version) {
+            Ok(v) => v,
             Err(e) => {
-                log::debug!("Error loading reference image file: {:?}", e);
+                log::debug!("Invalid encoder version specified: {:?}", version);
                 return Err(e);
             }
         };
@@ -59,6 +64,7 @@ impl Steganography {
         }
 
         log::debug!("Successfully loaded reference image file!");
+        log::debug!("Using encoder version: {:?}", &v);
 
         // Replace the placeholder image with a container image for the output image.
         let (w, h) =  self.images[0].dimensions();
@@ -86,12 +92,11 @@ impl Steganography {
     /// Note: When using this method the first image in the `images` array will be the reference image and the second will be the encoded image.
     pub fn decode(&mut self, version: u32, original_path: &str, key: &str, encoded_path: &str) -> Result<&str> {
         log::debug!("Loading (reference) image file @ {}", &original_path);
-        let v = match Steganography::validate_version(version) {
-            Ok(v) => {
-                v
-            }
+
+        let v = match Version::try_from(version) {
+            Ok(v) => v,
             Err(e) => {
-                log::debug!("Error loading reference image file: {:?}", e);
+                log::debug!("Invalid decoder version specified: {:?}", version);
                 return Err(e);
             }
         };
@@ -107,6 +112,7 @@ impl Steganography {
         }
 
         log::debug!("Successfully loaded reference image file!");
+        log::debug!("Using decoder version: {:?}", &v);
 
          // Call the encoding function for the specified version.
         match v {
@@ -147,21 +153,6 @@ impl Steganography {
         let rgba = img.into_rgba16();
 
         Ok(DynamicImage::ImageRgba16(rgba))
-    }
-
-    /// Validate and return a version number.
-    ///
-    /// # Arguments
-    ///
-    /// * `version` - A u32 representing the encoding/decoding version.
-    ///
-    fn validate_version(version: u32) -> Result<Version> {
-        match Version::try_from(version) {
-            Ok(r) => {
-                Ok(r)
-            },
-            Err(e) => Err(e)
-        }
     }
 
     /// Validate if the image can be used with our steganography algorithms.
