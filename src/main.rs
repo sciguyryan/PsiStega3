@@ -38,15 +38,22 @@ fn main() {
     // Write the byte and the XOR byte into the output image file (in a random cell), add the cell numbers to a list to ensure they are not reused.
     // Fill the unused cells with a random noise to ensure that they cannot be differentiated.
 
+    // These strings are obviously just for testing.
+    let input = "This is a test.";
+    let input_bytes = input.as_bytes();
+    let password = "banana";
+
     let splitter = "-".repeat(64);
 
     let input_img_path = "D:\\GitHub\\PsiStega3\\test-images\\b.jpg";
+    let output_img_path = "D:\\GitHub\\PsiStega3\\test-images\\2.png";
 
-    let stega = Steganography::new();
+    let mut stega = Steganography::new();
 
     let mut img = image::open(input_img_path).unwrap();
 
-    let total_cells: usize = stega.total_cells() as usize;
+    let e = stega.encode(1, &input_img_path, &password, &input, &output_img_path);
+    let total_cells: usize = stega.get_total_cells() as usize;
     log::debug!("Total available cells = {:?}", &total_cells);
     log::debug!("{}", &splitter);
 
@@ -61,10 +68,6 @@ fn main() {
 
 
     //*************************** Hashing ***************************//
-    let input = "This is a test.";
-    let input_bytes = input.as_bytes();
-    let password = "banana";
-
     // The key for the encryption is the sha3-512 hash of the input image file combined with the plaintext password string.
     let mut final_key: String = password.to_owned();
     final_key.push_str(&file_hash_string);
@@ -220,7 +223,7 @@ fn main() {
 
     img.put_pixel(0, 0, new_pixel);
 
-    let r = img.save("D:\\GitHub\\PsiStega3\\test-images\\2.png");
+    let r = img.save(output_img_path);
 
     println!("result = {:?}", r);
 
