@@ -38,26 +38,17 @@ fn main() {
     // Write the byte and the XOR byte into the output image file (in a random cell), add the cell numbers to a list to ensure they are not reused.
     // Fill the unused cells with a random noise to ensure that they cannot be differentiated.
 
-    let seperator = "-".repeat(64);
+    let splitter = "-".repeat(64);
 
     let input_img_path = "D:\\GitHub\\PsiStega3\\test-images\\b.jpg";
 
-    let stega = match Steganography::new(input_img_path, 1) {
-        Ok(s) =>  {
-            log::debug!("Successfully loaded the reference image file.");
-            s
-        }
-        Err(e) => {
-            log::debug!("Failed to load the reference image file. {:?}", e);
-            return;
-        }
-    };
+    let stega = Steganography::new();
 
     let mut img = image::open(input_img_path).unwrap();
 
     let total_cells: usize = stega.total_cells() as usize;
     log::debug!("Total available cells = {:?}", &total_cells);
-    log::debug!("{}", &seperator);
+    log::debug!("{}", &splitter);
 
     //*************************** SHA3-256 input file hashing ***************************//
     let file_hash_bytes = sha512_file(input_img_path);

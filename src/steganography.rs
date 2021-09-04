@@ -9,25 +9,49 @@ use std::convert::TryFrom;
 #[derive(Debug)]
 pub struct Steganography {
     version: Version,
-    pub reference_image: DynamicImage,
-    pub modified_image: DynamicImage
+    pub images: [DynamicImage; 2],
 }
 
 impl Steganography {
-    pub fn new(original_file_path: &str, version: u32) -> Result<Self>{
+    pub fn new() -> Self{
         let mut v = Self {
             version: Version::default(),
 
             // Create a dummy image for the two potential input images.
             // These will be replaced with the relevant method calls.
-            reference_image: image::DynamicImage::new_bgr8(1, 1),
-            modified_image: image::DynamicImage::new_bgr8(1, 1),
+            images: [image::DynamicImage::new_bgr8(1, 1), image::DynamicImage::new_bgr8(1, 1)]
         };
 
-        // TODO: handle the error results from these functions.
-        v.set_version(version);
-        v.load_reference_image(original_file_path);
-        Ok(v)
+        v
+    }
+
+    /// Write the input data into an image.
+    ///
+    /// # Arguments
+    ///
+    /// * `version` - The version of the encoding algorithm to use.
+    /// * `input_path` - The input image file path.
+    /// * `key` - The plaintext encryption key to be used.
+    /// * `plaintext` - The plaintext to be encrypted and encoded into the image.
+    /// * `output_path` - The output image file path.
+    ///
+    /// Note: When using this method the first image in the `images` array will be the reference image and the second will be the output image.
+    fn encode(&mut self, version: u32, input_path: &str, key: &str, plaintext: &str, output_path: &str) -> Result<()> {
+        if let Err(e) = self.set_version(version) {
+            return Err(e);
+        }
+
+        log::debug!("Loading (reference) image file @ {}", &input_path);
+        match Steganography::load_image(input_path) {
+            Ok(img) => {
+                self.images[0] = img;
+            },
+            Err(e) => {
+               return Err(e)
+            }
+        }
+
+        Ok(())
     }
 
     fn load_image(file_path: &str) -> Result<DynamicImage> {
@@ -47,38 +71,6 @@ impl Steganography {
             // TODO: add more granularity to the errors here.
             Err(_) => {
                 Err(Error::ImageLoading)
-            }
-        }
-    }
-
-    fn load_reference_image(&mut self, file_path: &str) -> Result<()> {
-        log::debug!("Loading (reference) image file @ {}", &file_path);
-
-        match Steganography::load_image(file_path) {
-            Ok(img) => {
-                self.reference_image = img;
-                Ok(())
-            },
-            Err(e) => {
-                Err(e)
-            }
-        }
-    }
-
-    fn load_modified_image(&mut self, file_path: &str) -> Result<()> {
-        debug!("Loading (modified) image file @ {}", &file_path);
-
-        match Steganography::load_image(file_path) {
-            Ok(img) => {
-                if img.dimensions() == self.reference_image.dimensions() {
-                    self.modified_image = img;
-                    Ok(())
-                } else {
-                    Err(Error::ImageDimensionsMismatch)
-                }
-            },
-            Err(e) => {
-                Err(e)
             }
         }
     }
@@ -116,7 +108,7 @@ impl Steganography {
 
     /// Calculate the total number of pixels available in the reference image.
     pub fn total_pixels(&self) -> u32 {
-        let (w, h) =  self.reference_image.dimensions();
+        let (w, h) =  self.images[0].dimensions();
         w * h
     }
 
