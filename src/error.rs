@@ -10,10 +10,14 @@ pub enum Error {
     Argon2InvalidParams,
     /// Unable to create an Argon2 hash with the provided inputs.
     Argon2NoHash,
+    /// The total amount number of cells exceeds the maximum.
+    DataTooLarge,
     /// Invalid image dimensions.
     ImageDimensionsInvalid,
     /// The dimensions of the modified image is not the same as that of the reference image.
     ImageDimensionsMismatch,
+    /// There is insufficient space within the image to encode the specified data.
+    ImageInsufficientSpace,
     /// The image type is cannot be used for steganography.
     ImageTypeInvalid,
     /// Generic image loading error (will need to be made more granular).
@@ -27,8 +31,10 @@ impl fmt::Display for Error {
         f.write_str(match self {
             Error::Argon2InvalidParams => "one or more invalid parameters passed to argon2 hasher",
             Error::Argon2NoHash => "error creating an Argon2 hash with the specified parameters",
+            Error::DataTooLarge => "the total number of cells required to store the input data exceeds the maximum permitted",
             Error::ImageDimensionsInvalid => "invalid image dimensions: the total number of pixels must be divisible by two",
             Error::ImageDimensionsMismatch => "the dimensions of the modified image are not equal to the original image",
+            Error::ImageInsufficientSpace => "the dimensions of the modified image are not equal to the original image",
             Error::ImageTypeInvalid => "invalid image pixel type",
             Error::ImageLoading => "unable to load the specified image file",
             Error::VersionInvalid => "invalid version number",

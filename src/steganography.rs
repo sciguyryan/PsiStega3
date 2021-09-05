@@ -1,10 +1,16 @@
 
 use crate::error::{Error, Result};
 use crate::hashers::*;
+use crate::utils;
 use crate::version::Version;
 
-use image::{DynamicImage, GenericImageView};
+use aes_gcm::{Aes256Gcm, Key, Nonce};
+use aes_gcm::aead::{Aead, NewAead};
+use image::{DynamicImage, GenericImage, GenericImageView};
 use std::convert::TryFrom;
+use rand::prelude::*;
+use rand_chacha::ChaCha20Rng;
+use rand_core::{RngCore, OsRng};
 
 pub const V1_ARGON_T_COST: u32 = 6;
 pub const V1_ARGON_P_COST: u32 = 3;
@@ -55,7 +61,9 @@ impl Steganography {
 
         match Steganography::load_image(input_path) {
             Ok(img) => {
+                // We will load the image twice: once for the reference image and once for the output image.
                 self.images[0] = img;
+                self.images[1] = self.images[0] .clone();
             },
             Err(e) => {
                 log::debug!("Error loading reference image file: {:?}", e);
@@ -66,18 +74,161 @@ impl Steganography {
         log::debug!("Successfully loaded reference image file!");
         log::debug!("Using encoder version: {:?}", &v);
 
-        // Replace the placeholder image with a container image for the output image.
-        let (w, h) =  self.images[0].dimensions();
-        image::DynamicImage::new_rgba16(w, h);
-
         // Call the encoding function for the specified version.
         match v {
-            Version::V0x01 => self.encode_v1(),
+            Version::V0x01 => self.encode_v1(input_path, key, plaintext, output_path),
         }
     }
 
-    fn encode_v1(&mut self) -> Result<()> {
+    fn encode_v1(&mut self, input_path: &str, key: &str, plaintext: &str, output_path: &str) -> Result<()> {
+
+        let file_hash_bytes = Hashers::sha3_512_file(input_path);
+        let file_hash_string = utils::u8_array_to_hex(&file_hash_bytes).unwrap(); // This is internal and cannot fail.
+
+        log::debug!("File hash length: {:?}" , file_hash_bytes.len());
+        log::debug!("File hash: {}", file_hash_string);
+
+        // The key for the encryption is the sha3-512 hash of the input image file combined with the plaintext password string.
+        let mut final_key: String = key.to_owned();
+        final_key.push_str(&file_hash_string);
+
+        // We cannot use the Argon2 hash for the positional random number generator because
+        // we will need access to the Argon2 hash salt, which will not be available when reading the data back from the file.
+        let sha256_key_hash_bytes = Hashers::sha3_256_string(&final_key);
+
+        // Generate a random salt for the Argon2 hashing function.
+        let mut salt_bytes = [0u8; 12];
+        OsRng.fill_bytes(&mut salt_bytes);
+
+        let key_bytes_full = match Hashers::argon2_string(&final_key, salt_bytes, V1_ARGON_M_COST, V1_ARGON_P_COST, V1_ARGON_T_COST, V1_ARGON_VERSION) {
+            Ok(r) => {
+                r
+            },
+            Err(e) => {
+                log::debug!("Error creating Argon2 hash");
+                return Err(e);
+            }
+        };
+
+        // The AES-256 key is 256-bits (32 bytes) in length.
+        let key_bytes: &[u8] = &key_bytes_full[..32];
+        log::debug!("Key hash bytes: {:?}", key_bytes.to_vec());
+
+        let hex_key_hash =  utils::u8_array_to_hex(key_bytes).unwrap(); // This is internal and cannot fail.
+        log::debug!("Hex key hash: {}", hex_key_hash);
+
+        let key = Key::from_slice(key_bytes);
+        let cipher = Aes256Gcm::new(key);
+
+        // Generate a unique random 96-bit  (12 byte) nonce (IV).
+        let mut nonce_bytes = [0u8; 12];
+        OsRng.fill_bytes(&mut nonce_bytes);
+
+        let nonce = Nonce::from_slice(&nonce_bytes);
+
+        let plaintext_bytes = plaintext.as_bytes();
+        let ciphertext_bytes = cipher.encrypt(nonce, plaintext_bytes.as_ref())
+            .expect("encryption failure!"); // NOTE: handle this error to avoid panics!
+
+        println!("Ciphertext bytes: {:?}", ciphertext_bytes);
+
+         /*llet plaintext_bytes = cipher.decrypt(nonce, ciphertext_bytes.as_ref())
+            .expect("decryption failure!"); // NOTE: handle this error to avoid panics!
+
+        log::debug!("Plaintext bytes: {:?}", plaintext_bytes);
+
+        // This code will not be kept around, so we can safely use clone here.
+        let plaintext_str = match String::from_utf8(plaintext_bytes.clone()) {
+            Ok(s) => s,
+            Err(e) => panic!("Invalid UTF-8 sequence: {}", e),
+        };
+
+        log::debug!("Plaintext string: {}", plaintext_str);*/
+
+        // We can store a maximum of 4,294,967,295 (0xFFFFFFFF) bytes of ciphertext.
+        let total_ct_cells  = ciphertext_bytes.len();
+        if total_ct_cells > u32::max_value() as usize {
+            return Err(Error::DataTooLarge);
+        }
+
+        // 1 cell for the version, 4 cells for the total number of ciphertext cells, the salt, the nonce and the ciphertext.
+        // We then need to double that value as to account for the corresponding XOR cell.
+        let total_cells_needed = (1 + 4 + salt_bytes.len() + nonce_bytes.len() + total_ct_cells) * 2;
+        log::debug!("Total cells needed = {:?}", total_cells_needed);
+
+        let total_cells: usize = self.get_total_cells() as usize;
+        log::debug!("Total available cells: {:?}", &total_cells);
+
+        if total_cells_needed > total_cells {
+            return Err(Error::ImageInsufficientSpace);
+        }
+
+        // We will only use the first 32 bytes of the hash for the seed here.
+        // We will need to use the SHA3-512 hash bytes here as Argon2 will not create a reproducible seeded RNG.
+        let mut position_rand: ChaCha20Rng = u8_vec_to_seed(sha256_key_hash_bytes);
+
+        // This random number generator will be used to create the XOR byte values.
+        // This is separate from the positional RNG to allow the output files to vary, even with the same seed and password.
+        let mut xor_rand: ChaCha20Rng = ChaCha20Rng::from_entropy();
+
+        // The vector which contains the list of every available cell. When a cell has been used it is removed from this vector.
+        let mut available_cells: Vec<usize> = Vec::with_capacity(total_cells);
+        for i in 0..total_cells {
+            available_cells.push(i);
+        }
+
+        // Select the next cell from the available  list.
+        let mut next_cell_index = position_rand.gen_range(0..available_cells.len());
+
+        let mut data: Vec<u8> = Vec::with_capacity(total_cells_needed);
+
+        let version: u8 = 1;
+        log::debug!("0b{:08b}", version);
+
+        // We want to make sure that we convert everything into little Endian, to ensure that we can
+        // operate cross-platform.
+        let le_value = u8::to_le(version);
+        log::debug!("0b{:08b}", le_value);
+
+        // Push the version number to the data vector.
+        data.push(version.to_le());
+
+        // The maximum is set above, so this casting is safe.
+        let plaintext_cell_bytes = u16::to_le_bytes(plaintext_bytes.len() as u16);
+        data.push(plaintext_cell_bytes[0]);
+        data.push(plaintext_cell_bytes[1]);
+
+        //let mut i = 0;
+        //while i <= 3 {
+        //    println!("Is {} bit set? {:?}", &i, is_bit_set(&i, &le_value));
+        //    i +=  1;
+        //}
+
+        // Test random number.
+        log::debug!("Has cell {:?} been used? {:?}", next_cell_index, !available_cells.contains(&next_cell_index));
+
+        // Remove the cell from the list of available cells.
+        available_cells.remove(next_cell_index);
+        log::debug!("Has cell {:?} been used? {:?}", next_cell_index, !available_cells.contains(&next_cell_index));
+
+        // Testing, testing, 1, 2, 3.
+        let pixel = self.images[1].get_pixel(0, 0);
+
+        println!("rgba = {}, {}, {}, {}", pixel[0], pixel[1], pixel[2], pixel[3]);
+
+        let new_pixel = image::Rgba([0, 0, 0, 0]);
+
+        self.images[1].put_pixel(0, 0, new_pixel);
+
+        // Save the modified image.
+        let r = self.images[1].save(output_path);
+        log::debug!("result = {:?}", r);
+
         Ok(())
+    }
+
+    fn encode_byte(&self) {
+
     }
 
     /// Read and decrypt the data from an image file.
@@ -185,4 +336,11 @@ impl Steganography {
         // Each cell is 2x1 pixels in size.
         self.get_total_pixels() / 2
     }
+}
+
+fn u8_vec_to_seed<R: SeedableRng<Seed = [u8; 32]>>(bytes: Vec<u8>) -> R {
+    assert!(bytes.len() == 32, "Byte vector is not 32 bytes (256-bits) in length.");
+    let arr = <[u8; 32]>::try_from(bytes).unwrap();
+
+    R::from_seed(arr)
 }
