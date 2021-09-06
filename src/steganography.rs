@@ -322,6 +322,8 @@ impl Steganography {
     /// * `file_path` - The path to the image file.
     ///
     fn load_image(file_path: &str) -> Result<DynamicImage> {
+        // TODO: reject loading anything other than png files.
+
         let img = match image::open(file_path) {
             Ok(img) => {
                 // The image was successfully loaded.
@@ -341,9 +343,12 @@ impl Steganography {
             }
         };
 
-        let rgba = img.into_rgba16();
+        // We will convert the image into a standardised format to avoid the need
+        // of rejecting invalid image types.
+        // TODO: check if this will work in practice with various image types.
+        let rgba = img.into_rgba8();
 
-        Ok(DynamicImage::ImageRgba16(rgba))
+        Ok(DynamicImage::ImageRgba8(rgba))
     }
 
     /// Validate if the image can be used with our steganography algorithms.

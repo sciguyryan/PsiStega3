@@ -1,6 +1,4 @@
 use core::fmt::Write;
-use rand::prelude::*;
-use std::convert::TryFrom;
 
 pub fn is_bit_set(bit: &u8, value: &u8) -> bool {
     (value & (1 << bit)) == 1

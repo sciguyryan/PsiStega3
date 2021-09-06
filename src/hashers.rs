@@ -1,4 +1,4 @@
-use argon2::{Argon2, Version};
+use argon2::Argon2;
 use sha3::{Digest, Sha3_256, Sha3_512};
 use std::io::prelude::*;
 
@@ -11,6 +11,7 @@ impl Hashers {
         let mut hasher = Sha3_512::new();
 
         // The file will automatically be closed when it goes out of scope.
+        // TODO: handle the error case here.
         let mut f = std::fs::File::open(path).unwrap();
         let mut buffer = [0u8; 16384];
 
@@ -46,7 +47,8 @@ impl Hashers {
             return Err(Error::Argon2InvalidParams);
         };
 
-        // The parameter builder will fail if any of the params are incorrect, this unwrap should be safe as a result.
+        // This method return an error condition if any of supplied parameters are incorrect prior to this statement.
+        // This unwrap should be safe as a result.
         let params = builder.params().unwrap();
 
         // Convert the string to a byte array.
@@ -55,29 +57,12 @@ impl Hashers {
         // Construct the hasher.
         let hasher =  Argon2::new(argon2::Algorithm::Argon2id, version, params);
 
+        // Nom!
         let mut key_bytes = [0u8; 128];
         if hasher.hash_password_into(str_bytes, &salt, &mut key_bytes).is_err() {
             return Err(Error::Argon2NoHash);
         }
 
         Ok(key_bytes)
-    }
-}
-
-pub struct Argon2Parameters {
-    t_cost: u32,
-    p_cost: u32,
-    m_cost: u32,
-    version: argon2::Version
-}
-
-impl Argon2Parameters {
-    pub fn new(t_cost: u32, p_cost: u32, m_cost: u32, version: argon2::Version) -> Self {
-        Self {
-            t_cost,
-            p_cost,
-            m_cost,
-            version
-        }
     }
 }
