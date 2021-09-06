@@ -180,7 +180,11 @@ impl Steganography {
         // Select the next cell from the available  list.
         let mut next_cell_index = position_rand.gen_range(0..available_cells.len());
 
-        let mut data: Vec<u8> = Vec::with_capacity(total_cells_needed);
+        let mut cell_pixel_coordinates = self.get_cell_pixel_coordinates(next_cell_index);
+
+        log::debug!("Cell {} contains pixels: {:?}", next_cell_index, cell_pixel_coordinates);
+
+        /*let mut data: Vec<u8> = Vec::with_capacity(total_cells_needed);
 
         let version: u8 = 1;
         log::debug!("0b{:08b}", version);
@@ -202,7 +206,7 @@ impl Steganography {
         //while i <= 3 {
         //    println!("Is {} bit set? {:?}", &i, is_bit_set(&i, &le_value));
         //    i +=  1;
-        //}
+        //}*/
 
         // Test random number.
         log::debug!("Has cell {:?} been used? {:?}", next_cell_index, !available_cells.contains(&next_cell_index));
@@ -273,6 +277,42 @@ impl Steganography {
 
     fn decode_v1(&mut self) -> Result<&str> {
         Ok("")
+    }
+
+    /// Calculate the coordinates of the pixel pair that comprise a given cell.
+    ///
+    /// # Arguments
+    ///
+    /// * `cell_number` - The cell number.
+    ///
+    /// Note: This method will return an array of a tuple where the tuple is in the coordinate configuration.
+    fn get_cell_pixel_coordinates(&self, cell_number: usize) -> [(usize, usize); 2] {
+        // Cell 0 contains pixels (0, 1), cell 1 contains pixels (2, 3), etc.
+        // The start pixel index can thus be calculated by the equation 2n.
+        let start_index = 2 * cell_number;
+
+        [
+            self.pixel_coordinate(start_index),
+            self.pixel_coordinate(start_index + 1)
+        ]
+    }
+
+    /// Calculate the coordinates of a pixel from the pixel index.
+    ///
+    /// # Arguments
+    ///
+    /// * `pixel` - The index of the pixel within the image.
+    ///
+    fn pixel_coordinate(&self, pixel: usize) -> (usize, usize) {
+        let w =  self.images[0].dimensions().0 as usize;
+
+        // Note: strictly speaking we don't need to subtract the modulo
+        // when calculating 'y' as we are performing an integer division.
+        // I have none the less done this for the sake of safety and clarity.
+        let x = pixel % w;
+        let y = pixel - x / w;
+
+        (x, y)
     }
 
     /// Attempt to load an image from a file.
