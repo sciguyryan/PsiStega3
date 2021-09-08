@@ -6,7 +6,8 @@ use crate::version::Version;
 
 use aes_gcm::{Aes256Gcm, Key, Nonce};
 use aes_gcm::aead::{Aead, NewAead};
-use image::{DynamicImage, GenericImage, GenericImageView};
+use image::png::PngDecoder;
+use image::{ColorType, DynamicImage, GenericImage, GenericImageView};
 use std::convert::TryFrom;
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
@@ -88,13 +89,9 @@ impl Steganography {
         log::debug!("File hash length: {:?}" , file_hash_bytes.len());
         log::debug!("File hash: {}", file_hash_string);
 
-        // The key for the encryption is the sha3-512 hash of the input image file combined with the plaintext password string.
+        // The key for the encryption is the SHA3-512 hash of the input image file combined with the plaintext key.
         let mut final_key: String = key.to_owned();
         final_key.push_str(&file_hash_string);
-
-        // We cannot use the Argon2 hash for the positional random number generator because
-        // we will need access to the Argon2 hash salt, which will not be available when reading the data back from the file.
-        let sha256_key_hash_bytes = Hashers::sha3_256_string(&final_key);
 
         // Generate a random salt for the Argon2 hashing function.
         let mut salt_bytes = [0u8; 12];
@@ -120,7 +117,7 @@ impl Steganography {
         let key = Key::from_slice(key_bytes);
         let cipher = Aes256Gcm::new(key);
 
-        // Generate a unique random 96-bit  (12 byte) nonce (IV).
+        // Generate a unique random 96-bit (12 byte) nonce (IV).
         let mut nonce_bytes = [0u8; 12];
         OsRng.fill_bytes(&mut nonce_bytes);
 
@@ -145,7 +142,7 @@ impl Steganography {
 
         log::debug!("Plaintext string: {}", plaintext_str);*/
 
-        // We can store a maximum of 4,294,967,295 (0xFFFFFFFF) bytes of ciphertext.
+        // We can store a maximum of 4,294,967,295 (0xffffffff) bytes of ciphertext.
         let total_ct_cells  = ciphertext_bytes.len();
         if total_ct_cells > u32::max_value() as usize {
             return Err(Error::DataTooLarge);
@@ -163,19 +160,17 @@ impl Steganography {
             return Err(Error::ImageInsufficientSpace);
         }
 
-        // We will only use the first 32 bytes of the hash for the seed here.
-        // We will need to use the SHA3-512 hash bytes here as Argon2 will not create a reproducible seeded RNG.
+        // When seeding out PRNG, we cannot use the Argon2 hash for the positional random number generator
+        // as we will need the salt, which will not be available when initially reading the data back from the file.
+        let sha256_key_hash_bytes = Hashers::sha3_256_string(&final_key);
         let mut position_rand: ChaCha20Rng = u8_vec_to_seed(sha256_key_hash_bytes);
 
-        // This random number generator will be used to create the XOR byte values.
-        // This is separate from the positional RNG to allow the output files to vary, even with the same seed and password.
-        let mut xor_rand: ChaCha20Rng = ChaCha20Rng::from_entropy();
+        // This random number generator will be used to create the XOR bytes.
+        // This is separate from the positional RNG to allow the output files to vary, even with the input file and password.
+        let mut data_rand: ChaCha20Rng = ChaCha20Rng::from_entropy();
 
         // The vector which contains the list of every available cell. When a cell has been used it is removed from this vector.
-        let mut available_cells: Vec<usize> = Vec::with_capacity(total_cells);
-        for i in 0..total_cells {
-            available_cells.push(i);
-        }
+        let mut available_cells: Vec<usize> = (0..total_cells).collect();
 
         // Select the next cell from the available  list.
         let mut next_cell_index = position_rand.gen_range(0..available_cells.len());
@@ -232,7 +227,6 @@ impl Steganography {
     }
 
     fn encode_byte(&self) {
-
     }
 
     /// Read and decrypt the data from an image file.
@@ -322,8 +316,6 @@ impl Steganography {
     /// * `file_path` - The path to the image file.
     ///
     fn load_image(file_path: &str) -> Result<DynamicImage> {
-        // TODO: reject loading anything other than png files.
-
         let img = match image::open(file_path) {
             Ok(img) => {
                 // The image was successfully loaded.
@@ -343,12 +335,19 @@ impl Steganography {
             }
         };
 
-        // We will convert the image into a standardised format to avoid the need
-        // of rejecting invalid image types.
-        // TODO: check if this will work in practice with various image types.
-        let rgba = img.into_rgba8();
-
-        Ok(DynamicImage::ImageRgba8(rgba))
+        // We currently only operate on files that are RGB(A) with 8-bit colour depth or better.
+        match img.color() {
+            ColorType::Rgb8 |  ColorType::Rgba8 => {
+                Ok(DynamicImage::ImageRgba8(img.into_rgba8()))
+            },
+            ColorType::Rgb16 | ColorType::Rgba16 => {
+                Ok(DynamicImage::ImageRgba16(img.into_rgba16()))
+            },
+            _ => {
+                // We currently do not handle any of the other format types.
+                Err(Error::ImageTypeInvalid)
+            }
+        }
     }
 
     /// Validate if the image can be used with our steganography algorithms.
