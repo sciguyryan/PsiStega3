@@ -34,7 +34,7 @@ fn main() {
 
     let mut stega = Steganography::new();
 
-    let e = stega.encode(1, input_img_path, password, input, output_img_path);
+    //let e = stega.encode(1, input_img_path, password, input, output_img_path);
 
 	// Wait for user input.
     let mut input_string = String::new();

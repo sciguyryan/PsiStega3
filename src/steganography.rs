@@ -6,7 +6,6 @@ use crate::version::Version;
 
 use aes_gcm::{Aes256Gcm, Key, Nonce};
 use aes_gcm::aead::{Aead, NewAead};
-use image::png::PngDecoder;
 use image::{ColorType, DynamicImage, GenericImage, GenericImageView};
 use std::convert::TryFrom;
 use rand::prelude::*;
@@ -129,7 +128,7 @@ impl Steganography {
 
         println!("Ciphertext bytes: {:?}", ciphertext_bytes);
 
-         /*llet plaintext_bytes = cipher.decrypt(nonce, ciphertext_bytes.as_ref())
+         /*let plaintext_bytes = cipher.decrypt(nonce, ciphertext_bytes.as_ref())
             .expect("decryption failure!"); // NOTE: handle this error to avoid panics!
 
         log::debug!("Plaintext bytes: {:?}", plaintext_bytes);
@@ -143,17 +142,21 @@ impl Steganography {
         log::debug!("Plaintext string: {}", plaintext_str);*/
 
         // We can store a maximum of 4,294,967,295 (0xffffffff) bytes of ciphertext.
-        let total_ct_cells  = ciphertext_bytes.len();
-        if total_ct_cells > u32::max_value() as usize {
+        let total_ct_cells  = ciphertext_bytes.len() as u64;
+        if total_ct_cells > u32::max_value() as u64 {
             return Err(Error::DataTooLarge);
         }
 
         // 1 cell for the version, 4 cells for the total number of ciphertext cells, the salt, the nonce and the ciphertext.
         // We then need to double that value as to account for the corresponding XOR cell.
-        let total_cells_needed = (1 + 4 + salt_bytes.len() + nonce_bytes.len() + total_ct_cells) * 2;
+        // This value must be held within a 64-bit value to prevent integer overflow from occurring in the
+        // unlikely event that someone attempts to input u32::MAX bytes while running this software on a
+        // 32-bit architecture.
+        // This looks ugly, but I'm not sure that there is a better solution for now.
+        let total_cells_needed = (1 + 4 + salt_bytes.len() as u64 + nonce_bytes.len() as u64 + total_ct_cells  as u64) * 2;
         log::debug!("Total cells needed = {:?}", total_cells_needed);
 
-        let total_cells: usize = self.get_total_cells() as usize;
+        let total_cells = self.get_total_cells();
         log::debug!("Total available cells: {:?}", &total_cells);
 
         if total_cells_needed > total_cells {
@@ -170,12 +173,12 @@ impl Steganography {
         let mut data_rand: ChaCha20Rng = ChaCha20Rng::from_entropy();
 
         // The vector which contains the list of every available cell. When a cell has been used it is removed from this vector.
-        let mut available_cells: Vec<usize> = (0..total_cells).collect();
+        let mut available_cells: Vec<u64> = (0..total_cells).collect();
 
         // Select the next cell from the available  list.
-        let mut next_cell_index = position_rand.gen_range(0..available_cells.len());
+        let next_cell_index = position_rand.gen_range(0..available_cells.len());
 
-        let mut cell_pixel_coordinates = self.get_cell_pixel_coordinates(next_cell_index);
+        let cell_pixel_coordinates = self.get_cell_pixel_coordinates(next_cell_index);
 
         log::debug!("Cell {} contains pixels: {:?}", next_cell_index, cell_pixel_coordinates);
 
@@ -204,11 +207,11 @@ impl Steganography {
         //}*/
 
         // Test random number.
-        log::debug!("Has cell {:?} been used? {:?}", next_cell_index, !available_cells.contains(&next_cell_index));
+        //log::debug!("Has cell {:?} been used? {:?}", next_cell_index, !available_cells.contains(&next_cell_index));
 
         // Remove the cell from the list of available cells.
         available_cells.remove(next_cell_index);
-        log::debug!("Has cell {:?} been used? {:?}", next_cell_index, !available_cells.contains(&next_cell_index));
+        //log::debug!("Has cell {:?} been used? {:?}", next_cell_index, !available_cells.contains(&next_cell_index));
 
         // Testing, testing, 1, 2, 3.
         let pixel = self.images[1].get_pixel(0, 0);
@@ -370,13 +373,13 @@ impl Steganography {
     }
 
     /// Calculate the total number of pixels available in the reference image.
-    pub fn get_total_pixels(&self) -> u32 {
+    pub fn get_total_pixels(&self) -> u64 {
         let (w, h) =  self.images[0].dimensions();
-        w * h
+        w as u64 * h as u64
     }
 
     /// Calculate the total number of cells available in the reference image.
-    pub fn get_total_cells(&self) -> u32 {
+    pub fn get_total_cells(&self) -> u64 {
         // Each cell is 2x1 pixels in size.
         self.get_total_pixels() / 2
     }
