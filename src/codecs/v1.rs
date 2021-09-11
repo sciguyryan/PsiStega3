@@ -147,7 +147,7 @@ impl Codec for StegaV1 {
         // unlikely event that someone attempts to input u32::MAX bytes while running this software on a
         // 32-bit architecture.
         // This looks ugly, but I'm not sure that there is a better solution for now.
-        let total_cells_needed = (1 + 4 + salt_bytes.len() as u64 + nonce_bytes.len() as u64 + total_ct_cells  as u64) * 2;
+        let total_cells_needed = (1 + 4 + salt_bytes.len() as u64 + nonce_bytes.len() as u64 + total_ct_cells) * 2;
         log::debug!("Total cells needed = {:?}", total_cells_needed);
 
         let total_cells = StegaV1::get_total_cells(&ref_image);
