@@ -1,12 +1,13 @@
 
+use crate::codecs::codec::Codec;
+use crate::image_wrapper::ImageWrapper;
 use crate::error::{Error, Result};
 use crate::hashers::*;
 use crate::utils;
-use crate::version::Version;
 
 use aes_gcm::{Aes256Gcm, Key, Nonce};
 use aes_gcm::aead::{Aead, NewAead};
-use image::{ColorType, DynamicImage, GenericImage, GenericImageView};
+use image::{ColorType, GenericImage, GenericImageView};
 use std::convert::TryFrom;
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
@@ -18,69 +19,61 @@ pub const V1_ARGON_M_COST: u32 = 4096;
 pub const V1_ARGON_VERSION: argon2::Version = argon2::Version::V0x13;
 
 #[derive(Debug)]
-pub struct Steganography {
-    pub images: [DynamicImage; 2],
-}
+pub struct SteganographyV1 {}
 
-impl Default for Steganography {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl Steganography {
+impl SteganographyV1 {
     pub fn new() -> Self {
-       Self {
-            // Create a dummy image for the two potential input images.
-            // These will be replaced with the relevant method calls.
-            images: [image::DynamicImage::new_bgr8(1, 1), image::DynamicImage::new_bgr8(1, 1)]
-        }
-    }
+        Self {}
+     }
 
-    /// Encrypt the plaintext and write the resulting data into an image file.
+    /// Calculate the coordinates of the pixel pair that comprise a given cell.
     ///
     /// # Arguments
     ///
-    /// * `version` - The version of the encoding algorithm to use.
-    /// * `input_path` - The input image file path.
-    /// * `key` - The plaintext encryption key to be used.
-    /// * `plaintext` - The plaintext to be encrypted and encoded into the image.
-    /// * `output_path` - The output image file path.
+    /// * `cell_number` - The cell number.
     ///
-    /// Note: When using this method the first image in the `images` array will be the reference image and the second will be the output image.
-    pub fn encode(&mut self, version: u32, input_path: &str, key: &str, plaintext: &str, output_path: &str) -> Result<()> {
-        log::debug!("Loading (reference) image file @ {}", &input_path);
+    /// Note: This method will return an array of a tuple where the tuple is in the coordinate configuration.
+    pub fn get_cell_pixel_coordinates(img: &ImageWrapper, cell_number: usize) -> [(usize, usize); 2] {
+        // Cell 0 contains pixels (0, 1), cell 1 contains pixels (2, 3), etc.
+        // The start pixel index can thus be calculated by the equation 2n.
+        let start_index = 2 * cell_number;
 
-        let v = match Version::try_from(version) {
-            Ok(v) => v,
-            Err(e) => {
-                log::debug!("Invalid encoder version specified: {:?}", version);
-                return Err(e);
-            }
-        };
-
-        match Steganography::load_image(input_path) {
-            Ok(img) => {
-                // We will load the image twice: once for the reference image and once for the output image.
-                self.images[0] = img;
-                self.images[1] = self.images[0] .clone();
-            },
-            Err(e) => {
-                log::debug!("Error loading reference image file: {:?}", e);
-               return Err(e);
-            }
-        }
-
-        log::debug!("Successfully loaded reference image file!");
-        log::debug!("Using encoder version: {:?}", &v);
-
-        // Call the encoding function for the specified version.
-        match v {
-            Version::V0x01 => self.encode_v1(input_path, key, plaintext, output_path),
-        }
+        [
+            img.pixel_coordinate(start_index),
+            img.pixel_coordinate(start_index + 1)
+        ]
     }
 
-    fn encode_v1(&mut self, input_path: &str, key: &str, plaintext: &str, output_path: &str) -> Result<()> {
+    /// Calculate the total number of cells available in the reference image.
+    fn get_total_cells(img: &ImageWrapper) -> u64 {
+        // Each cell is 2x1 pixels in size.
+        img.get_total_pixels() / 2
+    }
+
+    fn u8_vec_to_seed<R: SeedableRng<Seed = [u8; 32]>>(bytes: Vec<u8>) -> R {
+        assert!(bytes.len() == 32, "Byte vector is not 32 bytes (256-bits) in length.");
+        let arr = <[u8; 32]>::try_from(bytes).unwrap();
+
+        R::from_seed(arr)
+    }
+}
+
+impl Codec for SteganographyV1 {
+    fn encode(&mut self, input_path: &str, key: &str, plaintext: &str, output_path: &str) -> Result<()> {
+
+        // The reference image will not be modified.
+        let ref_image = match SteganographyV1::load_image(input_path) {
+            Ok(img) => {
+                img
+            },
+            Err(e) => {
+                return Err(e);
+            },
+        };
+
+        // The modified image will contain all of the encoded data. Initially it is clone of the
+        // original reference image.
+        let mut mod_image = ref_image.clone();
 
         let file_hash_bytes = Hashers::sha3_512_file(input_path);
         let file_hash_string = utils::u8_array_to_hex(&file_hash_bytes).unwrap(); // This is internal and cannot fail.
@@ -156,7 +149,7 @@ impl Steganography {
         let total_cells_needed = (1 + 4 + salt_bytes.len() as u64 + nonce_bytes.len() as u64 + total_ct_cells  as u64) * 2;
         log::debug!("Total cells needed = {:?}", total_cells_needed);
 
-        let total_cells = self.get_total_cells();
+        let total_cells = SteganographyV1::get_total_cells(&ref_image);
         log::debug!("Total available cells: {:?}", &total_cells);
 
         if total_cells_needed > total_cells {
@@ -166,7 +159,7 @@ impl Steganography {
         // When seeding out PRNG, we cannot use the Argon2 hash for the positional random number generator
         // as we will need the salt, which will not be available when initially reading the data back from the file.
         let sha256_key_hash_bytes = Hashers::sha3_256_string(&final_key);
-        let mut position_rand: ChaCha20Rng = u8_vec_to_seed(sha256_key_hash_bytes);
+        let mut position_rand: ChaCha20Rng = SteganographyV1::u8_vec_to_seed(sha256_key_hash_bytes);
 
         // This random number generator will be used to create the XOR bytes.
         // This is separate from the positional RNG to allow the output files to vary, even with the input file and password.
@@ -178,7 +171,7 @@ impl Steganography {
         // Select the next cell from the available  list.
         let next_cell_index = position_rand.gen_range(0..available_cells.len());
 
-        let cell_pixel_coordinates = self.get_cell_pixel_coordinates(next_cell_index);
+        let cell_pixel_coordinates = SteganographyV1::get_cell_pixel_coordinates(&ref_image, next_cell_index);
 
         log::debug!("Cell {} contains pixels: {:?}", next_cell_index, cell_pixel_coordinates);
 
@@ -214,153 +207,33 @@ impl Steganography {
         //log::debug!("Has cell {:?} been used? {:?}", next_cell_index, !available_cells.contains(&next_cell_index));
 
         // Testing, testing, 1, 2, 3.
-        let pixel = self.images[1].get_pixel(0, 0);
+        let pixel = mod_image.img.get_pixel(0, 0);
 
         println!("rgba = {}, {}, {}, {}", pixel[0], pixel[1], pixel[2], pixel[3]);
 
         let new_pixel = image::Rgba([0, 0, 0, 0]);
 
-        self.images[1].put_pixel(0, 0, new_pixel);
+        mod_image.img.put_pixel(0, 0, new_pixel);
 
         // Save the modified image.
-        let r = self.images[1].save(output_path);
+        let r = mod_image.img.save(output_path);
         log::debug!("result = {:?}", r);
 
         Ok(())
     }
 
-    fn encode_byte(&self) {
-    }
-
-    /// Read and decrypt the data from an image file.
-    ///
-    /// # Arguments
-    ///
-    /// * `version` - The version of the encoding algorithm to use.
-    /// * `original_path` - The original image file path.
-    /// * `key` - The plaintext encryption key to be used.
-    /// * `encoded_path` - The encoded image file path.
-    ///
-    /// Note: When using this method the first image in the `images` array will be the reference image and the second will be the encoded image.
-    pub fn decode(&mut self, version: u32, original_path: &str, key: &str, encoded_path: &str) -> Result<&str> {
-        log::debug!("Loading (reference) image file @ {}", &original_path);
-
-        let v = match Version::try_from(version) {
-            Ok(v) => v,
-            Err(e) => {
-                log::debug!("Invalid decoder version specified: {:?}", version);
-                return Err(e);
-            }
-        };
-
-        match Steganography::load_image(original_path) {
-            Ok(img) => {
-                self.images[0] = img;
-            },
-            Err(e) => {
-                log::debug!("Error loading reference image file: {:?}", e);
-               return Err(e)
-            }
-        }
-
-        log::debug!("Successfully loaded reference image file!");
-        log::debug!("Using decoder version: {:?}", &v);
-
-         // Call the encoding function for the specified version.
-        match v {
-            Version::V0x01 => self.decode_v1(),
-        }
-    }
-
-    fn decode_v1(&mut self) -> Result<&str> {
+    fn decode(&mut self) ->  Result<&str> {
         Ok("")
-    }
-
-    /// Calculate the coordinates of the pixel pair that comprise a given cell.
-    ///
-    /// # Arguments
-    ///
-    /// * `cell_number` - The cell number.
-    ///
-    /// Note: This method will return an array of a tuple where the tuple is in the coordinate configuration.
-    fn get_cell_pixel_coordinates(&self, cell_number: usize) -> [(usize, usize); 2] {
-        // Cell 0 contains pixels (0, 1), cell 1 contains pixels (2, 3), etc.
-        // The start pixel index can thus be calculated by the equation 2n.
-        let start_index = 2 * cell_number;
-
-        [
-            self.pixel_coordinate(start_index),
-            self.pixel_coordinate(start_index + 1)
-        ]
-    }
-
-    /// Calculate the coordinates of a pixel from the pixel index.
-    ///
-    /// # Arguments
-    ///
-    /// * `pixel` - The index of the pixel within the image.
-    ///
-    fn pixel_coordinate(&self, pixel: usize) -> (usize, usize) {
-        let w =  self.images[0].dimensions().0 as usize;
-
-        // Note: strictly speaking we don't need to subtract the modulo
-        // when calculating 'y' as we are performing an integer division.
-        // I have none the less done this for the sake of safety and clarity.
-        let x = pixel % w;
-        let y = pixel - x / w;
-
-        (x, y)
-    }
-
-    /// Attempt to load an image from a file.
-    ///
-    /// # Arguments
-    ///
-    /// * `file_path` - The path to the image file.
-    ///
-    fn load_image(file_path: &str) -> Result<DynamicImage> {
-        let img = match image::open(file_path) {
-            Ok(img) => {
-                // The image was successfully loaded.
-                // Now we need to validate if the file can be used.
-                match Steganography::validate_image(&img) {
-                    Ok(_) => {
-                        img
-                    },
-                    Err(e) => {
-                        return Err(e);
-                    }
-                }
-            },
-            // TODO: add more granularity to the errors here.
-            Err(_) => {
-                return Err(Error::ImageLoading);
-            }
-        };
-
-        // We currently only operate on files that are RGB(A) with 8-bit colour depth or better.
-        match img.color() {
-            ColorType::Rgb8 |  ColorType::Rgba8 => {
-                Ok(DynamicImage::ImageRgba8(img.into_rgba8()))
-            },
-            ColorType::Rgb16 | ColorType::Rgba16 => {
-                Ok(DynamicImage::ImageRgba16(img.into_rgba16()))
-            },
-            _ => {
-                // We currently do not handle any of the other format types.
-                Err(Error::ImageTypeInvalid)
-            }
-        }
     }
 
     /// Validate if the image can be used with our steganography algorithms.
     ///
     /// # Arguments
     ///
-    /// * `image` - A reference to a [`DynamicImage`] object.
+    /// * `image` - A reference to a [`ImageWrapper`] object.
     ///
-    fn validate_image(image: &DynamicImage) -> Result<()> {
-        let (w, h) =  image.dimensions();
+    fn validate_image(image: &ImageWrapper) -> Result<()> {
+        let (w, h) =  image.img.dimensions();
 
         log::debug!("Image dimensions: ({},{})", w, h);
 
@@ -372,22 +245,53 @@ impl Steganography {
         }
     }
 
-    /// Calculate the total number of pixels available in the reference image.
-    pub fn get_total_pixels(&self) -> u64 {
-        let (w, h) =  self.images[0].dimensions();
-        w as u64 * h as u64
-    }
+    /// Attempt to load an image from a file.
+    ///
+    /// # Arguments
+    ///
+    /// * `file_path` - The path to the image file.
+    ///
+    fn load_image(file_path: &str) -> Result<ImageWrapper> {
+        let mut wrapper = ImageWrapper::new();
 
-    /// Calculate the total number of cells available in the reference image.
-    pub fn get_total_cells(&self) -> u64 {
-        // Each cell is 2x1 pixels in size.
-        self.get_total_pixels() / 2
+        let result = match wrapper.load_image(file_path) {
+            Ok(_) => {
+                // The image was successfully loaded.
+                // Now we need to validate if the file can be used.
+                match SteganographyV1::validate_image(&wrapper) {
+                    Err(e) => Err(e),
+                    _ => Ok(())
+                }
+            },
+            Err(e) =>{
+                Err(e)
+            }
+        };
+
+        if let Err(e) = result {
+            return Err(e);
+        }
+
+        // We currently only operate on files that are RGB(A) with 8-bit colour depth or better.
+        match wrapper.img.color() {
+            ColorType::Rgb8 |  ColorType::Rgba8 => {
+                wrapper.into_rgba8();
+                Ok(wrapper)
+            },
+            ColorType::Rgb16 | ColorType::Rgba16 => {
+                wrapper.into_rgba16();
+                Ok(wrapper)
+            },
+            _ => {
+                // We currently do not handle any of the other format types.
+                Err(Error::ImageTypeInvalid)
+            }
+        }
     }
 }
 
-fn u8_vec_to_seed<R: SeedableRng<Seed = [u8; 32]>>(bytes: Vec<u8>) -> R {
-    assert!(bytes.len() == 32, "Byte vector is not 32 bytes (256-bits) in length.");
-    let arr = <[u8; 32]>::try_from(bytes).unwrap();
-
-    R::from_seed(arr)
+impl Default for SteganographyV1 {
+    fn default() -> Self {
+        Self::new()
+    }
 }

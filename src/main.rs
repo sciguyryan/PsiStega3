@@ -1,11 +1,13 @@
-pub mod steganography;
 mod error;
 mod version;
 mod hashers;
 mod utils;
+mod image_wrapper;
+mod codecs;
 
-use crate::steganography::Steganography;
+use crate::codecs::v1;
 
+use codecs::codec::Codec;
 use simple_logger::SimpleLogger;
 use std::io::stdin;
 
@@ -32,9 +34,9 @@ fn main() {
     let input_img_path = "D:\\GitHub\\PsiStega3\\test-images\\b.jpg";
     let output_img_path = "D:\\GitHub\\PsiStega3\\test-images\\2.png";
 
-    let mut stega = Steganography::new();
+    let mut stega = v1::SteganographyV1::new();
 
-    //let e = stega.encode(1, input_img_path, password, input, output_img_path);
+    let e = stega.encode(input_img_path, password, input, output_img_path);
 
 	// Wait for user input.
     let mut input_string = String::new();
