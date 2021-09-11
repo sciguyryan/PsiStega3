@@ -66,11 +66,11 @@ impl StegaV1 {
 }
 
 impl Codec for StegaV1 {
-    fn encode(&mut self, input_path: &str, key: &str, plaintext: &str, output_path: &str) -> Result<()> {
-        log::debug!("Loading (reference) image file @ {}", &input_path);
+    fn encode(&mut self, original_path: &str, key: &str, plaintext: &str, encoded_path: &str) -> Result<()> {
+        log::debug!("Loading (reference) image file @ {}", &original_path);
 
         // The reference image, read-only as it will not be modified.
-        let ref_image = match StegaV1::load_image(input_path) {
+        let ref_image = match StegaV1::load_image(original_path) {
             Ok(img) => {
                 img
             },
@@ -79,11 +79,11 @@ impl Codec for StegaV1 {
             },
         };
 
-        // The modified image will contain all of the encoded data.
+        // The encoded image will contain all of the encoded data.
         // Initially it is a copy of the reference image.
-        let mut mod_image = ref_image.clone();
+        let mut enc_image = ref_image.clone();
 
-        let file_hash_bytes = Hashers::sha3_512_file(input_path);
+        let file_hash_bytes = Hashers::sha3_512_file(original_path);
         let file_hash_string = utils::u8_array_to_hex(&file_hash_bytes).unwrap(); // This is internal and cannot fail.
 
         log::debug!("File hash length: {}" , file_hash_bytes.len());
@@ -218,22 +218,22 @@ impl Codec for StegaV1 {
         //log::debug!("Has cell {:?} been used? {:?}", next_cell_index, !available_cells.contains(&next_cell_index));
 
         // Testing, testing, 1, 2, 3.
-        let pixel = mod_image.img.get_pixel(0, 0);
+        let pixel = enc_image.img.get_pixel(0, 0);
 
         println!("rgba = {}, {}, {}, {}", pixel[0], pixel[1], pixel[2], pixel[3]);
 
         let new_pixel = image::Rgba([0, 0, 0, 255]);
 
-        mod_image.img.put_pixel(0, 0, new_pixel);
+        enc_image.img.put_pixel(0, 0, new_pixel);
 
         // Save the modified image.
-        let r = mod_image.img.save(output_path);
+        let r = enc_image.img.save(encoded_path);
         log::debug!("result = {:?}", r);
 
         Ok(())
     }
 
-    fn decode(&mut self) ->  Result<&str> {
+    fn decode(&mut self, original_path: &str, key: &str, encoded_path: &str) ->  Result<&str> {
         Ok("")
     }
 
@@ -271,6 +271,7 @@ impl Codec for StegaV1 {
 
         // The image was successfully loaded.
         // Now we need to validate if the file can be used.
+        // TODO: decide if the input image type should be restricted.
         if let Err(e) = StegaV1::validate_image(&wrapper) {
             return Err(e);
         };
