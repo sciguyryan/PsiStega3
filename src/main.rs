@@ -34,7 +34,7 @@ fn main() {
     let input_img_path = "D:\\GitHub\\PsiStega3\\test-images\\b.jpg";
     let output_img_path = "D:\\GitHub\\PsiStega3\\test-images\\2.png";
 
-    let mut stega = v1::SteganographyV1::new();
+    let mut stega = v1::StegaV1::new();
 
     let e = stega.encode(input_img_path, password, input, output_img_path);
 

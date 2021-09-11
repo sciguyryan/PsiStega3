@@ -56,24 +56,6 @@ impl ImageWrapper {
 
         (x, y)
     }
-
-    pub fn into_rgba8(&self) -> ImageWrapper {
-        let data = self.img.clone().into_rgba8();
-
-        let mut wrapper = ImageWrapper::new();
-        wrapper.img = DynamicImage::ImageRgba8(data);
-
-        wrapper
-    }
-
-    pub fn into_rgba16(&self) -> ImageWrapper {
-        let data = self.img.clone().into_rgba16();
-
-        let mut wrapper = ImageWrapper::new();
-        wrapper.img = DynamicImage::ImageRgba16(data);
-
-        wrapper
-    }
 }
 
 impl Default for ImageWrapper {

@@ -19,9 +19,9 @@ pub const V1_ARGON_M_COST: u32 = 4096;
 pub const V1_ARGON_VERSION: argon2::Version = argon2::Version::V0x13;
 
 #[derive(Debug)]
-pub struct SteganographyV1 {}
+pub struct StegaV1 {}
 
-impl SteganographyV1 {
+impl StegaV1 {
     pub fn new() -> Self {
         Self {}
      }
@@ -58,11 +58,12 @@ impl SteganographyV1 {
     }
 }
 
-impl Codec for SteganographyV1 {
+impl Codec for StegaV1 {
     fn encode(&mut self, input_path: &str, key: &str, plaintext: &str, output_path: &str) -> Result<()> {
+        log::debug!("Loading (reference) image file @ {}", &input_path);
 
         // The reference image will not be modified.
-        let ref_image = match SteganographyV1::load_image(input_path) {
+        let ref_image = match StegaV1::load_image(input_path) {
             Ok(img) => {
                 img
             },
@@ -149,7 +150,7 @@ impl Codec for SteganographyV1 {
         let total_cells_needed = (1 + 4 + salt_bytes.len() as u64 + nonce_bytes.len() as u64 + total_ct_cells  as u64) * 2;
         log::debug!("Total cells needed = {:?}", total_cells_needed);
 
-        let total_cells = SteganographyV1::get_total_cells(&ref_image);
+        let total_cells = StegaV1::get_total_cells(&ref_image);
         log::debug!("Total available cells: {:?}", &total_cells);
 
         if total_cells_needed > total_cells {
@@ -159,7 +160,7 @@ impl Codec for SteganographyV1 {
         // When seeding out PRNG, we cannot use the Argon2 hash for the positional random number generator
         // as we will need the salt, which will not be available when initially reading the data back from the file.
         let sha256_key_hash_bytes = Hashers::sha3_256_string(&final_key);
-        let mut position_rand: ChaCha20Rng = SteganographyV1::u8_vec_to_seed(sha256_key_hash_bytes);
+        let mut position_rand: ChaCha20Rng = StegaV1::u8_vec_to_seed(sha256_key_hash_bytes);
 
         // This random number generator will be used to create the XOR bytes.
         // This is separate from the positional RNG to allow the output files to vary, even with the input file and password.
@@ -171,7 +172,7 @@ impl Codec for SteganographyV1 {
         // Select the next cell from the available  list.
         let next_cell_index = position_rand.gen_range(0..available_cells.len());
 
-        let cell_pixel_coordinates = SteganographyV1::get_cell_pixel_coordinates(&ref_image, next_cell_index);
+        let cell_pixel_coordinates = StegaV1::get_cell_pixel_coordinates(&ref_image, next_cell_index);
 
         log::debug!("Cell {} contains pixels: {:?}", next_cell_index, cell_pixel_coordinates);
 
@@ -211,7 +212,7 @@ impl Codec for SteganographyV1 {
 
         println!("rgba = {}, {}, {}, {}", pixel[0], pixel[1], pixel[2], pixel[3]);
 
-        let new_pixel = image::Rgba([0, 0, 0, 0]);
+        let new_pixel = image::Rgba([0, 0, 0, 255]);
 
         mod_image.img.put_pixel(0, 0, new_pixel);
 
@@ -258,7 +259,7 @@ impl Codec for SteganographyV1 {
             Ok(_) => {
                 // The image was successfully loaded.
                 // Now we need to validate if the file can be used.
-                match SteganographyV1::validate_image(&wrapper) {
+                match StegaV1::validate_image(&wrapper) {
                     Err(e) => Err(e),
                     _ => Ok(())
                 }
@@ -274,12 +275,8 @@ impl Codec for SteganographyV1 {
 
         // We currently only operate on files that are RGB(A) with 8-bit colour depth or better.
         match wrapper.img.color() {
-            ColorType::Rgb8 |  ColorType::Rgba8 => {
-                wrapper.into_rgba8();
-                Ok(wrapper)
-            },
+            ColorType::Rgb8 |  ColorType::Rgba8 |
             ColorType::Rgb16 | ColorType::Rgba16 => {
-                wrapper.into_rgba16();
                 Ok(wrapper)
             },
             _ => {
@@ -290,7 +287,7 @@ impl Codec for SteganographyV1 {
     }
 }
 
-impl Default for SteganographyV1 {
+impl Default for StegaV1 {
     fn default() -> Self {
         Self::new()
     }
