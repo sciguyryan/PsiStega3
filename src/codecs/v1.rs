@@ -1,8 +1,8 @@
 
 use crate::codecs::codec::Codec;
-use crate::image_wrapper::ImageWrapper;
 use crate::error::{Error, Result};
 use crate::hashers::*;
+use crate::image_wrapper::ImageWrapper;
 use crate::utils;
 
 use aes_gcm::{Aes256Gcm, Key, Nonce};
@@ -13,10 +13,10 @@ use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
 use rand_core::{RngCore, OsRng};
 
-pub const V1_ARGON_T_COST: u32 = 6;
-pub const V1_ARGON_P_COST: u32 = 3;
-pub const V1_ARGON_M_COST: u32 = 4096;
-pub const V1_ARGON_VERSION: argon2::Version = argon2::Version::V0x13;
+const V1_ARGON_T_COST: u32 = 6;
+const V1_ARGON_P_COST: u32 = 3;
+const V1_ARGON_M_COST: u32 = 4096;
+const V1_ARGON_VERSION: argon2::Version = argon2::Version::V0x13;
 
 #[derive(Debug)]
 pub struct StegaV1 {}
@@ -30,10 +30,11 @@ impl StegaV1 {
     ///
     /// # Arguments
     ///
+    /// * `img` - a reference to the [`ImageWrapper`] holding the image data.
     /// * `cell_number` - The cell number.
     ///
     /// Note: This method will return an array of a tuple where the tuple is in the coordinate configuration.
-    pub fn get_cell_pixel_coordinates(img: &ImageWrapper, cell_number: usize) -> [(usize, usize); 2] {
+    fn get_cell_pixel_coordinates(img: &ImageWrapper, cell_number: usize) -> [(usize, usize); 2] {
         // Cell 0 contains pixels (0, 1), cell 1 contains pixels (2, 3), etc.
         // The start pixel index can thus be calculated by the equation 2n.
         let start_index = 2 * cell_number;
@@ -45,6 +46,12 @@ impl StegaV1 {
     }
 
     /// Calculate the total number of cells available in the reference image.
+    ///
+    /// # Arguments
+    ///
+    /// * `img` - a reference to the [`ImageWrapper`] object.
+    ///
+    /// Note: This method will return an array of a tuple where the tuple is in the coordinate configuration.
     fn get_total_cells(img: &ImageWrapper) -> u64 {
         // Each cell is 2x1 pixels in size.
         img.get_total_pixels() / 2
@@ -62,7 +69,7 @@ impl Codec for StegaV1 {
     fn encode(&mut self, input_path: &str, key: &str, plaintext: &str, output_path: &str) -> Result<()> {
         log::debug!("Loading (reference) image file @ {}", &input_path);
 
-        // The reference image will not be modified.
+        // The reference image, read-only as it will not be modified.
         let ref_image = match StegaV1::load_image(input_path) {
             Ok(img) => {
                 img
@@ -72,14 +79,14 @@ impl Codec for StegaV1 {
             },
         };
 
-        // The modified image will contain all of the encoded data. Initially it is clone of the
-        // original reference image.
+        // The modified image will contain all of the encoded data.
+        // Initially it is a copy of the reference image.
         let mut mod_image = ref_image.clone();
 
         let file_hash_bytes = Hashers::sha3_512_file(input_path);
         let file_hash_string = utils::u8_array_to_hex(&file_hash_bytes).unwrap(); // This is internal and cannot fail.
 
-        log::debug!("File hash length: {:?}" , file_hash_bytes.len());
+        log::debug!("File hash length: {}" , file_hash_bytes.len());
         log::debug!("File hash: {}", file_hash_string);
 
         // The key for the encryption is the SHA3-512 hash of the input image file combined with the plaintext key.
@@ -101,7 +108,7 @@ impl Codec for StegaV1 {
         };
 
         // The AES-256 key is 256-bits (32 bytes) in length.
-        let key_bytes: &[u8] = &key_bytes_full[..32];
+        let key_bytes = &key_bytes_full[..32];
         log::debug!("Key hash bytes: {:?}", key_bytes.to_vec());
 
         let hex_key_hash =  utils::u8_array_to_hex(key_bytes).unwrap(); // This is internal and cannot fail.
@@ -148,10 +155,10 @@ impl Codec for StegaV1 {
         // 32-bit architecture.
         // This looks ugly, but I'm not sure that there is a better solution for now.
         let total_cells_needed = (1 + 4 + salt_bytes.len() as u64 + nonce_bytes.len() as u64 + total_ct_cells) * 2;
-        log::debug!("Total cells needed = {:?}", total_cells_needed);
+        log::debug!("Total cells needed = {}", total_cells_needed);
 
         let total_cells = StegaV1::get_total_cells(&ref_image);
-        log::debug!("Total available cells: {:?}", &total_cells);
+        log::debug!("Total available cells: {}", &total_cells);
 
         if total_cells_needed > total_cells {
             return Err(Error::ImageInsufficientSpace);
@@ -166,7 +173,10 @@ impl Codec for StegaV1 {
         // This is separate from the positional RNG to allow the output files to vary, even with the input file and password.
         let mut data_rand: ChaCha20Rng = ChaCha20Rng::from_entropy();
 
-        // The vector which contains the list of every available cell. When a cell has been used it is removed from this vector.
+        // This contains the list of every unused cell. Once a cell has been used, it is removed.
+        // Initially I had planned to do with with a bitset, but it would require repeatedly checking
+        // to see if the cell had been used, which could lower performance in cases where the total
+        // number of available cells is close to the total number of cells needed to encode the data.
         let mut available_cells: Vec<u64> = (0..total_cells).collect();
 
         // Select the next cell from the available  list.
@@ -246,7 +256,7 @@ impl Codec for StegaV1 {
         }
     }
 
-    /// Attempt to load an image from a file.
+    /// Attempt to load and validate an image file, returning a [`ImageWrapper`] if successful.
     ///
     /// # Arguments
     ///
@@ -255,25 +265,17 @@ impl Codec for StegaV1 {
     fn load_image(file_path: &str) -> Result<ImageWrapper> {
         let mut wrapper = ImageWrapper::new();
 
-        let result = match wrapper.load_image(file_path) {
-            Ok(_) => {
-                // The image was successfully loaded.
-                // Now we need to validate if the file can be used.
-                match StegaV1::validate_image(&wrapper) {
-                    Err(e) => Err(e),
-                    _ => Ok(())
-                }
-            },
-            Err(e) =>{
-                Err(e)
-            }
-        };
-
-        if let Err(e) = result {
+        if let Err(e) = wrapper.load_image(file_path) {
             return Err(e);
         }
 
-        // We currently only operate on files that are RGB(A) with 8-bit colour depth or better.
+        // The image was successfully loaded.
+        // Now we need to validate if the file can be used.
+        if let Err(e) = StegaV1::validate_image(&wrapper) {
+            return Err(e);
+        };
+
+        // We currently only operate on files that are RGB(A) with 8-bit colour depth or higher.
         match wrapper.img.color() {
             ColorType::Rgb8 |  ColorType::Rgba8 |
             ColorType::Rgb16 | ColorType::Rgba16 => {

@@ -1,8 +1,8 @@
-use image::{DynamicImage, GenericImageView};
-
 use crate::error::{Error, Result};
 
-#[derive(Debug, Clone)]
+use image::{DynamicImage, GenericImageView};
+
+#[derive(Clone)]
 pub struct ImageWrapper {
     pub img: DynamicImage
 }

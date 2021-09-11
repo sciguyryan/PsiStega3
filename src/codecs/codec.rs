@@ -1,4 +1,4 @@
-use crate::{error::Result};
+use crate::error::Result;
 use crate::image_wrapper::ImageWrapper;
 
 pub trait Codec {
