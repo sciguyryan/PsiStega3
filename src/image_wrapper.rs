@@ -20,7 +20,7 @@ impl ImageWrapper {
     ///
     /// * `file_path` - The path to the image file.
     ///
-    pub fn load_image(&mut self, file_path: &str) -> Result<()> {
+    pub fn load_from_file(&mut self, file_path: &str) -> Result<()> {
         match image::open(file_path) {
             Ok(img) => {
                 self.img = img;
@@ -28,7 +28,7 @@ impl ImageWrapper {
             },
             // TODO: add more granularity to the errors here.
             Err(_) => {
-                Err(Error::ImageLoading)
+                Err(Error::ImageOpening)
             }
         }
     }

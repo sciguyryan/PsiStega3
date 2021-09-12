@@ -69,7 +69,7 @@ impl Codec for StegaV1 {
     fn encode(&mut self, original_path: &str, key: &str, plaintext: &str, encoded_path: &str) -> Result<()> {
         log::debug!("Loading (reference) image file @ {}", &original_path);
 
-        // The reference image, read-only as it will not be modified.
+        // The reference image, read-only as it must not be modified.
         let ref_image = match StegaV1::load_image(original_path) {
             Ok(img) => {
                 img
@@ -79,8 +79,19 @@ impl Codec for StegaV1 {
             },
         };
 
+        let total_cells = StegaV1::get_total_cells(&ref_image);
+        log::debug!("Total available cells: {}", &total_cells);
+
+        // We need to ensure that the total number of cells within the
+        // reference image is not too large. This avoid any potential
+        // overflows and partially to avoids creating excessive overheads.
+        // This is equal to the number of cells in a 10,000 by 10,000 pixel image.
+        if total_cells > 50_000_000 {
+            return Err(Error::ImageTooLarge);
+        }
+
         // The encoded image will contain all of the encoded data.
-        // Initially it is a copy of the reference image.
+        // Initially it is a clone of the reference image but will be modified later.
         let mut enc_image = ref_image.clone();
 
         let file_hash_bytes = Hashers::sha3_512_file(original_path);
@@ -156,9 +167,6 @@ impl Codec for StegaV1 {
         // This looks ugly, but I'm not sure that there is a better solution for now.
         let total_cells_needed = (1 + 4 + salt_bytes.len() as u64 + nonce_bytes.len() as u64 + total_ct_cells) * 2;
         log::debug!("Total cells needed = {}", total_cells_needed);
-
-        let total_cells = StegaV1::get_total_cells(&ref_image);
-        log::debug!("Total available cells: {}", &total_cells);
 
         if total_cells_needed > total_cells {
             return Err(Error::ImageInsufficientSpace);
@@ -263,15 +271,19 @@ impl Codec for StegaV1 {
     /// * `file_path` - The path to the image file.
     ///
     fn load_image(file_path: &str) -> Result<ImageWrapper> {
+        // TODO: determine which image format types should be allowed
+        // here. They must support RGBA and they must support
+        // writing by the library.
+        // See: https://github.com/image-rs/image
+
         let mut wrapper = ImageWrapper::new();
 
-        if let Err(e) = wrapper.load_image(file_path) {
+        if let Err(e) = wrapper.load_from_file(file_path) {
             return Err(e);
         }
 
         // The image was successfully loaded.
         // Now we need to validate if the file can be used.
-        // TODO: decide if the input image type should be restricted.
         if let Err(e) = StegaV1::validate_image(&wrapper) {
             return Err(e);
         };
