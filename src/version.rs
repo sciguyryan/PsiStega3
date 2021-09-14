@@ -3,7 +3,7 @@ use crate::error::{Error, Result};
 use core::convert::TryFrom;
 
 /// Version of the algorithm.
-#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 #[repr(u32)]
 pub enum Version {
     /// Version 1 (0x01 in hex)

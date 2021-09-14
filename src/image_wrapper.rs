@@ -8,23 +8,19 @@ pub struct ImageWrapper {
 }
 
 impl ImageWrapper {
-    pub fn new() -> Self {
-        Self {
-             img: image::DynamicImage::new_bgr8(1, 1)
-         }
-     }
-
     /// Attempt to load an image from a file.
     ///
     /// # Arguments
     ///
     /// * `file_path` - The path to the image file.
     ///
-    pub fn load_from_file(&mut self, file_path: &str) -> Result<()> {
+    pub fn load_from_file(file_path: &str) -> Result<ImageWrapper> {
         match image::open(file_path) {
             Ok(img) => {
-                self.img = img;
-                Ok(())
+                let wrapper = ImageWrapper {
+                    img
+                };
+                Ok(wrapper)
             },
             // TODO: add more granularity to the errors here.
             Err(_) => {
@@ -32,6 +28,7 @@ impl ImageWrapper {
             }
         }
     }
+
 
     /// Calculate the total number of pixels available in the reference image.
     pub fn get_total_pixels(&self) -> u64 {
@@ -55,11 +52,5 @@ impl ImageWrapper {
         let y = pixel - x / w;
 
         (x, y)
-    }
-}
-
-impl Default for ImageWrapper {
-    fn default() -> Self {
-        Self::new()
     }
 }

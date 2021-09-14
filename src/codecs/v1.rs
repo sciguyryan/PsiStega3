@@ -5,18 +5,21 @@ use crate::hashers::*;
 use crate::image_wrapper::ImageWrapper;
 use crate::utils;
 
-use aes_gcm::{Aes256Gcm, Key, Nonce};
-use aes_gcm::aead::{Aead, NewAead};
+use aes_gcm::{Aes256Gcm, Key, Nonce, aead::{Aead, NewAead}};
 use image::{ColorType, GenericImage, GenericImageView};
 use std::convert::TryFrom;
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
 use rand_core::{RngCore, OsRng};
 
-const V1_ARGON_T_COST: u32 = 6;
-const V1_ARGON_P_COST: u32 = 3;
-const V1_ARGON_M_COST: u32 = 4096;
-const V1_ARGON_VERSION: argon2::Version = argon2::Version::V0x13;
+/// The time cost for use with the Argon2 hashing algorithm.
+const T_COST: u32 = 6;
+/// The parallel cost for use with the Argon2 hashing algorithm.
+const P_COST: u32 = 3;
+/// The memory cost for use with the Argon2 hashing algorithm.
+const M_COST: u32 = 4096;
+/// The version of the Argon2 hashing algorithm to use.
+const VERSION: argon2::Version = argon2::Version::V0x13;
 
 #[derive(Debug)]
 pub struct StegaV1 {}
@@ -70,14 +73,7 @@ impl Codec for StegaV1 {
         log::debug!("Loading (reference) image file @ {}", &original_path);
 
         // The reference image, read-only as it must not be modified.
-        let ref_image = match StegaV1::load_image(original_path) {
-            Ok(img) => {
-                img
-            },
-            Err(e) => {
-                return Err(e);
-            },
-        };
+        let ref_image = StegaV1::load_image(original_path)?;
 
         let total_cells = StegaV1::get_total_cells(&ref_image);
         log::debug!("Total available cells: {}", &total_cells);
@@ -108,15 +104,7 @@ impl Codec for StegaV1 {
         let mut salt_bytes = [0u8; 12];
         OsRng.fill_bytes(&mut salt_bytes);
 
-        let key_bytes_full = match Hashers::argon2_string(&final_key, salt_bytes, V1_ARGON_M_COST, V1_ARGON_P_COST, V1_ARGON_T_COST, V1_ARGON_VERSION) {
-            Ok(r) => {
-                r
-            },
-            Err(e) => {
-                log::debug!("Error creating Argon2 hash");
-                return Err(e);
-            }
-        };
+        let key_bytes_full = Hashers::argon2_string(&final_key, salt_bytes, M_COST, P_COST, T_COST, VERSION)?;
 
         // The AES-256 key is 256-bits (32 bytes) in length.
         let key_bytes = &key_bytes_full[..32];
@@ -185,9 +173,10 @@ impl Codec for StegaV1 {
         // Initially I had planned to do with with a bitset, but it would require repeatedly checking
         // to see if the cell had been used, which could lower performance in cases where the total
         // number of available cells is close to the total number of cells needed to encode the data.
+        // TODO: maybe convert this to a hashmap if it is too large and impacts performance?
         let mut available_cells: Vec<u64> = (0..total_cells).collect();
 
-        // Select the next cell from the available  list.
+        // Select the next cell from the available list.
         let next_cell_index = position_rand.gen_range(0..available_cells.len());
 
         let cell_pixel_coordinates = StegaV1::get_cell_pixel_coordinates(&ref_image, next_cell_index);
@@ -276,17 +265,11 @@ impl Codec for StegaV1 {
         // writing by the library.
         // See: https://github.com/image-rs/image
 
-        let mut wrapper = ImageWrapper::new();
-
-        if let Err(e) = wrapper.load_from_file(file_path) {
-            return Err(e);
-        }
+        let wrapper = ImageWrapper::load_from_file(file_path)?;
 
         // The image was successfully loaded.
         // Now we need to validate if the file can be used.
-        if let Err(e) = StegaV1::validate_image(&wrapper) {
-            return Err(e);
-        };
+        StegaV1::validate_image(&wrapper)?;
 
         // We currently only operate on files that are RGB(A) with 8-bit colour depth or higher.
         match wrapper.img.color() {
