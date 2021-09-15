@@ -29,7 +29,7 @@ fn main() {
 
     // These strings are obviously just for testing.
     let input = "This is a test.";
-    let password = "banana";
+    let password = "banana123";
 
     let input_img_path = "D:\\GitHub\\PsiStega3\\test-images\\b.jpg";
     let output_img_path = "D:\\GitHub\\PsiStega3\\test-images\\2.png";

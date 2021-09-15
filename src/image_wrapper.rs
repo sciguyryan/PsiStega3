@@ -2,12 +2,18 @@ use crate::error::{Error, Result};
 
 use image::{DynamicImage, GenericImage, GenericImageView};
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ImageWrapper {
     img: DynamicImage
 }
 
 impl ImageWrapper {
+    pub fn new() -> Self {
+        Self {
+            img: DynamicImage::new_bgra8(1, 1)
+        }
+    }
+
     /// Attempt to load an image from a file.
     ///
     /// # Arguments
@@ -42,16 +48,16 @@ impl ImageWrapper {
     ///
     /// * `pixel` - The index of the pixel within the image.
     ///
-    pub fn pixel_coordinate(&self, pixel: usize) -> (usize, usize) {
-        let w =  self.img.dimensions().0 as usize;
+    pub fn pixel_coordinate(&self, pixel: u32) -> Point {
+        let w =  self.img.dimensions().0;
 
         // Note: strictly speaking we don't need to subtract the modulo
         // when calculating 'y' as we are performing an integer division.
         // I have none the less done this for the sake of safety and clarity.
         let x = pixel % w;
-        let y = pixel - x / w;
+        let y = (pixel - x) / w;
 
-        (x, y)
+        Point::new(x, y)
     }
 
     pub fn color(&self) -> image::ColorType {
@@ -72,5 +78,19 @@ impl ImageWrapper {
 
     pub fn save(&self, path: &str) -> image::ImageResult<()> {
         self.img.save(path)
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct Point {
+    x: u32,
+    y: u32,
+}
+
+impl Point {
+    fn new(x: u32, y: u32) -> Self {
+        Self {
+            x, y
+        }
     }
 }

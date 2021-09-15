@@ -2,7 +2,7 @@
 use crate::codecs::codec::Codec;
 use crate::error::{Error, Result};
 use crate::hashers::*;
-use crate::image_wrapper::ImageWrapper;
+use crate::image_wrapper::{ImageWrapper, Point};
 use crate::utils;
 
 use aes_gcm::{Aes256Gcm, Key, Nonce, aead::{Aead, NewAead}};
@@ -22,11 +22,29 @@ const M_COST: u32 = 4096;
 const VERSION: argon2::Version = argon2::Version::V0x13;
 
 #[derive(Debug)]
-pub struct StegaV1 {}
+pub struct StegaV1 {
+    /// A list of available cells within the images.
+    available_cells: Vec<u32>,
+    /// The random number generator used to determine which cells will be used when
+    /// storing a given value.
+    data_rng: ChaCha20Rng,
+    /// The random number generator used to create the XOR values that will be used total number to
+    /// XOR the input data.
+    position_rng: ChaCha20Rng,
+
+    reference_img: ImageWrapper,
+    encoded_img: ImageWrapper
+}
 
 impl StegaV1 {
     pub fn new() -> Self {
-        Self {}
+        Self {
+            available_cells: Vec::with_capacity(1),
+            data_rng: ChaCha20Rng::from_entropy(),
+            position_rng: ChaCha20Rng::from_entropy(),
+            reference_img: ImageWrapper::new(),
+            encoded_img: ImageWrapper::new(),
+        }
      }
 
     /// Calculate the coordinates of the pixel pair that comprise a given cell.
@@ -37,14 +55,14 @@ impl StegaV1 {
     /// * `cell_number` - The cell number.
     ///
     /// Note: This method will return an array of a tuple where the tuple is in the coordinate configuration.
-    fn get_cell_pixel_coordinates(img: &ImageWrapper, cell_number: usize) -> [(usize, usize); 2] {
+    fn get_cell_pixel_coordinates(&self, cell_number: u32) -> [Point; 2] {
         // Cell 0 contains pixels (0, 1), cell 1 contains pixels (2, 3), etc.
         // The start pixel index can thus be calculated by the equation 2n.
         let start_index = 2 * cell_number;
 
         [
-            img.pixel_coordinate(start_index),
-            img.pixel_coordinate(start_index + 1)
+            self.reference_img.pixel_coordinate(start_index),
+            self.reference_img.pixel_coordinate(start_index + 1)
         ]
     }
 
@@ -55,9 +73,9 @@ impl StegaV1 {
     /// * `img` - a reference to the [`ImageWrapper`] object.
     ///
     /// Note: This method will return an array of a tuple where the tuple is in the coordinate configuration.
-    fn get_total_cells(img: &ImageWrapper) -> u64 {
+    fn get_total_cells(&self) -> u32 {
         // Each cell is 2x1 pixels in size.
-        img.get_total_pixels() / 2
+       (self.reference_img.get_total_pixels() / 2) as u32
     }
 
     /// Validate if the image can be used with our steganography algorithms.
@@ -117,8 +135,46 @@ impl StegaV1 {
         R::from_seed(arr)
     }
 
-    fn write_cell_pair(wrapper: &mut ImageWrapper, data_byte: u8, xor_byte: u8) {
+    fn write_byte(&mut self, data: u8, coord: &[Point]) {
 
+    }
+
+    fn write_byte_pair(&mut self, data: u8) {
+        // The process will operate as follows:
+        // First a random byte will be generated, this byte will be used to XOR
+        // the input data byte.
+        // Next, a random cell from the available cell list will be chosen into which
+        // the XOR encoded data will be written.
+        // Finally, a second cell will be chosen into which the XOR value itself
+        // will be written.
+
+        // Here we will generate a random byte that will be used to XOR the
+        // input data byte. We will write the XOR byte and the modified data
+        // byte into the image.
+        let xor: u8 = self.data_rng.gen();
+        let xor_data = data ^ xor;
+
+        let cell_pixel_coordinates = self.get_random_available_cell_coords();
+        self.write_byte(xor_data, &cell_pixel_coordinates);
+        log::debug!("XOR data cell contains pixels: {:?}", cell_pixel_coordinates);
+
+        // Next we will write the XOR value cell.
+        let cell_pixel_coordinates = self.get_random_available_cell_coords();
+        self.write_byte(xor,&cell_pixel_coordinates);
+        log::debug!("XOR value cell contains pixels: {:?}", cell_pixel_coordinates);
+    }
+
+    fn get_random_available_cell(&mut self) -> u32 {
+        let cell_id = self.position_rng.gen_range(0..self.available_cells.len()) as u32;
+
+        log::debug!("Cell ID: {}", cell_id);
+        // We need to ensure that we remove the cell from the available list of cells.
+        cell_id
+    }
+
+    fn get_random_available_cell_coords(&mut self) -> [Point; 2] {
+        let cell = self.get_random_available_cell();
+        self.get_cell_pixel_coordinates(cell)
     }
 }
 
@@ -126,10 +182,19 @@ impl Codec for StegaV1 {
     fn encode(&mut self, original_path: &str, key: &str, plaintext: &str, encoded_path: &str) -> Result<()> {
         log::debug!("Loading (reference) image file @ {}", &original_path);
 
-        // The reference image, read-only as it must not be modified.
-        let ref_image = StegaV1::load_image(original_path)?;
+        let ref_image = StegaV1::load_image(original_path);
+        if let Err(e) = ref_image {
+            return Err(e);
+        } else {
+            // The reference image, read-only as it must not be modified.
+            self.reference_img = ref_image.unwrap();
 
-        let total_cells = StegaV1::get_total_cells(&ref_image);
+            // The encoded image will contain all of the encoded data.
+            // Initially it is a clone of the reference image but will be modified later.
+            self.encoded_img = self.reference_img.clone();
+        }
+
+        let total_cells = self.get_total_cells();
         log::debug!("Total available cells: {}", &total_cells);
 
         // We need to ensure that the total number of cells within the
@@ -139,10 +204,6 @@ impl Codec for StegaV1 {
         if total_cells > 50_000_000 {
             return Err(Error::ImageTooLarge);
         }
-
-        // The encoded image will contain all of the encoded data.
-        // Initially it is a clone of the reference image but will be modified later.
-        let mut enc_image = ref_image.clone();
 
         let file_hash_bytes = Hashers::sha3_512_file(original_path);
         let file_hash_string = utils::u8_array_to_hex(&file_hash_bytes).unwrap(); // This is internal and cannot fail.
@@ -195,52 +256,42 @@ impl Codec for StegaV1 {
 
         log::debug!("Plaintext string: {}", plaintext_str);*/
 
-        // We can store a maximum of 4,294,967,295 (0xffffffff) bytes of ciphertext.
-        let total_ct_cells  = ciphertext_bytes.len() as u64;
-        if total_ct_cells > u32::max_value() as u64 {
-            return Err(Error::DataTooLarge);
-        }
-
         // 1 cell for the version, 4 cells for the total number of ciphertext cells, the salt, the nonce and the ciphertext.
         // We then need to double that value as to account for the corresponding XOR cell.
         // This value must be held within a 64-bit value to prevent integer overflow from occurring in the
-        // unlikely event that someone attempts to input u32::MAX bytes while running this software on a
-        // 32-bit architecture.
+        // when running this on a 32-bit architecture.
         // This looks ugly, but I'm not sure that there is a better solution for now.
-        let total_cells_needed = (1 + 4 + salt_bytes.len() as u64 + nonce_bytes.len() as u64 + total_ct_cells) * 2;
+        let total_ct_cells  = ciphertext_bytes.len();
+        let total_cells_needed = (1 + 4 + salt_bytes.len() as u64 + nonce_bytes.len() as u64 + total_ct_cells as u64) * 2;
         log::debug!("Total cells needed = {}", total_cells_needed);
 
-        if total_cells_needed > total_cells {
+        // Do we have enough space within the image to encode the data?
+        if total_cells_needed > total_cells as u64 {
             return Err(Error::ImageInsufficientSpace);
+        }
+
+        // In total we can never store more than 0xffffffff bytes of data to ensure that the values
+        // of usize never exceeds the maximum value of the u32 type.
+        if total_cells_needed > 0xffffffff  {
+            return Err(Error::DataTooLarge);
         }
 
         // When seeding out PRNG, we cannot use the Argon2 hash for the positional random number generator
         // as we will need the salt, which will not be available when initially reading the data back from the file.
         let sha256_key_hash_bytes = Hashers::sha3_256_string(&final_key);
-        let mut position_rand: ChaCha20Rng = StegaV1::u8_vec_to_seed(sha256_key_hash_bytes);
-
-        // This random number generator will be used to create the XOR bytes.
-        // This is separate from the positional RNG to allow the output files to vary, even with the input file and password.
-        let mut data_rand: ChaCha20Rng = ChaCha20Rng::from_entropy();
+        self.position_rng = StegaV1::u8_vec_to_seed(sha256_key_hash_bytes);
 
         // This contains the list of every unused cell. Once a cell has been used, it is removed.
         // Initially I had planned to do with with a bitset, but it would require repeatedly checking
         // to see if the cell had been used, which could lower performance in cases where the total
         // number of available cells is close to the total number of cells needed to encode the data.
         // TODO: maybe convert this to a hashmap if it is too large and impacts performance?
-        let mut available_cells: Vec<u64> = (0..total_cells).collect();
+        self.available_cells = (0..total_cells).collect();
 
-        // Select the next cell from the available list.
-        let next_cell_index = position_rand.gen_range(0..available_cells.len());
+        let data_byte: u8 = 0xff;
+        self.write_byte_pair(data_byte);
 
-        let cell_pixel_coordinates = StegaV1::get_cell_pixel_coordinates(&ref_image, next_cell_index);
-
-        log::debug!("Cell {} contains pixels: {:?}", next_cell_index, cell_pixel_coordinates);
-
-        //write_cell_pair
-
-        /*let mut data: Vec<u8> = Vec::with_capacity(total_cells_needed);
-
+        /*
         let version: u8 = 1;
         log::debug!("0b{:08b}", version);
 
@@ -249,13 +300,8 @@ impl Codec for StegaV1 {
         let le_value = u8::to_le(version);
         log::debug!("0b{:08b}", le_value);
 
-        // Push the version number to the data vector.
-        data.push(version.to_le());
-
         // The maximum is set above, so this casting is safe.
         let plaintext_cell_bytes = u16::to_le_bytes(plaintext_bytes.len() as u16);
-        data.push(plaintext_cell_bytes[0]);
-        data.push(plaintext_cell_bytes[1]);
 
         //let mut i = 0;
         //while i <= 3 {
@@ -263,24 +309,17 @@ impl Codec for StegaV1 {
         //    i +=  1;
         //}*/
 
-        // Test random number.
-        //log::debug!("Has cell {:?} been used? {:?}", next_cell_index, !available_cells.contains(&next_cell_index));
-
-        // Remove the cell from the list of available cells.
-        //available_cells.remove(next_cell_index);
-        //log::debug!("Has cell {:?} been used? {:?}", next_cell_index, !available_cells.contains(&next_cell_index));
-
         // Testing, testing, 1, 2, 3.
-        let pixel = enc_image.get_pixel(0, 0);
+        let pixel = self.encoded_img.get_pixel(0, 0);
 
         println!("rgba = {}, {}, {}, {}", pixel[0], pixel[1], pixel[2], pixel[3]);
 
         let new_pixel = image::Rgba([0, 0, 0, 255]);
 
-        enc_image.put_pixel(0, 0, new_pixel);
+        self.encoded_img.put_pixel(0, 0, new_pixel);
 
         // Save the modified image.
-        let r = enc_image.save(encoded_path);
+        let r = self.encoded_img.save(encoded_path);
         log::debug!("result = {:?}", r);
 
         Ok(())
