@@ -1,10 +1,10 @@
 use crate::error::{Error, Result};
 
-use image::{DynamicImage, GenericImageView};
+use image::{DynamicImage, GenericImage, GenericImageView};
 
 #[derive(Clone)]
 pub struct ImageWrapper {
-    pub img: DynamicImage
+    img: DynamicImage
 }
 
 impl ImageWrapper {
@@ -52,5 +52,25 @@ impl ImageWrapper {
         let y = pixel - x / w;
 
         (x, y)
+    }
+
+    pub fn color(&self) -> image::ColorType {
+        self.img.color()
+    }
+
+    pub fn dimensions(&self) -> (u32, u32) {
+        self.img.dimensions()
+    }
+
+    pub fn get_pixel(&self, x: u32, y: u32) -> image::Rgba<u8> {
+        self.img.get_pixel(x, y)
+    }
+
+    pub fn put_pixel(&mut self, x: u32, y: u32, pixel: image::Rgba<u8>) {
+        self.img.put_pixel(x, y, pixel);
+    }
+
+    pub fn save(&self, path: &str) -> image::ImageResult<()> {
+        self.img.save(path)
     }
 }

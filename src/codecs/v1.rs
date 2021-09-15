@@ -6,7 +6,7 @@ use crate::image_wrapper::ImageWrapper;
 use crate::utils;
 
 use aes_gcm::{Aes256Gcm, Key, Nonce, aead::{Aead, NewAead}};
-use image::{ColorType, GenericImage, GenericImageView};
+use image::ColorType;
 use std::convert::TryFrom;
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
@@ -60,7 +60,6 @@ impl StegaV1 {
         img.get_total_pixels() / 2
     }
 
-    
     /// Validate if the image can be used with our steganography algorithms.
     ///
     /// # Arguments
@@ -68,7 +67,7 @@ impl StegaV1 {
     /// * `image` - A reference to a [`ImageWrapper`] object.
     ///
     fn validate_image(image: &ImageWrapper) -> Result<()> {
-        let (w, h) =  image.img.dimensions();
+        let (w, h) =  image.dimensions();
 
         log::debug!("Image dimensions: ({},{})", w, h);
 
@@ -99,7 +98,7 @@ impl StegaV1 {
         StegaV1::validate_image(&wrapper)?;
 
         // We currently only operate on files that are RGB(A) with 8-bit colour depth or higher.
-        match wrapper.img.color() {
+        match wrapper.color() {
             ColorType::Rgb8 |  ColorType::Rgba8 |
             ColorType::Rgb16 | ColorType::Rgba16 => {
                 Ok(wrapper)
@@ -116,6 +115,10 @@ impl StegaV1 {
         let arr = <[u8; 32]>::try_from(bytes).unwrap();
 
         R::from_seed(arr)
+    }
+
+    fn write_cell_pair(wrapper: &mut ImageWrapper, data_byte: u8, xor_byte: u8) {
+
     }
 }
 
@@ -234,6 +237,8 @@ impl Codec for StegaV1 {
 
         log::debug!("Cell {} contains pixels: {:?}", next_cell_index, cell_pixel_coordinates);
 
+        //write_cell_pair
+
         /*let mut data: Vec<u8> = Vec::with_capacity(total_cells_needed);
 
         let version: u8 = 1;
@@ -262,20 +267,20 @@ impl Codec for StegaV1 {
         //log::debug!("Has cell {:?} been used? {:?}", next_cell_index, !available_cells.contains(&next_cell_index));
 
         // Remove the cell from the list of available cells.
-        available_cells.remove(next_cell_index);
+        //available_cells.remove(next_cell_index);
         //log::debug!("Has cell {:?} been used? {:?}", next_cell_index, !available_cells.contains(&next_cell_index));
 
         // Testing, testing, 1, 2, 3.
-        let pixel = enc_image.img.get_pixel(0, 0);
+        let pixel = enc_image.get_pixel(0, 0);
 
         println!("rgba = {}, {}, {}, {}", pixel[0], pixel[1], pixel[2], pixel[3]);
 
         let new_pixel = image::Rgba([0, 0, 0, 255]);
 
-        enc_image.img.put_pixel(0, 0, new_pixel);
+        enc_image.put_pixel(0, 0, new_pixel);
 
         // Save the modified image.
-        let r = enc_image.img.save(encoded_path);
+        let r = enc_image.save(encoded_path);
         log::debug!("result = {:?}", r);
 
         Ok(())
