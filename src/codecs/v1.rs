@@ -150,14 +150,14 @@ impl StegaV1 {
         }
 
         // Note, the caller is responsible for ensuring that the byte is little Endian encoded.
-        let mut pixel_index = 0;
+        let mut pixel = 0;
         for i in 0..8 {
             // After the 4th bit we need to swap to the second pixel.
-            if pixel_index >= 4 {
-                pixel_index = 1;
+            if pixel >= 4 {
+                pixel = 1;
             }
 
-            log::debug!("Bit {} = {}", i, if utils::is_bit_set(i, data) { 1 } else { 0 });
+            log::debug!("Bit {} = {}", i, utils::is_bit_set(i, data) as u8);
             if utils::is_bit_set(i, data) {
                 // Do the manipulation here.
             }
