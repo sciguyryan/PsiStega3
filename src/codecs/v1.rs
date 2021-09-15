@@ -32,7 +32,9 @@ pub struct StegaV1 {
     /// XOR the input data.
     position_rng: ChaCha20Rng,
 
+    /// The read-only reference image.
     reference_img: ImageWrapper,
+    /// The writable output image.
     encoded_img: ImageWrapper
 }
 
@@ -51,7 +53,6 @@ impl StegaV1 {
     ///
     /// # Arguments
     ///
-    /// * `img` - a reference to the [`ImageWrapper`] holding the image data.
     /// * `cell_number` - The cell number.
     ///
     /// Note: This method will return an array of a tuple where the tuple is in the coordinate configuration.
@@ -67,10 +68,6 @@ impl StegaV1 {
     }
 
     /// Calculate the total number of cells available in the reference image.
-    ///
-    /// # Arguments
-    ///
-    /// * `img` - a reference to the [`ImageWrapper`] object.
     ///
     /// Note: This method will return an array of a tuple where the tuple is in the coordinate configuration.
     fn get_total_cells(&self) -> u32 {
@@ -128,6 +125,12 @@ impl StegaV1 {
         }
     }
 
+    /// Create a `SeedableRng` object with a specific 32-byte seed.
+    ///
+    /// # Arguments
+    ///
+    /// * `bytes` - The vector of bytes to be used as the seed.
+    ///
     fn u8_vec_to_seed<R: SeedableRng<Seed = [u8; 32]>>(bytes: Vec<u8>) -> R {
         assert!(bytes.len() == 32, "Byte vector is not 32 bytes (256-bits) in length.");
         let arr = <[u8; 32]>::try_from(bytes).unwrap();
@@ -139,39 +142,54 @@ impl StegaV1 {
 
     }
 
+    /// Write a byte of data into the target image.
+    ///
+    /// # Arguments
+    ///
+    /// * `data` - The byte value to be written to the image.
+    ///
+    /// Note: two cells will be written per byte of raw data.
+    /// This is because one cell will hold the XOR-encoded data,
+    /// while the other will contain the XOR value itself.
     fn write_byte_pair(&mut self, data: u8) {
-        // The process will operate as follows:
-        // First a random byte will be generated, this byte will be used to XOR
-        // the input data byte.
-        // Next, a random cell from the available cell list will be chosen into which
-        // the XOR encoded data will be written.
-        // Finally, a second cell will be chosen into which the XOR value itself
+        // The process operates as follows:
+        // 1. a random byte will be generated, this byte will be used to
+        // XOR the input data byte.
+        // 2. a random available cell will be chosen into which the XOR
+        // encoded data will be written.
+        // 3. a second cell will be chosen into which the XOR value itself
         // will be written.
 
-        // Here we will generate a random byte that will be used to XOR the
-        // input data byte. We will write the XOR byte and the modified data
-        // byte into the image.
         let xor: u8 = self.data_rng.gen();
         let xor_data = data ^ xor;
 
+        log::debug!("Original: {}, XOR: {}, XOR'ed data: {}", data, xor, xor_data);
+
         let cell_pixel_coordinates = self.get_random_available_cell_coords();
         self.write_byte(xor_data, &cell_pixel_coordinates);
-        log::debug!("XOR data cell contains pixels: {:?}", cell_pixel_coordinates);
+        //log::debug!("XOR data cell contains pixels: {:?}", cell_pixel_coordinates);
 
         // Next we will write the XOR value cell.
         let cell_pixel_coordinates = self.get_random_available_cell_coords();
         self.write_byte(xor,&cell_pixel_coordinates);
-        log::debug!("XOR value cell contains pixels: {:?}", cell_pixel_coordinates);
+        //log::debug!("XOR value cell contains pixels: {:?}", cell_pixel_coordinates);
     }
 
+    /// Get a random cell ID from the list of available cells.
     fn get_random_available_cell(&mut self) -> u32 {
-        let cell_id = self.position_rng.gen_range(0..self.available_cells.len()) as u32;
-
+        let cell_id = self.position_rng.gen_range(0..self.available_cells.len());
         log::debug!("Cell ID: {}", cell_id);
+
         // We need to ensure that we remove the cell from the available list of cells.
-        cell_id
+        self.available_cells.remove(cell_id);
+
+        // The cast is safe here as the total number of cells is constrained
+        // to fit within an unsigned 32-bit integer.
+        cell_id as u32
     }
 
+    /// Get the coordinates of the pixels that correspond to a random cell
+    /// from the available cell list.
     fn get_random_available_cell_coords(&mut self) -> [Point; 2] {
         let cell = self.get_random_available_cell();
         self.get_cell_pixel_coordinates(cell)
@@ -182,24 +200,23 @@ impl Codec for StegaV1 {
     fn encode(&mut self, original_path: &str, key: &str, plaintext: &str, encoded_path: &str) -> Result<()> {
         log::debug!("Loading (reference) image file @ {}", &original_path);
 
-        let ref_image = StegaV1::load_image(original_path);
-        if let Err(e) = ref_image {
-            return Err(e);
-        } else {
-            // The reference image, read-only as it must not be modified.
-            self.reference_img = ref_image.unwrap();
+        let ref_image = StegaV1::load_image(original_path)?;
 
-            // The encoded image will contain all of the encoded data.
-            // Initially it is a clone of the reference image but will be modified later.
-            self.encoded_img = self.reference_img.clone();
-        }
+        // The reference image, read-only as it must not be modified.
+        self.reference_img = ref_image.clone();
+        self.reference_img.set_read_only(true);
+
+        // The encoded image will contain all of the encoded data.
+        // Initially it is a clone of the reference image but will be modified later.
+        self.encoded_img = ref_image;
 
         let total_cells = self.get_total_cells();
         log::debug!("Total available cells: {}", &total_cells);
 
         // We need to ensure that the total number of cells within the
-        // reference image is not too large. This avoid any potential
-        // overflows and partially to avoids creating excessive overheads.
+        // reference image is not too large.
+        // This avoid any potential overflows and partially to avoids
+        // creating excessive overheads.
         // This is equal to the number of cells in a 10,000 by 10,000 pixel image.
         if total_cells > 50_000_000 {
             return Err(Error::ImageTooLarge);
@@ -257,7 +274,8 @@ impl Codec for StegaV1 {
         log::debug!("Plaintext string: {}", plaintext_str);*/
 
         // 1 cell for the version, 4 cells for the total number of ciphertext cells, the salt, the nonce and the ciphertext.
-        // We then need to double that value as to account for the corresponding XOR cell.
+        // This value must be doubled as we need 2 cells per byte:
+        // one for the XOR encoded byte and one for the XOR byte.
         // This value must be held within a 64-bit value to prevent integer overflow from occurring in the
         // when running this on a 32-bit architecture.
         // This looks ugly, but I'm not sure that there is a better solution for now.
@@ -265,18 +283,18 @@ impl Codec for StegaV1 {
         let total_cells_needed = (1 + 4 + salt_bytes.len() as u64 + nonce_bytes.len() as u64 + total_ct_cells as u64) * 2;
         log::debug!("Total cells needed = {}", total_cells_needed);
 
-        // Do we have enough space within the image to encode the data?
-        if total_cells_needed > total_cells as u64 {
-            return Err(Error::ImageInsufficientSpace);
-        }
-
         // In total we can never store more than 0xffffffff bytes of data to ensure that the values
         // of usize never exceeds the maximum value of the u32 type.
         if total_cells_needed > 0xffffffff  {
             return Err(Error::DataTooLarge);
         }
 
-        // When seeding out PRNG, we cannot use the Argon2 hash for the positional random number generator
+        // Do we have enough space within the image to encode the data?
+        if total_cells_needed > total_cells as u64 {
+            return Err(Error::ImageInsufficientSpace);
+        }
+
+        // When seeding our RNG, we can't use the Argon2 hash for the positional random number generator
         // as we will need the salt, which will not be available when initially reading the data back from the file.
         let sha256_key_hash_bytes = Hashers::sha3_256_string(&final_key);
         self.position_rng = StegaV1::u8_vec_to_seed(sha256_key_hash_bytes);
