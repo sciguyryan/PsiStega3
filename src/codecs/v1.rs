@@ -60,6 +60,57 @@ impl StegaV1 {
         img.get_total_pixels() / 2
     }
 
+    
+    /// Validate if the image can be used with our steganography algorithms.
+    ///
+    /// # Arguments
+    ///
+    /// * `image` - A reference to a [`ImageWrapper`] object.
+    ///
+    fn validate_image(image: &ImageWrapper) -> Result<()> {
+        let (w, h) =  image.img.dimensions();
+
+        log::debug!("Image dimensions: ({},{})", w, h);
+
+        let pixels = w * h;
+        if pixels % 2 == 0 {
+            Ok(())
+        } else {
+            Err(Error::ImageDimensionsInvalid)
+        }
+    }
+
+    /// Attempt to load and validate an image file, returning a [`ImageWrapper`] if successful.
+    ///
+    /// # Arguments
+    ///
+    /// * `file_path` - The path to the image file.
+    ///
+    fn load_image(file_path: &str) -> Result<ImageWrapper> {
+        // TODO: determine which image format types should be allowed
+        // here. They must support RGBA and they must support
+        // writing by the library.
+        // See: https://github.com/image-rs/image
+
+        let wrapper = ImageWrapper::load_from_file(file_path)?;
+
+        // The image was successfully loaded.
+        // Now we need to validate if the file can be used.
+        StegaV1::validate_image(&wrapper)?;
+
+        // We currently only operate on files that are RGB(A) with 8-bit colour depth or higher.
+        match wrapper.img.color() {
+            ColorType::Rgb8 |  ColorType::Rgba8 |
+            ColorType::Rgb16 | ColorType::Rgba16 => {
+                Ok(wrapper)
+            },
+            _ => {
+                // We currently do not handle any of the other format types.
+                Err(Error::ImageTypeInvalid)
+            }
+        }
+    }
+
     fn u8_vec_to_seed<R: SeedableRng<Seed = [u8; 32]>>(bytes: Vec<u8>) -> R {
         assert!(bytes.len() == 32, "Byte vector is not 32 bytes (256-bits) in length.");
         let arr = <[u8; 32]>::try_from(bytes).unwrap();
@@ -232,56 +283,6 @@ impl Codec for StegaV1 {
 
     fn decode(&mut self, original_path: &str, key: &str, encoded_path: &str) ->  Result<&str> {
         Ok("")
-    }
-
-    /// Validate if the image can be used with our steganography algorithms.
-    ///
-    /// # Arguments
-    ///
-    /// * `image` - A reference to a [`ImageWrapper`] object.
-    ///
-    fn validate_image(image: &ImageWrapper) -> Result<()> {
-        let (w, h) =  image.img.dimensions();
-
-        log::debug!("Image dimensions: ({},{})", w, h);
-
-        let pixels = w * h;
-        if pixels % 2 == 0 {
-            Ok(())
-        } else {
-            Err(Error::ImageDimensionsInvalid)
-        }
-    }
-
-    /// Attempt to load and validate an image file, returning a [`ImageWrapper`] if successful.
-    ///
-    /// # Arguments
-    ///
-    /// * `file_path` - The path to the image file.
-    ///
-    fn load_image(file_path: &str) -> Result<ImageWrapper> {
-        // TODO: determine which image format types should be allowed
-        // here. They must support RGBA and they must support
-        // writing by the library.
-        // See: https://github.com/image-rs/image
-
-        let wrapper = ImageWrapper::load_from_file(file_path)?;
-
-        // The image was successfully loaded.
-        // Now we need to validate if the file can be used.
-        StegaV1::validate_image(&wrapper)?;
-
-        // We currently only operate on files that are RGB(A) with 8-bit colour depth or higher.
-        match wrapper.img.color() {
-            ColorType::Rgb8 |  ColorType::Rgba8 |
-            ColorType::Rgb16 | ColorType::Rgba16 => {
-                Ok(wrapper)
-            },
-            _ => {
-                // We currently do not handle any of the other format types.
-                Err(Error::ImageTypeInvalid)
-            }
-        }
     }
 }
 

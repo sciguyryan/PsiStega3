@@ -18,7 +18,4 @@ pub trait Codec {
     /// * `key` - the key to be used when decrypting the information.
     /// * `encoded_path` - the path to the modified image.
     fn decode(&mut self, original_path: &str, key: &str, encoded_path: &str) ->  Result<&str>;
-
-    fn load_image(file_path: &str) -> Result<ImageWrapper>;
-    fn validate_image(image: &ImageWrapper) -> Result<()>;
 }
