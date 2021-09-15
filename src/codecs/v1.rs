@@ -138,8 +138,30 @@ impl StegaV1 {
         R::from_seed(arr)
     }
 
-    fn write_byte(&mut self, data: u8, coord: &[Point]) {
+    fn write_byte(&mut self, data: u8, coord: &[Point; 2]) {
+        let mut pixels = [
+            self.reference_img.get_pixel(coord[0].x, coord[0].y),
+            self.reference_img.get_pixel(coord[1].x, coord[1].y)
+        ];
 
+        log::debug!("0b{:08b}", data);
+        if utils::is_little_endian() {
+            log::debug!("Note: the following bits will be in reverse order if you are working in little Endian (least significant bit first).");
+        }
+
+        // Note, the caller is responsible for ensuring that the byte is little Endian encoded.
+        let mut pixel_index = 0;
+        for i in 0..8 {
+            // After the 4th bit we need to swap to the second pixel.
+            if pixel_index >= 4 {
+                pixel_index = 1;
+            }
+
+            log::debug!("Bit {} = {}", i, if utils::is_bit_set(i, data) { 1 } else { 0 });
+            if utils::is_bit_set(i, data) {
+                // Do the manipulation here.
+            }
+        }
     }
 
     /// Write a byte of data into the target image.
@@ -160,18 +182,21 @@ impl StegaV1 {
         // 3. a second cell will be chosen into which the XOR value itself
         // will be written.
 
-        let xor: u8 = self.data_rng.gen();
-        let xor_data = data ^ xor;
+        // We convert everything into little Endian to ensure everything operates
+        // as expected cross-platform.
+        let le_data = u8::to_le(data);
+        let le_xor: u8 = u8::to_le(self.data_rng.gen());
+        let le_xor_data = u8::to_le(le_data ^ le_xor);
 
-        log::debug!("Original: {}, XOR: {}, XOR'ed data: {}", data, xor, xor_data);
+        //log::debug!("Original: {}, XOR: {}, XOR'ed data: {}", le_data, le_xor, le_xor_data);
 
         let cell_pixel_coordinates = self.get_random_available_cell_coords();
-        self.write_byte(xor_data, &cell_pixel_coordinates);
+        self.write_byte(le_xor_data, &cell_pixel_coordinates);
         //log::debug!("XOR data cell contains pixels: {:?}", cell_pixel_coordinates);
 
         // Next we will write the XOR value cell.
         let cell_pixel_coordinates = self.get_random_available_cell_coords();
-        self.write_byte(xor,&cell_pixel_coordinates);
+        self.write_byte(le_xor,&cell_pixel_coordinates);
         //log::debug!("XOR value cell contains pixels: {:?}", cell_pixel_coordinates);
     }
 

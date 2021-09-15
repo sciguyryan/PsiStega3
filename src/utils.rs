@@ -2,8 +2,15 @@ use core::fmt::Write;
 use std::ffi::OsStr;
 use std::path::Path;
 
-pub fn is_bit_set(bit: &u8, value: &u8) -> bool {
-    (value & (1 << bit)) == 1
+pub fn is_little_endian() -> bool {
+    let val: u32 = 0x1234;
+    let val2 = val.to_le();
+
+    val == val2
+}
+
+pub fn is_bit_set(bit: u8, value: u8) -> bool {
+    (value & (1 << bit)) != 0
 }
 
 pub fn u8_array_to_hex(arr: &[u8]) -> Result<String, std::fmt::Error> {
