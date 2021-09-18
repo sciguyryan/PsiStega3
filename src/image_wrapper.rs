@@ -89,6 +89,11 @@ impl ImageWrapper {
         self.img.get_pixel(x, y)
     }
 
+    /// Return the value of the pixel using a [`Point`] object. This is from the top left of the image.
+    pub fn get_pixel_by_coord(&self, coord: Point) -> image::Rgba<u8> {
+        self.img.get_pixel(coord.x, coord.y)
+    }
+
     /// Set the value of the the pixel at (x, y). This is from the top left of the image.
     pub fn put_pixel(&mut self, x: u32, y: u32, pixel: image::Rgba<u8>) -> bool {
         if !self.read_only {
@@ -96,6 +101,11 @@ impl ImageWrapper {
         }
 
         self.read_only
+    }
+
+    /// Set the value of the the pixel using a [`Point`] object. This is from the top left of the image.
+    pub fn put_pixel_by_coord(&mut self, coord: Point, pixel: image::Rgba<u8>) -> bool {
+        self.put_pixel(coord.x, coord.y, pixel)
     }
 
     /// Save the buffer to a file at the specified path.
@@ -113,6 +123,7 @@ impl ImageWrapper {
         }
     }
 
+    #[allow(dead_code)]
     pub fn benfords_law(&self) -> [u32; 10] {
         let mut law = [0; 10];
         for (_, _, pixel) in self.img.pixels() {

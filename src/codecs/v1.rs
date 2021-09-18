@@ -138,30 +138,17 @@ impl StegaV1 {
         R::from_seed(arr)
     }
 
-    fn write_byte(&mut self, data: u8, coord: &[Point; 2]) {
-        let mut pixels = [
-            self.reference_img.get_pixel(coord[0].x, coord[0].y),
-            self.reference_img.get_pixel(coord[1].x, coord[1].y)
-        ];
+    /// Get a random cell ID from the list of available cells.
+    fn get_random_available_cell(&mut self) -> u32 {
+        let cell_id = self.position_rng.gen_range(0..self.available_cells.len());
+        log::debug!("Cell ID: {}", cell_id);
 
-        log::debug!("0b{:08b}", data);
-        if utils::is_little_endian() {
-            log::debug!("Note: the following bits will be in reverse order if you are working in little Endian (least significant bit first).");
-        }
+        // We need to ensure that we remove the cell from the available list of cells.
+        self.available_cells.remove(cell_id);
 
-        // Note, the caller is responsible for ensuring that the byte is little Endian encoded.
-        let mut pixel = 0u8;
-        for i in 0..8 {
-            // After the 4th bit we need to swap to the second pixel.
-            if pixel >= 4 {
-                pixel = 1;
-            }
-
-            log::debug!("Bit {} = {}", i, utils::is_bit_set(i, data) as u8);
-            if utils::is_bit_set(i, data) {
-                // Do the manipulation here.
-            }
-        }
+        // The cast is safe here as the total number of cells is constrained
+        // to fit within an unsigned 32-bit integer.
+        cell_id as u32
     }
 
     /// Write a byte of data into the target image.
@@ -192,26 +179,90 @@ impl StegaV1 {
         //log::debug!("Original: {}, XOR: {}, XOR'ed data: {}", le_data, le_xor, le_xor_data);
 
         let cell_pixel_coordinates = self.get_random_available_cell_coords();
-        self.write_byte(le_xor_data, &cell_pixel_coordinates);
+        self.write_byte(le_xor_data, cell_pixel_coordinates);
         //log::debug!("XOR data cell contains pixels: {:?}", cell_pixel_coordinates);
 
         // Next we will write the XOR value cell.
         let cell_pixel_coordinates = self.get_random_available_cell_coords();
-        self.write_byte(le_xor,&cell_pixel_coordinates);
+        self.write_byte(le_xor, cell_pixel_coordinates);
         //log::debug!("XOR value cell contains pixels: {:?}", cell_pixel_coordinates);
     }
 
-    /// Get a random cell ID from the list of available cells.
-    fn get_random_available_cell(&mut self) -> u32 {
-        let cell_id = self.position_rng.gen_range(0..self.available_cells.len());
-        log::debug!("Cell ID: {}", cell_id);
+    /// Encode the specified value into the pixels within a given cell.
+    ///
+    /// # Arguments
+    ///
+    /// * `data` - The byte value to be encoded.
+    /// * `coord` - The coordinates of the cell's pixels, into which the data will be encoded.
+    ///
+    fn write_byte(&mut self, data: u8, coord: [Point; 2]) {
+        log::debug!("Data = 0b{}", utils::u8_to_binary(&data).unwrap());
 
-        // We need to ensure that we remove the cell from the available list of cells.
-        self.available_cells.remove(cell_id);
+        // Note, the caller is responsible for ensuring that the byte is little Endian encoded.
+        if utils::is_little_endian() {
+            log::debug!("Note: the following bits will be in reverse order if you are working in little Endian (least significant bit first).");
+        }
 
-        // The cast is safe here as the total number of cells is constrained
-        // to fit within an unsigned 32-bit integer.
-        cell_id as u32
+        let mut pixel_1 = self.reference_img.get_pixel_by_coord(coord[0]);
+        let mut pixel_2 = self.reference_img.get_pixel_by_coord(coord[1]);
+
+        // First pixel.
+        for i in 0..4 {
+            log::debug!("Pixel 1 (#{}) = {}", i, utils::is_bit_set(i, data));
+            if utils::is_bit_set(i, data) {
+                let ci = i as usize;
+                self.nudge_channel_value(&mut pixel_1, ci);
+            }
+        }
+
+        log::debug!("{}", "-".repeat(32));
+
+        // Second pixel.
+        for i in 4..8 {
+            log::debug!("Pixel 2 (#{}) = {}", i, utils::is_bit_set(i, data));
+            if utils::is_bit_set(i, data) {
+                let ci = (i as usize) - 4;
+                self.nudge_channel_value(&mut pixel_2, ci);
+            }
+        }
+
+        // Write the modified pixels into the encoded data image.
+        self.encoded_img.put_pixel_by_coord(coord[0], pixel_1);
+        self.encoded_img.put_pixel_by_coord(coord[1], pixel_2);
+    }
+
+    /// Nudge the value of a channel by ±1.
+    ///
+    /// # Arguments
+    ///
+    /// * `pixel` - The value of the pixel's channels.
+    /// * `channel` - The index of the channel to be nudged.
+    ///
+    fn nudge_channel_value(&mut self, pixel: &mut image::Rgba<u8>, channel: usize) {
+        let mut value = pixel[channel];
+        //log::debug!("Modified value for channel {} = {}", channel, value);
+
+        // If we have a value of 255 then we can't go any higher without causing an overflow,
+        // so we will always subtract one.
+        // If we have a value of 0 then we can't go any lower without causing an underflow,
+        // so we will always add one.
+        if value == 255 {
+            value = 254;
+        } else if value == 0 {
+            value = 1;
+        } else {
+            // Here we can add or subtract. Which we choose will be determined by
+            // a random number generator call.
+            // This can never under or overflow due to the checks above.
+            if self.data_rng.gen_bool(0.5) {
+                value -= 1;
+            } else {
+                value += 1;
+            }
+        }
+
+        //log::debug!("Modified value for channel {} = {}", channel, value);
+        pixel[channel] = value;
     }
 
     /// Get the coordinates of the pixels that correspond to a random cell
