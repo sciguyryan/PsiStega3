@@ -1,5 +1,4 @@
 use crate::error::Result;
-use crate::image_wrapper::ImageWrapper;
 
 pub trait Codec {
     /// Encrypt and encode the information into a target image.

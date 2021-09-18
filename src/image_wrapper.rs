@@ -112,6 +112,17 @@ impl ImageWrapper {
             Err(ImageError::IoError(std::io::Error::new(std::io::ErrorKind::Other, "attempted to write to a read-only file")))
         }
     }
+
+    pub fn benfords_law(&self) -> [u32; 10] {
+        let mut law = [0; 10];
+        for (_, _, pixel) in self.img.pixels() {
+            let val: u16 = pixel[0] as u16 + pixel[1] as u16 + pixel[2] as u16 + pixel[3] as u16;
+            let digit: usize = (val % 10) as usize;
+            law[digit] += 1;
+        }
+
+        law
+    }
 }
 
 #[derive(Debug, Clone, Copy)]

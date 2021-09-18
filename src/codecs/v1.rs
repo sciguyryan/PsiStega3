@@ -150,7 +150,7 @@ impl StegaV1 {
         }
 
         // Note, the caller is responsible for ensuring that the byte is little Endian encoded.
-        let mut pixel = 0;
+        let mut pixel = 0u8;
         for i in 0..8 {
             // After the 4th bit we need to swap to the second pixel.
             if pixel >= 4 {
@@ -182,9 +182,10 @@ impl StegaV1 {
         // 3. a second cell will be chosen into which the XOR value itself
         // will be written.
 
-        // We convert everything into little Endian to ensure everything operates
-        // as expected cross-platform.
-        let le_data = u8::to_le(data);
+        // We convert everything into Little Endian to ensure everything operates
+        // as expected cross-platform. On a LE platform these will end up being
+        // no-op calls and so will not impact performance.
+        let le_data = data.to_le();
         let le_xor: u8 = u8::to_le(self.data_rng.gen());
         let le_xor_data = u8::to_le(le_data ^ le_xor);
 
