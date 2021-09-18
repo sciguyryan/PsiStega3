@@ -12,6 +12,9 @@ use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
 use rand_core::{RngCore, OsRng};
 
+// TODO - decide if I want to switch AES-GCM for AES-GCM-SIV. Slightly decreased performance, increased resistance to certain types of attack.
+// this might be something that is used in a v2 algorithm if not implemented here.
+
 /// The time cost for use with the Argon2 hashing algorithm.
 const T_COST: u32 = 6;
 /// The parallel cost for use with the Argon2 hashing algorithm.
@@ -104,7 +107,6 @@ impl StegaV1 {
         // here. They must support RGBA and they must support
         // writing by the library.
         // See: https://github.com/image-rs/image
-
         let wrapper = ImageWrapper::load_from_file(file_path)?;
 
         // The image was successfully loaded.
@@ -240,14 +242,14 @@ impl StegaV1 {
         let mut value = pixel[channel];
         //log::debug!("Modified value for channel {} = {}", channel, value);
 
-        // If we have a value of 255 then we can't go any higher without causing an overflow,
-        // so we will always subtract one.
-        // If we have a value of 0 then we can't go any lower without causing an underflow,
-        // so we will always add one.
-        if value == 255 {
-            value = 254;
-        } else if value == 0 {
+        if value == 0 {
+            // If we have a value of 0 then we can't go any lower without causing an underflow,
+            // so we will always add one.
             value = 1;
+        } else if value == 255 {
+            // If we have a value of 255 then we can't go any higher without causing an overflow,
+            // so we will always subtract one.
+            value = 254;
         } else {
             // Here we can add or subtract. Which we choose will be determined by
             // a random number generator call.
@@ -304,7 +306,7 @@ impl Codec for StegaV1 {
         log::debug!("File hash: {}", file_hash_string);
 
         // The key for the encryption is the SHA3-512 hash of the input image file combined with the plaintext key.
-        let mut final_key: String = key.to_owned();
+        let mut final_key: String = key.to_string();
         final_key.push_str(&file_hash_string);
 
         // Generate a random salt for the Argon2 hashing function.
