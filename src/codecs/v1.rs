@@ -31,7 +31,6 @@ pub struct StegaV1 {
     /// The random number generator used to create the XOR values that will be used total number to
     /// XOR the input data.
     position_rng: ChaCha20Rng,
-
     /// The read-only reference image.
     reference_img: ImageWrapper,
     /// The writable output image.
@@ -169,22 +168,18 @@ impl StegaV1 {
         // 3. a second cell will be chosen into which the XOR value itself
         // will be written.
 
-        // We convert everything into Little Endian to ensure everything operates
-        // as expected cross-platform. On a LE platform these will end up being
-        // no-op calls and so will not impact performance.
-        let le_data = data.to_le();
-        let le_xor: u8 = u8::to_le(self.data_rng.gen());
-        let le_xor_data = u8::to_le(le_data ^ le_xor);
+        let xor: u8 = self.data_rng.gen();
+        let xor_data = data ^ xor;
 
         //log::debug!("Original: {}, XOR: {}, XOR'ed data: {}", le_data, le_xor, le_xor_data);
 
         let cell_pixel_coordinates = self.get_random_available_cell_coords();
-        self.write_byte(le_xor_data, cell_pixel_coordinates);
+        self.write_byte(xor_data, cell_pixel_coordinates);
         //log::debug!("XOR data cell contains pixels: {:?}", cell_pixel_coordinates);
 
         // Next we will write the XOR value cell.
         let cell_pixel_coordinates = self.get_random_available_cell_coords();
-        self.write_byte(le_xor, cell_pixel_coordinates);
+        self.write_byte(xor, cell_pixel_coordinates);
         //log::debug!("XOR value cell contains pixels: {:?}", cell_pixel_coordinates);
     }
 
@@ -196,9 +191,12 @@ impl StegaV1 {
     /// * `coord` - The coordinates of the cell's pixels, into which the data will be encoded.
     ///
     fn write_byte(&mut self, data: u8, coord: [Point; 2]) {
-        log::debug!("Data = 0b{}", utils::u8_to_binary(&data).unwrap());
+        // We convert everything into Little Endian to ensure everything operates
+        // as expected cross-platform. On a LE platform these will end up being
+        // no-op calls and so will not impact performance.
+        let data_le = data.to_le();
+        log::debug!("Data = 0b{}", utils::u8_to_binary(&data_le).unwrap());
 
-        // Note, the caller is responsible for ensuring that the byte is little Endian encoded.
         if utils::is_little_endian() {
             log::debug!("Note: the following bits will be in reverse order if you are working in little Endian (least significant bit first).");
         }
@@ -208,8 +206,8 @@ impl StegaV1 {
 
         // First pixel.
         for i in 0..4 {
-            log::debug!("Pixel 1 (#{}) = {}", i, utils::is_bit_set(i, data));
-            if utils::is_bit_set(i, data) {
+            log::debug!("Pixel 1 (#{}) = {}", i, utils::is_bit_set(i, data_le));
+            if utils::is_bit_set(i, data_le) {
                 let ci = i as usize;
                 self.nudge_channel_value(&mut pixel_1, ci);
             }
@@ -219,8 +217,8 @@ impl StegaV1 {
 
         // Second pixel.
         for i in 4..8 {
-            log::debug!("Pixel 2 (#{}) = {}", i, utils::is_bit_set(i, data));
-            if utils::is_bit_set(i, data) {
+            log::debug!("Pixel 2 (#{}) = {}", i, utils::is_bit_set(i, data_le));
+            if utils::is_bit_set(i, data_le) {
                 let ci = (i as usize) - 4;
                 self.nudge_channel_value(&mut pixel_2, ci);
             }

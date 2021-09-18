@@ -14,7 +14,7 @@ pub enum Error {
     DataTooLarge,
     /// Invalid image dimensions.
     ImageDimensionsInvalid,
-    /// The dimensions of the modified image is not the same as that of the reference image.
+    /// The dimensions of the encoded image are different than those of the reference image.
     ImageDimensionsMismatch,
     /// There is insufficient space within the image to encode the specified data.
     ImageInsufficientSpace,
