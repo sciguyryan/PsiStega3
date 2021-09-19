@@ -20,7 +20,7 @@ pub enum Error {
     ImageInsufficientSpace,
     /// There was an error when attempting to load an image file.
     ImageOpening,
-     /// Image is too large.
+    /// Image is too large.
     ImageTooLarge,
     /// The image type is cannot be used for steganography.
     ImageTypeInvalid,
@@ -34,9 +34,13 @@ impl fmt::Display for Error {
             Error::Argon2InvalidParams => "one or more invalid parameters passed to argon2 hasher",
             Error::Argon2NoHash => "error creating an Argon2 hash with the specified parameters",
             Error::DataTooLarge => "the data is too large",
-            Error::ImageDimensionsInvalid => "invalid image dimensions: the total number of pixels must be divisible by two",
+            Error::ImageDimensionsInvalid => {
+                "invalid image dimensions: the total number of pixels must be divisible by two"
+            }
             Error::ImageDimensionsMismatch => "the dimensions of the image files are not equal",
-            Error::ImageInsufficientSpace => "there is insufficient space to encode the data within the image",
+            Error::ImageInsufficientSpace => {
+                "there is insufficient space to encode the data within the image"
+            }
             Error::ImageOpening => "error when attempting to load the specified image",
             Error::ImageTooLarge => "the specified image is too large",
             Error::ImageTypeInvalid => "invalid image pixel type",

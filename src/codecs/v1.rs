@@ -1,19 +1,21 @@
-
 use crate::codecs::codec::Codec;
 use crate::error::{Error, Result};
 use crate::hashers::*;
 use crate::image_wrapper::{ImageWrapper, Point};
 use crate::utils;
 
-use aes_gcm::{Aes256Gcm, Key, Nonce, aead::{Aead, NewAead}};
+use aes_gcm::{
+    aead::{Aead, NewAead},
+    Aes256Gcm, Key, Nonce,
+};
 use image::ColorType;
-use std::convert::TryFrom;
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
-use rand_core::{RngCore, OsRng};
+use rand_core::{OsRng, RngCore};
+use std::convert::TryFrom;
 
 // TODO - decide if I want to switch AES-GCM for AES-GCM-SIV. Slightly decreased performance, increased resistance to certain types of attack.
-// this might be something that is used in a v2 algorithm if not implemented here.
+// TODO - this might be something that is used in a v2 algorithm if not implemented here.
 
 /// The time cost for use with the Argon2 hashing algorithm.
 const T_COST: u32 = 6;
@@ -37,7 +39,7 @@ pub struct StegaV1 {
     /// The read-only reference image.
     reference_img: ImageWrapper,
     /// The writable output image.
-    encoded_img: ImageWrapper
+    encoded_img: ImageWrapper,
 }
 
 impl StegaV1 {
@@ -49,7 +51,7 @@ impl StegaV1 {
             reference_img: ImageWrapper::new(),
             encoded_img: ImageWrapper::new(),
         }
-     }
+    }
 
     /// Calculate the coordinates of the pixel pair that comprise a given cell.
     ///
@@ -65,7 +67,7 @@ impl StegaV1 {
 
         [
             self.reference_img.pixel_coordinate(start_index),
-            self.reference_img.pixel_coordinate(start_index + 1)
+            self.reference_img.pixel_coordinate(start_index + 1),
         ]
     }
 
@@ -74,7 +76,7 @@ impl StegaV1 {
     /// Note: This method will return an array of a tuple where the tuple is in the coordinate configuration.
     fn get_total_cells(&self) -> u32 {
         // Each cell is 2x1 pixels in size.
-       (self.reference_img.get_total_pixels() / 2) as u32
+        (self.reference_img.get_total_pixels() / 2) as u32
     }
 
     /// Validate if the image can be used with our steganography algorithms.
@@ -84,7 +86,7 @@ impl StegaV1 {
     /// * `image` - A reference to a [`ImageWrapper`] object.
     ///
     fn validate_image(image: &ImageWrapper) -> Result<()> {
-        let (w, h) =  image.dimensions();
+        let (w, h) = image.dimensions();
 
         log::debug!("Image dimensions: ({},{})", w, h);
 
@@ -103,9 +105,7 @@ impl StegaV1 {
     /// * `file_path` - The path to the image file.
     ///
     fn load_image(file_path: &str) -> Result<ImageWrapper> {
-        // TODO: determine which image format types should be allowed
-        // here. They must support RGBA and they must support
-        // writing by the library.
+        // TODO: determine which image format types should be allowed here. They must support RGBA and they must support writing by the library.
         // See: https://github.com/image-rs/image
         let wrapper = ImageWrapper::load_from_file(file_path)?;
 
@@ -115,10 +115,9 @@ impl StegaV1 {
 
         // We currently only operate on files that are RGB(A) with 8-bit colour depth or higher.
         match wrapper.color() {
-            ColorType::Rgb8 |  ColorType::Rgba8 |
-            ColorType::Rgb16 | ColorType::Rgba16 => {
+            ColorType::Rgb8 | ColorType::Rgba8 | ColorType::Rgb16 | ColorType::Rgba16 => {
                 Ok(wrapper)
-            },
+            }
             _ => {
                 // We currently do not handle any of the other format types.
                 Err(Error::ImageTypeInvalid)
@@ -133,7 +132,10 @@ impl StegaV1 {
     /// * `bytes` - The vector of bytes to be used as the seed.
     ///
     fn u8_vec_to_seed<R: SeedableRng<Seed = [u8; 32]>>(bytes: Vec<u8>) -> R {
-        assert!(bytes.len() == 32, "Byte vector is not 32 bytes (256-bits) in length.");
+        assert!(
+            bytes.len() == 32,
+            "Byte vector is not 32 bytes (256-bits) in length."
+        );
         let arr = <[u8; 32]>::try_from(bytes).unwrap();
 
         R::from_seed(arr)
@@ -274,7 +276,13 @@ impl StegaV1 {
 }
 
 impl Codec for StegaV1 {
-    fn encode(&mut self, original_path: &str, key: &str, plaintext: &str, encoded_path: &str) -> Result<()> {
+    fn encode(
+        &mut self,
+        original_path: &str,
+        key: &str,
+        plaintext: &str,
+        encoded_path: &str,
+    ) -> Result<()> {
         log::debug!("Loading (reference) image file @ {}", &original_path);
 
         let ref_image = StegaV1::load_image(original_path)?;
@@ -302,7 +310,7 @@ impl Codec for StegaV1 {
         let file_hash_bytes = Hashers::sha3_512_file(original_path);
         let file_hash_string = utils::u8_array_to_hex(&file_hash_bytes).unwrap(); // This is internal and cannot fail.
 
-        log::debug!("File hash length: {}" , file_hash_bytes.len());
+        log::debug!("File hash length: {}", file_hash_bytes.len());
         log::debug!("File hash: {}", file_hash_string);
 
         // The key for the encryption is the SHA3-512 hash of the input image file combined with the plaintext key.
@@ -313,13 +321,14 @@ impl Codec for StegaV1 {
         let mut salt_bytes = [0u8; 12];
         OsRng.fill_bytes(&mut salt_bytes);
 
-        let key_bytes_full = Hashers::argon2_string(&final_key, salt_bytes, M_COST, P_COST, T_COST, VERSION)?;
+        let key_bytes_full =
+            Hashers::argon2_string(&final_key, salt_bytes, M_COST, P_COST, T_COST, VERSION)?;
 
         // The AES-256 key is 256-bits (32 bytes) in length.
         let key_bytes = &key_bytes_full[..32];
         log::debug!("Key hash bytes: {:?}", key_bytes.to_vec());
 
-        let hex_key_hash =  utils::u8_array_to_hex(key_bytes).unwrap(); // This is internal and cannot fail.
+        let hex_key_hash = utils::u8_array_to_hex(key_bytes).unwrap(); // This is internal and cannot fail.
         log::debug!("Hex key hash: {}", hex_key_hash);
 
         let key = Key::from_slice(key_bytes);
@@ -332,12 +341,13 @@ impl Codec for StegaV1 {
         let nonce = Nonce::from_slice(&nonce_bytes);
 
         let plaintext_bytes = plaintext.as_bytes();
-        let ciphertext_bytes = cipher.encrypt(nonce, plaintext_bytes.as_ref())
+        let ciphertext_bytes = cipher
+            .encrypt(nonce, plaintext_bytes.as_ref())
             .expect("encryption failure!"); // NOTE: handle this error to avoid panics!
 
         println!("Ciphertext bytes: {:?}", ciphertext_bytes);
 
-         /*let plaintext_bytes = cipher.decrypt(nonce, ciphertext_bytes.as_ref())
+        /*let plaintext_bytes = cipher.decrypt(nonce, ciphertext_bytes.as_ref())
             .expect("decryption failure!"); // NOTE: handle this error to avoid panics!
 
         log::debug!("Plaintext bytes: {:?}", plaintext_bytes);
@@ -356,13 +366,15 @@ impl Codec for StegaV1 {
         // This value must be held within a 64-bit value to prevent integer overflow from occurring in the
         // when running this on a 32-bit architecture.
         // This looks ugly, but I'm not sure that there is a better solution for now.
-        let total_ct_cells  = ciphertext_bytes.len();
-        let total_cells_needed = (1 + 4 + salt_bytes.len() as u64 + nonce_bytes.len() as u64 + total_ct_cells as u64) * 2;
+        let total_ct_cells = ciphertext_bytes.len();
+        let total_cells_needed =
+            (1 + 4 + salt_bytes.len() as u64 + nonce_bytes.len() as u64 + total_ct_cells as u64)
+                * 2;
         log::debug!("Total cells needed = {}", total_cells_needed);
 
         // In total we can never store more than 0xffffffff bytes of data to ensure that the values
         // of usize never exceeds the maximum value of the u32 type.
-        if total_cells_needed > 0xffffffff  {
+        if total_cells_needed > 0xffffffff {
             return Err(Error::DataTooLarge);
         }
 
@@ -407,7 +419,10 @@ impl Codec for StegaV1 {
         // Testing, testing, 1, 2, 3.
         let pixel = self.encoded_img.get_pixel(0, 0);
 
-        println!("rgba = {}, {}, {}, {}", pixel[0], pixel[1], pixel[2], pixel[3]);
+        println!(
+            "rgba = {}, {}, {}, {}",
+            pixel[0], pixel[1], pixel[2], pixel[3]
+        );
 
         let new_pixel = image::Rgba([0, 0, 0, 255]);
 
@@ -420,7 +435,7 @@ impl Codec for StegaV1 {
         Ok(())
     }
 
-    fn decode(&mut self, original_path: &str, key: &str, encoded_path: &str) ->  Result<&str> {
+    fn decode(&mut self, original_path: &str, key: &str, encoded_path: &str) -> Result<&str> {
         Ok("")
     }
 }

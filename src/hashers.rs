@@ -32,7 +32,14 @@ impl Hashers {
         hasher.finalize().to_vec()
     }
 
-    pub fn argon2_string(str: &str, salt: [u8; 12], m_cost: u32, p_cost: u32, t_cost: u32, version: argon2::Version) -> Result<[u8; 128]> {
+    pub fn argon2_string(
+        str: &str,
+        salt: [u8; 12],
+        m_cost: u32,
+        p_cost: u32,
+        t_cost: u32,
+        version: argon2::Version,
+    ) -> Result<[u8; 128]> {
         let mut builder = argon2::ParamsBuilder::new();
 
         if builder.m_cost(m_cost).is_err() {
@@ -55,11 +62,14 @@ impl Hashers {
         let str_bytes = str.as_bytes();
 
         // Construct the hasher.
-        let hasher =  Argon2::new(argon2::Algorithm::Argon2id, version, params);
+        let hasher = Argon2::new(argon2::Algorithm::Argon2id, version, params);
 
         // Nom!
         let mut key_bytes = [0u8; 128];
-        if hasher.hash_password_into(str_bytes, &salt, &mut key_bytes).is_err() {
+        if hasher
+            .hash_password_into(str_bytes, &salt, &mut key_bytes)
+            .is_err()
+        {
             return Err(Error::Argon2NoHash);
         }
 

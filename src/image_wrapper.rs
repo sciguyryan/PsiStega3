@@ -7,14 +7,14 @@ pub struct ImageWrapper {
     /// The `DynamicImage` instance that is wrapped.
     img: DynamicImage,
     /// A boolean indicating whether modifications to the image should be permitted.
-    read_only: bool
+    read_only: bool,
 }
 
 impl ImageWrapper {
     pub fn new() -> Self {
         Self {
             img: DynamicImage::new_bgra8(1, 1),
-            read_only: false
+            read_only: false,
         }
     }
 
@@ -29,14 +29,12 @@ impl ImageWrapper {
             Ok(img) => {
                 let wrapper = ImageWrapper {
                     img,
-                    read_only: false
+                    read_only: false,
                 };
                 Ok(wrapper)
-            },
-            // TODO: add more granularity to the errors here.
-            Err(_) => {
-                Err(Error::ImageOpening)
             }
+            // TODO: add more granularity to the errors here.
+            Err(_) => Err(Error::ImageOpening),
         }
     }
 
@@ -52,7 +50,7 @@ impl ImageWrapper {
 
     /// Calculate the total number of pixels available in the reference image.
     pub fn get_total_pixels(&self) -> u64 {
-        let (w, h) =  self.img.dimensions();
+        let (w, h) = self.img.dimensions();
         w as u64 * h as u64
     }
 
@@ -63,7 +61,7 @@ impl ImageWrapper {
     /// * `pixel` - The index of the pixel within the image.
     ///
     pub fn pixel_coordinate(&self, pixel: u32) -> Point {
-        let w =  self.img.dimensions().0;
+        let w = self.img.dimensions().0;
 
         // Note: strictly speaking we don't need to subtract the modulo
         // when calculating 'y' as we are performing an integer division.
@@ -119,7 +117,10 @@ impl ImageWrapper {
         if !self.read_only {
             self.img.save(path)
         } else {
-            Err(ImageError::IoError(std::io::Error::new(std::io::ErrorKind::Other, "attempted to write to a read-only file")))
+            Err(ImageError::IoError(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "attempted to write to a read-only file",
+            )))
         }
     }
 
@@ -144,8 +145,6 @@ pub struct Point {
 
 impl Point {
     fn new(x: u32, y: u32) -> Self {
-        Self {
-            x, y
-        }
+        Self { x, y }
     }
 }

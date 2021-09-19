@@ -1,9 +1,9 @@
-mod error;
-mod version;
-mod hashers;
-mod utils;
-mod image_wrapper;
 mod codecs;
+mod error;
+mod hashers;
+mod image_wrapper;
+mod utils;
+mod version;
 
 use crate::codecs::v1;
 
@@ -38,7 +38,9 @@ fn main() {
 
     let e = stega.encode(input_img_path, password, input, output_img_path);
 
-	// Wait for user input.
+    // Wait for user input.
     let mut input_string = String::new();
-    stdin().read_line(&mut input_string).expect("Failed to read a line.");
+    stdin()
+        .read_line(&mut input_string)
+        .expect("Failed to read a line.");
 }

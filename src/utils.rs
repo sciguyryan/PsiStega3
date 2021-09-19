@@ -33,11 +33,7 @@ pub fn path_has_extension(path: &str, extension: &str) -> bool {
 
 pub fn path_has_any_extension(path: &str, extensions: Vec<&str>) -> bool {
     match Path::new(path).extension().and_then(OsStr::to_str) {
-        Some(e) => {
-            extensions.iter().any(|&ext| ext == e)
-        },
-        _ => {
-            false
-        }
+        Some(e) => extensions.iter().any(|&ext| ext == e),
+        _ => false,
     }
 }
