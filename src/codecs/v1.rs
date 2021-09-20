@@ -216,23 +216,29 @@ impl StegaV1 {
           no-op calls and so will not impact performance.
         */
         let data_le = data.to_le();
-        log::debug!("Data = 0b{}", utils::u8_to_binary(&data_le));
-
+        let bin = utils::u8_to_binary(&data_le);
         if utils::is_little_endian() {
-            log::debug!("Note: the following bits will be in reverse order if you are working in little Endian (least significant bit first).");
+            //log::debug!("Note: the following bits will be in reverse order if you are working in little Endian (least significant bit first).");
+            log::debug!("Data = 0b{}", utils::reverse_string(&bin));
+        } else {
+            log::debug!("Data = 0b{}", bin);
         }
 
         let mut pixel_1 = self.reference_img.get_pixel_by_coord(coord[0]);
         let mut pixel_2 = self.reference_img.get_pixel_by_coord(coord[1]);
 
-        // This will hold a mutable reference to the current_pixel
-        // pixel that we are editing. Naturally we start with pixel 1.
+        // This will hold a mutable reference to the current pixel
+        // that we are editing. Naturally we start with pixel 1.
         let mut current_pixel = &mut pixel_1;
 
         let mut channel: usize = 0;
         for (i, mask) in utils::U8_BIT_MASKS.iter().enumerate() {
-            //log::debug!("Pixel {} (bit {}) = {}", (i / 4) + 1, i, utils::is_bit_set2(&data_le, mask));
-
+            log::debug!(
+                "Pixel {} (bit {}) = {}",
+                (i / 4) + 1,
+                i,
+                utils::is_bit_set(&data_le, mask)
+            );
             if i <= 4 {
                 current_pixel = &mut pixel_2;
                 channel = 0;

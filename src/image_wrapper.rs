@@ -21,6 +21,64 @@ impl ImageWrapper {
         }
     }
 
+    #[allow(dead_code)]
+    pub fn benfords_law(&self) -> [u32; 10] {
+        let mut law = [0; 10];
+        for (_, _, pixel) in self.img.pixels() {
+            let val = pixel[0] as u16 + pixel[1] as u16 + pixel[2] as u16 + pixel[3] as u16;
+            let digit = (val % 10) as usize;
+            law[digit] += 1;
+        }
+
+        law
+    }
+
+    /// Return the image's colour type.
+    pub fn color(&self) -> image::ColorType {
+        self.img.color()
+    }
+
+    /// Return the image's dimension.
+    pub fn dimensions(&self) -> (u32, u32) {
+        self.img.dimensions()
+    }
+
+    /// Returns a specified number of contiguous pixels, originating from a [`Point`] object.
+    /// This is from the top left of the image.
+    pub fn get_contiguous_pixel_by_coord(&self, coord: Point, count: u16) -> Vec<image::Rgba<u8>> {
+        let (w, _) = self.img.dimensions();
+        let start = (coord.y * w + coord.x - 1) as usize;
+        self.img
+            .pixels()
+            .skip(start)
+            .take(count as usize)
+            .map(|(_, _, img)| img)
+            .collect()
+    }
+
+    /// Get the format of the image.
+    pub fn get_image_format(&self) -> ImageFormat {
+        self.format
+    }
+
+    /// Return the value of a pixel at (x, y).
+    /// This is from the top left of the image.
+    pub fn get_pixel(&self, x: u32, y: u32) -> image::Rgba<u8> {
+        self.img.get_pixel(x, y)
+    }
+
+    /// Return the value of a pixel using a [`Point`] object.
+    /// This is from the top left of the image.
+    pub fn get_pixel_by_coord(&self, coord: Point) -> image::Rgba<u8> {
+        self.img.get_pixel(coord.x, coord.y)
+    }
+
+    /// Calculate the total number of pixels available in the reference image.
+    pub fn get_total_pixels(&self) -> u64 {
+        let (w, h) = self.img.dimensions();
+        w as u64 * h as u64
+    }
+
     /// Attempt to load an image from a file.
     ///
     /// # Arguments
@@ -51,11 +109,6 @@ impl ImageWrapper {
         }
     }
 
-    /// Get the format of the image.
-    pub fn get_image_format(&self) -> ImageFormat {
-        self.format
-    }
-
     /// Set the read-only state of the image wrapper.
     ///
     /// # Arguments
@@ -64,12 +117,6 @@ impl ImageWrapper {
     ///
     pub fn set_read_only(&mut self, state: bool) {
         self.read_only = state;
-    }
-
-    /// Calculate the total number of pixels available in the reference image.
-    pub fn get_total_pixels(&self) -> u64 {
-        let (w, h) = self.img.dimensions();
-        w as u64 * h as u64
     }
 
     /// Calculate the coordinates of a pixel from the pixel index.
@@ -88,28 +135,6 @@ impl ImageWrapper {
         let y = (pixel - x) / w;
 
         Point::new(x, y)
-    }
-
-    /// Return the image's colour type.
-    pub fn color(&self) -> image::ColorType {
-        self.img.color()
-    }
-
-    /// Return the image's dimension.
-    pub fn dimensions(&self) -> (u32, u32) {
-        self.img.dimensions()
-    }
-
-    /// Return the value of the pixel at (x, y).
-    /// This is from the top left of the image.
-    pub fn get_pixel(&self, x: u32, y: u32) -> image::Rgba<u8> {
-        self.img.get_pixel(x, y)
-    }
-
-    /// Return the value of the pixel using a [`Point`] object.
-    /// This is from the top left of the image.
-    pub fn get_pixel_by_coord(&self, coord: Point) -> image::Rgba<u8> {
-        self.img.get_pixel(coord.x, coord.y)
     }
 
     /// Set the value of the the pixel at (x, y).
@@ -148,18 +173,6 @@ impl ImageWrapper {
         // TODO: Should this be restricted to being the same as the
         // TODO: input format?
         self.img.save(path)
-    }
-
-    #[allow(dead_code)]
-    pub fn benfords_law(&self) -> [u32; 10] {
-        let mut law = [0; 10];
-        for (_, _, pixel) in self.img.pixels() {
-            let val = pixel[0] as u16 + pixel[1] as u16 + pixel[2] as u16 + pixel[3] as u16;
-            let digit = (val % 10) as usize;
-            law[digit] += 1;
-        }
-
-        law
     }
 }
 

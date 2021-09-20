@@ -78,3 +78,15 @@ pub fn secure_random_bytes<const N: usize>() -> [u8; N] {
 
     arr
 }
+
+/// Reverse the characters in a string.
+///
+/// # Arguments
+///
+/// * `str` - The string to be reversed.
+///
+/// Note: this is a very basic implementation that is intended for debugging with a
+/// limited character set. Do not use for an untested string.
+pub fn reverse_string(str: &String) -> String {
+    str.chars().rev().collect::<String>()
+}
