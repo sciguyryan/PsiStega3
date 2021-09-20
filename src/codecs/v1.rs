@@ -25,6 +25,8 @@ const P_COST: u32 = 3;
 const M_COST: u32 = 4096;
 /// The version of the Argon2 hashing algorithm to use.
 const VERSION: argon2::Version = argon2::Version::V0x13;
+/// The total maximum number of cells that an image may contain.
+const MAX_CELLS: u32 = 50_000_000;
 
 #[derive(Debug)]
 pub struct StegaV1 {
@@ -300,7 +302,6 @@ impl Codec for StegaV1 {
         encoded_path: &str,
     ) -> Result<()> {
         log::debug!("Loading (reference) image file @ {}", &original_path);
-
         let ref_image = StegaV1::load_image(original_path)?;
 
         // The reference image, read-only as it must not be modified.
@@ -321,7 +322,7 @@ impl Codec for StegaV1 {
           excessive overheads.
           This is equal to the number of cells in a 10,000 by 10,000 pixel image.
         */
-        if total_cells > 50_000_000 {
+        if total_cells > MAX_CELLS {
             return Err(Error::ImageTooLarge);
         }
 
@@ -405,6 +406,9 @@ impl Codec for StegaV1 {
         let sha256_key_hash_bytes = Hashers::sha3_256_string(&final_key);
         self.position_rng = StegaV1::u8_vec_to_seed(sha256_key_hash_bytes);
 
+        let next: u32 = self.position_rng.gen();
+        log::debug!("RNG test = {}", next);
+
         // This contains the list of every unused cell. Once a cell has been used, it is removed.
         // Initially I had planned to do with with a bitset, but it would require repeatedly checking
         // to see if the cell had been used, which could lower performance in cases where the total
@@ -453,6 +457,48 @@ impl Codec for StegaV1 {
     }
 
     fn decode(&mut self, original_path: &str, key: &str, encoded_path: &str) -> Result<&str> {
+        log::debug!("Loading (reference) image file @ {}", &original_path);
+        let ref_image = StegaV1::load_image(original_path)?;
+
+        log::debug!("Loading (encoded) image file @ {}", &encoded_path);
+        let enc_image = StegaV1::load_image(encoded_path)?;
+
+        // The reference and encoded images must have the same dimensions.
+        if ref_image.dimensions() != enc_image.dimensions() {
+            return Err(Error::ImageDimensionsMismatch);
+        }
+
+        self.reference_img = ref_image;
+        self.encoded_img = enc_image;
+
+        /*
+          We need to ensure that the total number of cells within the reference
+          image is not too large.
+          This avoid any potential overflows and partially to avoids creating
+          excessive overheads.
+          This is equal to the number of cells in a 10,000 by 10,000 pixel image.
+        */
+        let total_cells = self.get_total_cells();
+        if total_cells > MAX_CELLS {
+            return Err(Error::ImageTooLarge);
+        }
+
+        let file_hash_bytes = Hashers::sha3_512_file(original_path);
+        let file_hash_string = utils::u8_array_to_hex(&file_hash_bytes).unwrap(); // This is internal and cannot fail.
+
+        // The key for the encryption is the SHA3-512 hash of the input image file
+        // combined with the plaintext key.
+        let mut final_key: String = key.to_string();
+        final_key.push_str(&file_hash_string);
+
+        // When seeding our RNG, we can't use the Argon2 hash for the positional random number generator
+        // as we will need the salt, which will not be available when initially reading the data back from the file.
+        let sha256_key_hash_bytes = Hashers::sha3_256_string(&final_key);
+        self.position_rng = StegaV1::u8_vec_to_seed(sha256_key_hash_bytes);
+
+        let next: u32 = self.position_rng.gen();
+        log::debug!("RNG test = {}", next);
+
         Ok("")
     }
 }
