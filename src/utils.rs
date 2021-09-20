@@ -1,16 +1,25 @@
 use core::fmt::Write;
+use rand_core::{OsRng, RngCore};
 use std::ffi::OsStr;
 use std::path::Path;
 
-use rand_core::{OsRng, RngCore};
-
+/// Check if the current platform is little Endian.
 pub fn is_little_endian() -> bool {
     let val: u32 = 0x1234;
     let val2 = val.to_le();
 
     val == val2
 }
+
+/// A list of the bitmasks that can be applied to a u8 value.
 pub const U8_BIT_MASKS: [u8; 8] = [1, 2, 4, 8, 16, 32, 64, 128];
+
+/// Check if a bitmask is set for a given u8 value.
+///
+/// # Arguments
+///
+/// * `value` - The value against which the bitmask should be checked.
+/// * `mask` - The bitmask to be applied.
 pub fn is_bit_set(value: &u8, mask: &u8) -> bool {
     (value & mask) != 0
 }
@@ -47,17 +56,14 @@ pub fn u8_to_binary(byte: &u8) -> String {
     str
 }
 
-pub fn path_has_extension(path: &str, extension: &str) -> bool {
-    path_has_any_extension(path, vec![extension])
-}
-
-pub fn path_has_any_extension(path: &str, extensions: Vec<&str>) -> bool {
-    match Path::new(path).extension().and_then(OsStr::to_str) {
-        Some(e) => extensions.iter().any(|&ext| ext == e),
-        _ => false,
-    }
-}
-
+/// Extension the extension from the specified path.
+///
+/// # Arguments
+///
+/// * `path` - The path from which the extension should be extracted.
+///
+/// Note: in the case where no extension is present, this function will
+/// will return an empty string.
 pub fn get_extension(path: &str) -> &OsStr {
     match Path::new(path).extension() {
         Some(e) => e,
@@ -65,6 +71,7 @@ pub fn get_extension(path: &str) -> &OsStr {
     }
 }
 
+/// Fill an array of a given length with securely generated random bytes.
 pub fn secure_random_bytes<const N: usize>() -> [u8; N] {
     let mut arr = [0u8; N];
     OsRng.fill_bytes(&mut arr);
