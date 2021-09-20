@@ -86,8 +86,22 @@ impl StegaV1 {
     /// * `image` - A reference to a [`ImageWrapper`] object.
     ///
     fn validate_image(image: &ImageWrapper) -> Result<()> {
-        let (w, h) = image.dimensions();
+        let fmt = image.get_image_format();
+        log::debug!("Image format: {:?}", fmt);
 
+        // We currently only support for the following formats for
+        // encoding: PNG, JPEG, GIF and bitmap images.
+        match fmt {
+            image::ImageFormat::Png
+            | image::ImageFormat::Jpeg
+            | image::ImageFormat::Gif
+            | image::ImageFormat::Bmp => {}
+            _ => {
+                return Err(Error::ImageTypeInvalid);
+            }
+        }
+
+        let (w, h) = image.dimensions();
         log::debug!("Image dimensions: ({},{})", w, h);
 
         let pixels = w * h;
@@ -105,7 +119,6 @@ impl StegaV1 {
     /// * `file_path` - The path to the image file.
     ///
     fn load_image(file_path: &str) -> Result<ImageWrapper> {
-        // TODO: determine which image format types should be allowed here. They must support RGBA and they must support writing by the library.
         // See: https://github.com/image-rs/image
         let wrapper = ImageWrapper::load_from_file(file_path)?;
 
@@ -164,14 +177,15 @@ impl StegaV1 {
     /// This is because one cell will hold the XOR-encoded data,
     /// while the other will contain the XOR value itself.
     fn write_byte_pair(&mut self, data: u8) {
-        // The process operates as follows:
-        // 1. a random byte will be generated, this byte will be used to
-        // XOR the input data byte.
-        // 2. a random available cell will be chosen into which the XOR
-        // encoded data will be written.
-        // 3. a second cell will be chosen into which the XOR value itself
-        // will be written.
-
+        /*
+          The process operates as follows:
+          1. a random byte will be generated, this byte will be used to
+              XOR the input data byte.
+          2. a random available cell will be chosen into which the
+             XOR encoded data will be written.
+          3. a second cell will be chosen into which the XOR value itself
+             will be written.
+        */
         let xor: u8 = self.data_rng.gen();
         let xor_data = data ^ xor;
 
@@ -195,9 +209,11 @@ impl StegaV1 {
     /// * `coord` - The coordinates of the cell's pixels, into which the data will be encoded.
     ///
     fn write_byte(&mut self, data: u8, coord: [Point; 2]) {
-        // We convert everything into Little Endian to ensure everything operates
-        // as expected cross-platform. On a LE platform these will end up being
-        // no-op calls and so will not impact performance.
+        /*
+          We convert everything into Little Endian to ensure everything operates
+          as expected cross-platform. On a LE platform these will end up being
+          no-op calls and so will not impact performance.
+        */
         let data_le = data.to_le();
         log::debug!("Data = 0b{}", utils::u8_to_binary(&data_le).unwrap());
 
@@ -208,24 +224,24 @@ impl StegaV1 {
         let mut pixel_1 = self.reference_img.get_pixel_by_coord(coord[0]);
         let mut pixel_2 = self.reference_img.get_pixel_by_coord(coord[1]);
 
-        // First pixel.
-        for i in 0..4 {
-            log::debug!("Pixel 1 (#{}) = {}", i, utils::is_bit_set(i, data_le));
-            if utils::is_bit_set(i, data_le) {
-                let ci = i as usize;
-                self.nudge_channel_value(&mut pixel_1, ci);
-            }
-        }
+        // This will hold a mutable reference to the current_pixel
+        // pixel that we are editing. Naturally we start with pixel 1.
+        let mut current_pixel = &mut pixel_1;
 
-        log::debug!("{}", "-".repeat(32));
+        let mut channel: usize = 0;
+        for (i, mask) in utils::U8_BIT_MASKS.iter().enumerate() {
+            //log::debug!("Pixel {} (bit {}) = {}", (i / 4) + 1, i, utils::is_bit_set2(&data_le, mask));
 
-        // Second pixel.
-        for i in 4..8 {
-            log::debug!("Pixel 2 (#{}) = {}", i, utils::is_bit_set(i, data_le));
-            if utils::is_bit_set(i, data_le) {
-                let ci = (i as usize) - 4;
-                self.nudge_channel_value(&mut pixel_2, ci);
+            if i <= 4 {
+                current_pixel = &mut pixel_2;
+                channel = 0;
             }
+
+            if utils::is_bit_set2(&data_le, mask) {
+                self.nudge_channel_value(&mut current_pixel, channel);
+            }
+
+            channel += 1;
         }
 
         // Write the modified pixels into the encoded data image.
@@ -298,11 +314,13 @@ impl Codec for StegaV1 {
         let total_cells = self.get_total_cells();
         log::debug!("Total available cells: {}", &total_cells);
 
-        // We need to ensure that the total number of cells within the
-        // reference image is not too large.
-        // This avoid any potential overflows and partially to avoids
-        // creating excessive overheads.
-        // This is equal to the number of cells in a 10,000 by 10,000 pixel image.
+        /*
+          We need to ensure that the total number of cells within the reference
+          image is not too large.
+          This avoid any potential overflows and partially to avoids creating
+          excessive overheads.
+          This is equal to the number of cells in a 10,000 by 10,000 pixel image.
+        */
         if total_cells > 50_000_000 {
             return Err(Error::ImageTooLarge);
         }
@@ -313,14 +331,13 @@ impl Codec for StegaV1 {
         log::debug!("File hash length: {}", file_hash_bytes.len());
         log::debug!("File hash: {}", file_hash_string);
 
-        // The key for the encryption is the SHA3-512 hash of the input image file combined with the plaintext key.
+        // The key for the encryption is the SHA3-512 hash of the input image file
+        // combined with the plaintext key.
         let mut final_key: String = key.to_string();
         final_key.push_str(&file_hash_string);
 
         // Generate a random salt for the Argon2 hashing function.
-        let mut salt_bytes = [0u8; 12];
-        OsRng.fill_bytes(&mut salt_bytes);
-
+        let salt_bytes: [u8; 12] = utils::secure_random_bytes();
         let key_bytes_full =
             Hashers::argon2_string(&final_key, salt_bytes, M_COST, P_COST, T_COST, VERSION)?;
 
@@ -335,9 +352,7 @@ impl Codec for StegaV1 {
         let cipher = Aes256Gcm::new(key);
 
         // Generate a unique random 96-bit (12 byte) nonce (IV).
-        let mut nonce_bytes = [0u8; 12];
-        OsRng.fill_bytes(&mut nonce_bytes);
-
+        let nonce_bytes: [u8; 12] = utils::secure_random_bytes();
         let nonce = Nonce::from_slice(&nonce_bytes);
 
         let plaintext_bytes = plaintext.as_bytes();
@@ -360,12 +375,14 @@ impl Codec for StegaV1 {
 
         log::debug!("Plaintext string: {}", plaintext_str);*/
 
-        // 1 cell for the version, 4 cells for the total number of ciphertext cells, the salt, the nonce and the ciphertext.
-        // This value must be doubled as we need 2 cells per byte:
-        // one for the XOR encoded byte and one for the XOR byte.
-        // This value must be held within a 64-bit value to prevent integer overflow from occurring in the
-        // when running this on a 32-bit architecture.
-        // This looks ugly, but I'm not sure that there is a better solution for now.
+        /*
+          1 cell for the version, 4 cells for the total number of ciphertext cells, the salt, the nonce and the ciphertext.
+          This value must be doubled as we need 2 cells per byte:
+          one for the XOR encoded byte and one for the XOR byte.
+          This value must be held within a 64-bit value to prevent integer overflow from occurring in the
+          when running this on a 32-bit architecture.
+          This looks ugly, but I'm not sure that there is a better solution for now.
+        */
         let total_ct_cells = ciphertext_bytes.len();
         let total_cells_needed =
             (1 + 4 + salt_bytes.len() as u64 + nonce_bytes.len() as u64 + total_ct_cells as u64)

@@ -1,6 +1,6 @@
 use crate::error::{Error, Result};
 
-use image::{DynamicImage, GenericImage, GenericImageView, ImageError};
+use image::{DynamicImage, GenericImage, GenericImageView, ImageError, ImageFormat};
 
 #[derive(Clone, Debug)]
 pub struct ImageWrapper {
@@ -8,6 +8,8 @@ pub struct ImageWrapper {
     img: DynamicImage,
     /// A boolean indicating whether modifications to the image should be permitted.
     read_only: bool,
+    /// The format of the image.
+    format: ImageFormat,
 }
 
 impl ImageWrapper {
@@ -15,6 +17,7 @@ impl ImageWrapper {
         Self {
             img: DynamicImage::new_bgra8(1, 1),
             read_only: false,
+            format: ImageFormat::Png,
         }
     }
 
@@ -27,15 +30,30 @@ impl ImageWrapper {
     pub fn load_from_file(file_path: &str) -> Result<ImageWrapper> {
         match image::open(file_path) {
             Ok(img) => {
-                let wrapper = ImageWrapper {
+                let mut wrapper = ImageWrapper {
                     img,
                     read_only: false,
+                    format: ImageFormat::Png,
                 };
+
+                // If we can't identify the image format then we can't work
+                // with this file format.
+                if let Ok(f) = ImageFormat::from_path(file_path) {
+                    wrapper.format = f;
+                } else {
+                    return Err(Error::ImageTypeInvalid);
+                }
+
                 Ok(wrapper)
             }
             // TODO: add more granularity to the errors here.
             Err(_) => Err(Error::ImageOpening),
         }
+    }
+
+    /// Get the format of the image.
+    pub fn get_image_format(&self) -> ImageFormat {
+        self.format
     }
 
     /// Set the read-only state of the image wrapper.
@@ -82,17 +100,20 @@ impl ImageWrapper {
         self.img.dimensions()
     }
 
-    /// Return the value of the pixel at (x, y). This is from the top left of the image.
+    /// Return the value of the pixel at (x, y).
+    /// This is from the top left of the image.
     pub fn get_pixel(&self, x: u32, y: u32) -> image::Rgba<u8> {
         self.img.get_pixel(x, y)
     }
 
-    /// Return the value of the pixel using a [`Point`] object. This is from the top left of the image.
+    /// Return the value of the pixel using a [`Point`] object.
+    /// This is from the top left of the image.
     pub fn get_pixel_by_coord(&self, coord: Point) -> image::Rgba<u8> {
         self.img.get_pixel(coord.x, coord.y)
     }
 
-    /// Set the value of the the pixel at (x, y). This is from the top left of the image.
+    /// Set the value of the the pixel at (x, y).
+    /// This is from the top left of the image.
     pub fn put_pixel(&mut self, x: u32, y: u32, pixel: image::Rgba<u8>) -> bool {
         if !self.read_only {
             self.img.put_pixel(x, y, pixel);
@@ -101,7 +122,8 @@ impl ImageWrapper {
         self.read_only
     }
 
-    /// Set the value of the the pixel using a [`Point`] object. This is from the top left of the image.
+    /// Set the value of the the pixel using a [`Point`] object.
+    /// This is from the top left of the image.
     pub fn put_pixel_by_coord(&mut self, coord: Point, pixel: image::Rgba<u8>) -> bool {
         self.put_pixel(coord.x, coord.y, pixel)
     }
@@ -114,22 +136,26 @@ impl ImageWrapper {
     ///
     /// Note: the file type is derived from the file extension.
     pub fn save(&self, path: &str) -> image::ImageResult<()> {
-        if !self.read_only {
-            self.img.save(path)
-        } else {
-            Err(ImageError::IoError(std::io::Error::new(
+        if self.read_only {
+            return Err(ImageError::IoError(std::io::Error::new(
                 std::io::ErrorKind::Other,
                 "attempted to write to a read-only file",
-            )))
+            )));
         }
+
+        // TODO: at present the output file type will depend on the
+        // TODO: output path file extension.
+        // TODO: Should this be restricted to being the same as the
+        // TODO: input format?
+        self.img.save(path)
     }
 
     #[allow(dead_code)]
     pub fn benfords_law(&self) -> [u32; 10] {
         let mut law = [0; 10];
         for (_, _, pixel) in self.img.pixels() {
-            let val: u16 = pixel[0] as u16 + pixel[1] as u16 + pixel[2] as u16 + pixel[3] as u16;
-            let digit: usize = (val % 10) as usize;
+            let val = pixel[0] as u16 + pixel[1] as u16 + pixel[2] as u16 + pixel[3] as u16;
+            let digit = (val % 10) as usize;
             law[digit] += 1;
         }
 
