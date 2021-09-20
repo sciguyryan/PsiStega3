@@ -11,10 +11,9 @@ use aes_gcm::{
 use image::ColorType;
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
-use rand_core::{OsRng, RngCore};
 use std::convert::TryFrom;
 
-// TODO - decide if I want to switch AES-GCM for AES-GCM-SIV. Slightly decreased performance, increased resistance to certain types of attack.
+// TODO - decide if we should use AES-GCM for AES-GCM-SIV. Slightly decreased performance, increased resistance to certain types of attack.
 // TODO - this might be something that is used in a v2 algorithm if not implemented here.
 
 /// The time cost for use with the Argon2 hashing algorithm.
@@ -157,7 +156,7 @@ impl StegaV1 {
     }
 
     /// Get a random cell ID from the list of available cells.
-    fn get_random_available_cell(&mut self) -> u32 {
+    fn get_random_cell(&mut self) -> u32 {
         let cell_id = self.position_rng.gen_range(0..self.available_cells.len());
         log::debug!("Cell ID: {}", cell_id);
 
@@ -193,12 +192,12 @@ impl StegaV1 {
 
         //log::debug!("Original: {}, XOR: {}, XOR'ed data: {}", le_data, le_xor, le_xor_data);
 
-        let cell_pixel_coordinates = self.get_random_available_cell_coords();
+        let cell_pixel_coordinates = self.get_random_cell_coords();
         self.write_byte(xor_data, cell_pixel_coordinates);
         //log::debug!("XOR data cell contains pixels: {:?}", cell_pixel_coordinates);
 
         // Next we will write the XOR value cell.
-        let cell_pixel_coordinates = self.get_random_available_cell_coords();
+        let cell_pixel_coordinates = self.get_random_cell_coords();
         self.write_byte(xor, cell_pixel_coordinates);
         //log::debug!("XOR value cell contains pixels: {:?}", cell_pixel_coordinates);
     }
@@ -239,8 +238,8 @@ impl StegaV1 {
                 channel = 0;
             }
 
-            if utils::is_bit_set2(&data_le, mask) {
-                self.nudge_channel_value(&mut current_pixel, channel);
+            if utils::is_bit_set(&data_le, mask) {
+                self.adjust_channel_value(&mut current_pixel, channel);
             }
 
             channel += 1;
@@ -251,14 +250,14 @@ impl StegaV1 {
         self.encoded_img.put_pixel_by_coord(coord[1], pixel_2);
     }
 
-    /// Nudge the value of a channel by ±1.
+    /// Adjust the value of a channel by ±1.
     ///
     /// # Arguments
     ///
     /// * `pixel` - The value of the pixel's channels.
     /// * `channel` - The index of the channel to be nudged.
     ///
-    fn nudge_channel_value(&mut self, pixel: &mut image::Rgba<u8>, channel: usize) {
+    fn adjust_channel_value(&mut self, pixel: &mut image::Rgba<u8>, channel: usize) {
         let mut value = pixel[channel];
         //log::debug!("Modified value for channel {} = {}", channel, value);
 
@@ -287,8 +286,8 @@ impl StegaV1 {
 
     /// Get the coordinates of the pixels that correspond to a random cell
     /// from the available cell list.
-    fn get_random_available_cell_coords(&mut self) -> [Point; 2] {
-        let cell = self.get_random_available_cell();
+    fn get_random_cell_coords(&mut self) -> [Point; 2] {
+        let cell = self.get_random_cell();
         self.get_cell_pixel_coordinates(cell)
     }
 }

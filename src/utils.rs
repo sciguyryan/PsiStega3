@@ -10,16 +10,20 @@ pub fn is_little_endian() -> bool {
 
     val == val2
 }
-
-pub fn is_bit_set(value: u8, bit: u8) -> bool {
-    (value & (1 << bit)) != 0
-}
-
 pub const U8_BIT_MASKS: [u8; 8] = [1, 2, 4, 8, 16, 32, 64, 128];
-pub fn is_bit_set2(value: &u8, mask: &u8) -> bool {
+pub fn is_bit_set(value: &u8, mask: &u8) -> bool {
     (value & mask) != 0
 }
 
+/// Convert a u8 slice into its hexadecimal representation.
+///
+/// # Arguments
+///
+/// * `arr` - The u8 slice to be converted.
+///
+/// Note: we ignore the error condition from write! as this is
+/// completely internal and is designed for use with debug code.
+#[allow(unused_must_use)]
 pub fn u8_array_to_hex(arr: &[u8]) -> String {
     let mut str = String::with_capacity(2 * arr.len());
     for byte in arr {
@@ -28,6 +32,15 @@ pub fn u8_array_to_hex(arr: &[u8]) -> String {
     str
 }
 
+/// Convert a u8 value into its binary representation.
+///
+/// # Arguments
+///
+/// * `byte` - The byte to be converted.
+///
+/// Note: we ignore the error condition from write! as this is
+/// completely internal and is designed for use with debug code.
+#[allow(unused_must_use)]
 pub fn u8_to_binary(byte: &u8) -> String {
     let mut str = String::with_capacity(8);
     write!(str, "{:08b}", byte);
