@@ -20,18 +20,18 @@ pub fn is_bit_set2(value: &u8, mask: &u8) -> bool {
     (value & mask) != 0
 }
 
-pub fn u8_array_to_hex(arr: &[u8]) -> Result<String, std::fmt::Error> {
+pub fn u8_array_to_hex(arr: &[u8]) -> String {
     let mut str = String::with_capacity(2 * arr.len());
     for byte in arr {
-        write!(str, "{:02X}", byte)?;
+        write!(str, "{:02X}", byte);
     }
-    Ok(str)
+    str
 }
 
-pub fn u8_to_binary(byte: &u8) -> Result<String, std::fmt::Error> {
+pub fn u8_to_binary(byte: &u8) -> String {
     let mut str = String::with_capacity(8);
-    write!(str, "{:08b}", byte)?;
-    Ok(str)
+    write!(str, "{:08b}", byte);
+    str
 }
 
 pub fn path_has_extension(path: &str, extension: &str) -> bool {
