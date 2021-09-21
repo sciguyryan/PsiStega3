@@ -21,6 +21,10 @@ impl ImageWrapper {
         }
     }
 
+    pub fn foo(&self) -> Vec<u8> {
+        self.img.to_bytes()
+    }
+
     #[allow(dead_code)]
     pub fn benfords_law(&self) -> [u32; 10] {
         let mut law = [0; 10];
@@ -116,6 +120,10 @@ impl ImageWrapper {
                 } else {
                     return Err(Error::ImageTypeInvalid);
                 }
+
+                // TODO: remove this stuff.
+                let pineapple = w.foo();
+                log::debug!("{:?}", pineapple);
 
                 Ok(w)
             }
