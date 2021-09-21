@@ -104,3 +104,16 @@ pub fn fill_vector_sequential(vec: &mut Vec<usize>) {
         vec.insert(i, i);
     }
 }
+
+/// Fills a vector with sequential values.
+///
+/// # Arguments
+///
+/// * `vec` - The vector to be filled with values.
+///
+pub fn find_value_index_in_vec<T>(vec: &Vec<T>, value: &T) -> Option<usize>
+where
+    T: PartialEq,
+{
+    vec.iter().position(|v| v == value)
+}

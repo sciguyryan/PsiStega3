@@ -31,8 +31,8 @@ fn main() {
     let input = "This is a test.";
     let password = "banana123";
 
-    let input_img_path = "D:\\GitHub\\PsiStega3\\test-images\\b.jpg";
-    let output_img_path = "D:\\GitHub\\PsiStega3\\test-images\\b2.jpg";
+    let input_img_path = "D:\\GitHub\\PsiStega3\\test-images\\b.png";
+    let output_img_path = "D:\\GitHub\\PsiStega3\\test-images\\b2.png";
 
     let mut stega = v1::StegaV1::new();
 
