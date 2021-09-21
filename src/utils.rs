@@ -87,6 +87,20 @@ pub fn secure_random_bytes<const N: usize>() -> [u8; N] {
 ///
 /// Note: this is a very basic implementation that is intended for debugging with a
 /// limited character set. Do not use for an untested string.
-pub fn reverse_string(str: &String) -> String {
+pub fn reverse_string(str: &str) -> String {
     str.chars().rev().collect::<String>()
+}
+
+/// Fills a vector with sequential values.
+///
+/// # Arguments
+///
+/// * `vec` - The vector to be filled with values.
+///
+/// Note: this method will only operate as expected if an explicit
+/// capacity has been specified.
+pub fn fill_vector_sequential(vec: &mut Vec<usize>) {
+    for i in 0..vec.capacity() {
+        vec.insert(i, i);
+    }
 }

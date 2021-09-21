@@ -12,6 +12,8 @@ pub enum Error {
     Argon2NoHash,
     /// The total amount number of cells exceeds the maximum.
     DataTooLarge,
+    /// A generic encoding error.
+    GenericEncoding,
     /// Invalid image dimensions.
     ImageDimensionsInvalid,
     /// The dimensions of the encoded image are different than those of the reference image.
@@ -34,6 +36,9 @@ impl fmt::Display for Error {
             Error::Argon2InvalidParams => "one or more invalid parameters passed to argon2 hasher",
             Error::Argon2NoHash => "error creating an Argon2 hash with the specified parameters",
             Error::DataTooLarge => "the data is too large",
+            Error::GenericEncoding => {
+                "a generic encoding error has occurred (this should never happen)"
+            }
             Error::ImageDimensionsInvalid => {
                 "invalid image dimensions: the total number of pixels must be divisible by two"
             }

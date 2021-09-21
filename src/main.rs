@@ -36,7 +36,11 @@ fn main() {
 
     let mut stega = v1::StegaV1::new();
 
+    log::debug!("{}", "-".repeat(32));
+    log::debug!("Starting encoding...");
     let e = stega.encode(input_img_path, password, input, output_img_path);
+    log::debug!("{}", "-".repeat(32));
+    log::debug!("Starting decoding...");
     let s = stega.decode(input_img_path, password, output_img_path);
 
     // Wait for user input.

@@ -29,8 +29,6 @@ const MAX_CELLS: u32 = 50_000_000;
 
 #[derive(Debug)]
 pub struct StegaV1 {
-    /// A list of available cells within the images.
-    available_cells: Vec<u32>,
     /// The random number generator used to determine which cells will be used when
     /// storing a given value.
     data_rng: ChaCha20Rng,
@@ -46,7 +44,6 @@ pub struct StegaV1 {
 impl StegaV1 {
     pub fn new() -> Self {
         Self {
-            available_cells: Vec::with_capacity(1),
             data_rng: ChaCha20Rng::from_entropy(),
             position_rng: ChaCha20Rng::from_entropy(),
             reference_img: ImageWrapper::new(),
@@ -58,13 +55,13 @@ impl StegaV1 {
     ///
     /// # Arguments
     ///
-    /// * `cell_number` - The cell number.
+    /// * `cell_id` - The cell ID.
     ///
     /// Note: This method will return an array of a tuple where the tuple is in the coordinate configuration.
-    fn get_cell_pixel_coordinates(&self, cell_number: u32) -> [Point; 2] {
+    fn get_cell_pixel_coordinates(&self, cell_id: usize) -> [Point; 2] {
         // Cell 0 contains pixels (0, 1), cell 1 contains pixels (2, 3), etc.
         // The start pixel index can thus be calculated by the equation 2n.
-        let start_index = 2 * cell_number;
+        let start_index = 2 * (cell_id as u32);
 
         [
             self.reference_img.pixel_coordinate(start_index),
@@ -139,7 +136,7 @@ impl StegaV1 {
         }
     }
 
-    /// Create a `SeedableRng` object with a specific 32-byte seed.
+    /// Create a seedable RNG object with a defined 32-byte seed.
     ///
     /// # Arguments
     ///
@@ -155,19 +152,6 @@ impl StegaV1 {
         R::from_seed(arr)
     }
 
-    /// Get a random cell ID from the list of available cells.
-    fn get_random_cell(&mut self) -> u32 {
-        let cell_id = self.position_rng.gen_range(0..self.available_cells.len());
-        log::debug!("Cell ID: {}", cell_id);
-
-        // We need to ensure that we remove the cell from the available list of cells.
-        self.available_cells.remove(cell_id);
-
-        // The cast is safe here as the total number of cells is constrained
-        // to fit within an unsigned 32-bit integer.
-        cell_id as u32
-    }
-
     /// Write a byte of data into the target image.
     ///
     /// # Arguments
@@ -177,7 +161,7 @@ impl StegaV1 {
     /// Note: two cells will be written per byte of raw data.
     /// This is because one cell will hold the XOR-encoded data,
     /// while the other will contain the XOR value itself.
-    fn write_byte_with_xor(&mut self, data: u8) {
+    fn write_byte_with_xor(&mut self, cell_id: usize, data: &u8) {
         /*
           The process operates as follows:
           1. a random byte will be generated, this byte will be used to
@@ -192,12 +176,12 @@ impl StegaV1 {
 
         //log::debug!("Original: {}, XOR: {}, XOR'ed data: {}", le_data, le_xor, le_xor_data);
 
-        let cell_pixel_coordinates = self.get_random_cell_coords();
+        let cell_pixel_coordinates = self.get_cell_pixel_coordinates(cell_id);
         self.write_byte(xor_data, cell_pixel_coordinates);
         //log::debug!("XOR data cell contains pixels: {:?}", cell_pixel_coordinates);
 
         // Next we will write the XOR value cell.
-        let cell_pixel_coordinates = self.get_random_cell_coords();
+        let cell_pixel_coordinates = self.get_cell_pixel_coordinates(cell_id);
         self.write_byte(xor, cell_pixel_coordinates);
         //log::debug!("XOR value cell contains pixels: {:?}", cell_pixel_coordinates);
     }
@@ -288,13 +272,6 @@ impl StegaV1 {
 
         //log::debug!("Modified value for channel {} = {}", channel, value);
         pixel[channel] = value;
-    }
-
-    /// Get the coordinates of the pixels that correspond to a random cell
-    /// from the available cell list.
-    fn get_random_cell_coords(&mut self) -> [Point; 2] {
-        let cell = self.get_random_cell();
-        self.get_cell_pixel_coordinates(cell)
     }
 }
 
@@ -406,6 +383,11 @@ impl Codec for StegaV1 {
             return Err(Error::ImageInsufficientSpace);
         }
 
+        // We can now safely shadow these values as we have
+        // constrained them to within a 32-bit value limit.
+        let total_cells = total_cells as usize;
+        let total_cells_needed = total_cells_needed as usize;
+
         // When seeding our RNG, we can't use the Argon2 hash for the positional random number generator
         // as we will need the salt, which will not be available when initially reading the data back from the file.
         let sha256_key_hash_bytes = Hashers::sha3_256_string(&final_key);
@@ -414,15 +396,54 @@ impl Codec for StegaV1 {
         let next: u32 = self.position_rng.gen();
         log::debug!("RNG test = {}", next);
 
-        // This contains the list of every unused cell. Once a cell has been used, it is removed.
-        // Initially I had planned to do with with a bitset, but it would require repeatedly checking
-        // to see if the cell had been used, which could lower performance in cases where the total
-        // number of available cells is close to the total number of cells needed to encode the data.
-        // TODO: maybe convert this to a hashmap if it is too large and impacts performance?
-        self.available_cells = (0..total_cells).collect();
+        // This will hold all of the data we wish to encode.
+        let mut data: Vec<u8> = Vec::with_capacity(total_cells_needed);
 
-        let data_byte: u8 = 0xff;
-        self.write_byte_with_xor(data_byte);
+        // TODO: remove this once testing is finished.
+        data.insert(0, 0xff);
+
+        /*
+           This contains the list of every unused cell. Once a cell has been used,
+           it is removed.
+           Initially I had planned to do with with a bitset, but it would require
+           repeatedly checking to see if the cell had been used, which could lower
+           performance in cases where the total number of available cells is close
+           to the total number of cells needed to encode the data.
+           TODO: convert this to a hashmap if it is too large and impacts performance?
+        */
+        let mut cell_map: Vec<usize> = Vec::with_capacity(total_cells);
+        utils::fill_vector_sequential(&mut cell_map);
+
+        /*
+           Now we will shuffle the cell list.
+           We will iterate over each data byte and we will search the
+           cell map for the current data index.
+           The value will be written to the cell ID that corresponds
+           to that index.
+           For example, if we were writing data byte 0 then we would
+           search the vector for the value 0. The index into which the
+           that byte would then be written would be the index at which
+           0 appears in the cell map vector.
+        */
+        cell_map.shuffle(&mut self.position_rng);
+
+        // Iterate over each byte of data to be encoded.
+        for (di, byte) in data.iter().enumerate() {
+            //log::debug!("Searching for data index = {}.", di);
+            // Locate the index of the vector that contains the
+            // index of this data byte.
+            match cell_map.iter().position(|v| v == &di) {
+                Some(cell_id) => {
+                    //log::debug!("Found data index = {} at {}.", di, cell_id);
+                    self.write_byte_with_xor(cell_id, byte);
+                }
+                None => {
+                    // This shouldn't actually be possible...
+                    log::debug!("Data byte index {} does not exist in cell map.", di);
+                    return Err(Error::GenericEncoding);
+                }
+            }
+        }
 
         /*
         let version: u8 = 1;

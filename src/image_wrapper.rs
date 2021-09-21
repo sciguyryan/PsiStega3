@@ -45,6 +45,7 @@ impl ImageWrapper {
 
     /// Returns a specified number of contiguous pixels, originating from a [`Point`] object.
     /// This is from the top left of the image.
+    #[allow(dead_code)]
     pub fn get_contiguous_pixel_by_coord(&self, coord: Point, count: u16) -> Vec<image::Rgba<u8>> {
         let (w, _) = self.img.dimensions();
         let start = (coord.y * w + coord.x - 1) as usize;
