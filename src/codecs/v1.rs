@@ -8,7 +8,6 @@ use aes_gcm::{
     aead::{Aead, NewAead},
     Aes256Gcm, Key, Nonce,
 };
-use image::ColorType;
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
 use std::convert::TryFrom;
@@ -135,6 +134,7 @@ impl StegaV1 {
     fn validate_image(image: &ImageWrapper) -> Result<()> {
         let fmt = image.get_image_format();
         log::debug!("Image format: {:?}", fmt);
+        //log::debug!("Color: {:?}", image.color());
 
         // We currently only support for the following formats for
         // encoding: PNG, JPEG, GIF and bitmap images.
@@ -173,16 +173,7 @@ impl StegaV1 {
         // Now we need to validate if the file can be used.
         StegaV1::validate_image(&wrapper)?;
 
-        // We currently only operate on files that are RGB(A) with 8-bit colour depth or higher.
-        match wrapper.color() {
-            ColorType::Rgb8 | ColorType::Rgba8 | ColorType::Rgb16 | ColorType::Rgba16 => {
-                Ok(wrapper)
-            }
-            _ => {
-                // We currently do not handle any of the other format types.
-                Err(Error::ImageTypeInvalid)
-            }
-        }
+        Ok(wrapper)
     }
 
     /// Create a seedable RNG object with a defined 32-byte seed.
@@ -226,8 +217,8 @@ impl StegaV1 {
           no-op calls and so will not impact performance.
         */
         let data_le = data.to_le();
-        let bin = utils::u8_to_binary(&data_le);
-        /*if utils::is_little_endian() {
+        /*let bin = utils::u8_to_binary(&data_le);
+        if utils::is_little_endian() {
             //log::debug!("Note: the following bits will be in reverse order if you are working in little Endian (least significant bit first).");
             log::debug!("Data = 0b{}", utils::reverse_string(&bin));
         } else {
@@ -380,8 +371,12 @@ impl Codec for StegaV1 {
         let total_cells = total_cells as usize;
         let total_cells_needed = total_cells_needed as usize;
 
-        // When seeding our RNG, we can't use the Argon2 hash for the positional random number generator
-        // as we will need the salt, which will not be available when initially reading the data back from the file.
+        /*
+          When seeding our RNG, we can't use the Argon2 hash for the
+          positional random number generator as we will need the salt,
+          which will not be available when initially reading the data
+          back from the file.
+        */
         let sha256_key_hash_bytes = Hashers::sha3_256_string(&final_key);
         self.position_rng = StegaV1::u8_vec_to_seed(sha256_key_hash_bytes);
 
@@ -396,6 +391,10 @@ impl Codec for StegaV1 {
 
         // We need to fill the other cells with junk data.
         // Luckily we have a helper method to do this for us!
+        // TODO: it might not be necessary to fill every unused pixel
+        // TODO: with random data. It might be safe to just write the
+        // TODO: cells that we are interested in here.
+        // TODO: that would dramatically improve performance.
         data.fill_empty_values();
 
         /*
@@ -432,24 +431,6 @@ impl Codec for StegaV1 {
             self.write_byte_by_cell_id(byte, cell_id);
         }
 
-        /*
-        let version: u8 = 1;
-        log::debug!("0b{:08b}", version);
-
-        // We want to make sure that we convert everything into little Endian, to ensure that we can
-        // operate cross-platform.
-        let le_value = u8::to_le(version);
-        log::debug!("0b{:08b}", le_value);
-
-        // The maximum is set above, so this casting is safe.
-        let plaintext_cell_bytes = u16::to_le_bytes(plaintext_bytes.len() as u16);
-
-        //let mut i = 0;
-        //while i <= 3 {
-        //    println!("Is {} bit set? {:?}", &i, is_bit_set(&i, &le_value));
-        //    i +=  1;
-        //}*/
-
         // Testing, testing, 1, 2, 3.
         let pixel = self.encoded_img.get_pixel(0, 0);
 
@@ -458,9 +439,8 @@ impl Codec for StegaV1 {
             pixel[0], pixel[1], pixel[2], pixel[3]
         );
 
-        let new_pixel = image::Rgba([0, 0, 0, 255]);
-
-        self.encoded_img.put_pixel(0, 0, new_pixel);
+        //let new_pixel = image::Rgba([0, 0, 0, 255]);
+        //self.encoded_img.put_pixel(0, 0, new_pixel);
 
         // Save the modified image.
         let r = self.encoded_img.save(encoded_path);

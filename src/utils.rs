@@ -1,9 +1,9 @@
 use core::fmt::Write;
 use rand_core::{OsRng, RngCore};
-use std::ffi::OsStr;
-use std::path::Path;
+use std::{ffi::OsStr, path::Path};
 
 /// Check if the current platform is little Endian.
+#[allow(dead_code)]
 pub fn is_little_endian() -> bool {
     let val: u32 = 0x1234;
     let val2 = val.to_le();
@@ -32,6 +32,7 @@ pub fn is_bit_set(value: &u8, mask: &u8) -> bool {
 ///
 /// Note: we ignore the error condition from write! as this is
 /// completely internal and is designed for use with debug code.
+#[cfg(debug_assertions)]
 #[allow(unused_must_use)]
 pub fn u8_array_to_hex(arr: &[u8]) -> String {
     let mut str = String::with_capacity(2 * arr.len());
@@ -49,7 +50,8 @@ pub fn u8_array_to_hex(arr: &[u8]) -> String {
 ///
 /// Note: we ignore the error condition from write! as this is
 /// completely internal and is designed for use with debug code.
-#[allow(unused_must_use)]
+#[cfg(debug_assertions)]
+#[allow(unused_must_use, dead_code)]
 pub fn u8_to_binary(byte: &u8) -> String {
     let mut str = String::with_capacity(8);
     write!(str, "{:08b}", byte);
@@ -64,6 +66,7 @@ pub fn u8_to_binary(byte: &u8) -> String {
 ///
 /// Note: in the case where no extension is present, this function will
 /// will return an empty string.
+#[allow(dead_code)]
 pub fn get_extension(path: &str) -> &OsStr {
     match Path::new(path).extension() {
         Some(e) => e,
@@ -87,6 +90,7 @@ pub fn secure_random_bytes<const N: usize>() -> [u8; N] {
 ///
 /// Note: this is a very basic implementation that is intended for debugging with a
 /// limited character set. Do not use for an untested string.
+#[cfg(debug_assertions)]
 pub fn reverse_string(str: &str) -> String {
     str.chars().rev().collect::<String>()
 }
