@@ -177,7 +177,7 @@ impl StegaV1 {
     /// Note: two cells will be written per byte of raw data.
     /// This is because one cell will hold the XOR-encoded data,
     /// while the other will contain the XOR value itself.
-    fn write_byte_pair(&mut self, data: u8) {
+    fn write_byte_with_xor(&mut self, data: u8) {
         /*
           The process operates as follows:
           1. a random byte will be generated, this byte will be used to
@@ -422,7 +422,7 @@ impl Codec for StegaV1 {
         self.available_cells = (0..total_cells).collect();
 
         let data_byte: u8 = 0xff;
-        self.write_byte_pair(data_byte);
+        self.write_byte_with_xor(data_byte);
 
         /*
         let version: u8 = 1;
