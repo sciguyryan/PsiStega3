@@ -1,6 +1,6 @@
 use crate::error::{Error, Result};
 
-use image::{DynamicImage, GenericImage, GenericImageView, ImageError, ImageFormat};
+use image::{ColorType, DynamicImage, GenericImage, GenericImageView, ImageError, ImageFormat};
 
 #[derive(Clone, Debug)]
 pub struct ImageWrapper {
@@ -21,6 +21,10 @@ impl ImageWrapper {
         }
     }
 
+    pub fn foo(&self) -> Vec<u8> {
+        self.img.to_bytes()
+    }
+
     #[allow(dead_code)]
     pub fn benfords_law(&self) -> [u32; 10] {
         let mut law = [0; 10];
@@ -33,11 +37,6 @@ impl ImageWrapper {
         law
     }
 
-    /// Return the image's colour type.
-    pub fn color(&self) -> image::ColorType {
-        self.img.color()
-    }
-
     /// Return the image's dimension.
     pub fn dimensions(&self) -> (u32, u32) {
         self.img.dimensions()
@@ -45,6 +44,7 @@ impl ImageWrapper {
 
     /// Returns a specified number of contiguous pixels, originating from a [`Point`] object.
     /// This is from the top left of the image.
+    #[allow(dead_code)]
     pub fn get_contiguous_pixel_by_coord(&self, coord: Point, count: u16) -> Vec<image::Rgba<u8>> {
         let (w, _) = self.img.dimensions();
         let start = (coord.y * w + coord.x - 1) as usize;
@@ -88,8 +88,27 @@ impl ImageWrapper {
     pub fn load_from_file(file_path: &str) -> Result<ImageWrapper> {
         match image::open(file_path) {
             Ok(img) => {
-                let mut wrapper = ImageWrapper {
-                    img,
+                // Convert the internal image into the correct colour type.
+                // This enforced that the output images are the correct type.
+                // TODO: should we simply convert everything that isn't
+                // TODO: RBGA16 into RGBA8 here instead?
+                let i = match img.color() {
+                    ColorType::Rgb8 | ColorType::Rgba8 => {
+                        let rbga = img.into_rgba8();
+                        DynamicImage::ImageRgba8(rbga)
+                    }
+                    ColorType::Rgb16 | ColorType::Rgba16 => {
+                        let rbga = img.into_rgba16();
+                        DynamicImage::ImageRgba16(rbga)
+                    }
+                    _ => {
+                        // We currently do not handle any of the other format types.
+                        return Err(Error::ImageTypeInvalid);
+                    }
+                };
+
+                let mut w = ImageWrapper {
+                    img: i,
                     read_only: false,
                     format: ImageFormat::Png,
                 };
@@ -97,12 +116,16 @@ impl ImageWrapper {
                 // If we can't identify the image format then we can't work
                 // with this file format.
                 if let Ok(f) = ImageFormat::from_path(file_path) {
-                    wrapper.format = f;
+                    w.format = f;
                 } else {
                     return Err(Error::ImageTypeInvalid);
                 }
 
-                Ok(wrapper)
+                // TODO: remove this stuff.
+                let pineapple = w.foo();
+                log::debug!("{:?}", pineapple);
+
+                Ok(w)
             }
             // TODO: add more granularity to the errors here.
             Err(_) => Err(Error::ImageOpening),

@@ -8,7 +8,6 @@ use aes_gcm::{
     aead::{Aead, NewAead},
     Aes256Gcm, Key, Nonce,
 };
-use image::ColorType;
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
 use std::convert::TryFrom;
@@ -29,8 +28,8 @@ const MAX_CELLS: u32 = 50_000_000;
 
 #[derive(Debug)]
 pub struct StegaV1 {
-    /// A list of available cells within the images.
-    available_cells: Vec<u32>,
+    /// The data index to cell ID map.
+    data_cell_map: Vec<usize>,
     /// The random number generator used to determine which cells will be used when
     /// storing a given value.
     data_rng: ChaCha20Rng,
@@ -46,7 +45,7 @@ pub struct StegaV1 {
 impl StegaV1 {
     pub fn new() -> Self {
         Self {
-            available_cells: Vec::with_capacity(1),
+            data_cell_map: Vec::with_capacity(1),
             data_rng: ChaCha20Rng::from_entropy(),
             position_rng: ChaCha20Rng::from_entropy(),
             reference_img: ImageWrapper::new(),
@@ -54,22 +53,68 @@ impl StegaV1 {
         }
     }
 
+    /// Adjust the value of a channel by ±1.
+    ///
+    /// # Arguments
+    ///
+    /// * `pixel` - The value of the pixel's channels.
+    /// * `channel` - The index of the channel to be nudged.
+    ///
+    fn adjust_channel_value(&mut self, pixel: &mut image::Rgba<u8>, channel: usize) {
+        let mut value = pixel[channel];
+        //log::debug!("Modified value for channel {} = {}", channel, value);
+
+        if value == 0 {
+            // If we have a value of 0 then we can't go any lower without causing an underflow,
+            // so we will always add one.
+            value = 1;
+        } else if value == 255 {
+            // If we have a value of 255 then we can't go any higher without causing an overflow,
+            // so we will always subtract one.
+            value = 254;
+        } else {
+            // Here we can add or subtract. Which we choose will be determined by
+            // a random number generator call.
+            // This can never under or overflow due to the checks above.
+            if self.data_rng.gen_bool(0.5) {
+                value -= 1;
+            } else {
+                value += 1;
+            }
+        }
+
+        //log::debug!("Modified value for channel {} = {}", channel, value);
+        pixel[channel] = value;
+    }
+
     /// Calculate the coordinates of the pixel pair that comprise a given cell.
     ///
     /// # Arguments
     ///
-    /// * `cell_number` - The cell number.
+    /// * `cell_id` - The cell ID.
     ///
     /// Note: This method will return an array of a tuple where the tuple is in the coordinate configuration.
-    fn get_cell_pixel_coordinates(&self, cell_number: u32) -> [Point; 2] {
+    fn get_cell_pixel_coordinates(&self, cell_id: usize) -> [Point; 2] {
         // Cell 0 contains pixels (0, 1), cell 1 contains pixels (2, 3), etc.
         // The start pixel index can thus be calculated by the equation 2n.
-        let start_index = 2 * cell_number;
+        let start_index = 2 * (cell_id as u32);
 
         [
             self.reference_img.pixel_coordinate(start_index),
             self.reference_img.pixel_coordinate(start_index + 1),
         ]
+    }
+
+    fn get_data_cell_index(&self, value: &usize) -> usize {
+        match self.data_cell_map.iter().position(|v| v == value) {
+            Some(index) => index,
+            None => {
+                panic!(
+                    "The data index {} was not found in the cell map. This should never happen.",
+                    &value
+                );
+            }
+        }
     }
 
     /// Calculate the total number of cells available in the reference image.
@@ -89,6 +134,7 @@ impl StegaV1 {
     fn validate_image(image: &ImageWrapper) -> Result<()> {
         let fmt = image.get_image_format();
         log::debug!("Image format: {:?}", fmt);
+        //log::debug!("Color: {:?}", image.color());
 
         // We currently only support for the following formats for
         // encoding: PNG, JPEG, GIF and bitmap images.
@@ -127,19 +173,10 @@ impl StegaV1 {
         // Now we need to validate if the file can be used.
         StegaV1::validate_image(&wrapper)?;
 
-        // We currently only operate on files that are RGB(A) with 8-bit colour depth or higher.
-        match wrapper.color() {
-            ColorType::Rgb8 | ColorType::Rgba8 | ColorType::Rgb16 | ColorType::Rgba16 => {
-                Ok(wrapper)
-            }
-            _ => {
-                // We currently do not handle any of the other format types.
-                Err(Error::ImageTypeInvalid)
-            }
-        }
+        Ok(wrapper)
     }
 
-    /// Create a `SeedableRng` object with a specific 32-byte seed.
+    /// Create a seedable RNG object with a defined 32-byte seed.
     ///
     /// # Arguments
     ///
@@ -155,51 +192,15 @@ impl StegaV1 {
         R::from_seed(arr)
     }
 
-    /// Get a random cell ID from the list of available cells.
-    fn get_random_cell(&mut self) -> u32 {
-        let cell_id = self.position_rng.gen_range(0..self.available_cells.len());
-        log::debug!("Cell ID: {}", cell_id);
-
-        // We need to ensure that we remove the cell from the available list of cells.
-        self.available_cells.remove(cell_id);
-
-        // The cast is safe here as the total number of cells is constrained
-        // to fit within an unsigned 32-bit integer.
-        cell_id as u32
-    }
-
-    /// Write a byte of data into the target image.
+    /// Write a byte of data into the image.
     ///
     /// # Arguments
     ///
     /// * `data` - The byte value to be written to the image.
-    ///
-    /// Note: two cells will be written per byte of raw data.
-    /// This is because one cell will hold the XOR-encoded data,
-    /// while the other will contain the XOR value itself.
-    fn write_byte_pair(&mut self, data: u8) {
-        /*
-          The process operates as follows:
-          1. a random byte will be generated, this byte will be used to
-              XOR the input data byte.
-          2. a random available cell will be chosen into which the
-             XOR encoded data will be written.
-          3. a second cell will be chosen into which the XOR value itself
-             will be written.
-        */
-        let xor: u8 = self.data_rng.gen();
-        let xor_data = data ^ xor;
-
-        //log::debug!("Original: {}, XOR: {}, XOR'ed data: {}", le_data, le_xor, le_xor_data);
-
-        let cell_pixel_coordinates = self.get_random_cell_coords();
-        self.write_byte(xor_data, cell_pixel_coordinates);
-        //log::debug!("XOR data cell contains pixels: {:?}", cell_pixel_coordinates);
-
-        // Next we will write the XOR value cell.
-        let cell_pixel_coordinates = self.get_random_cell_coords();
-        self.write_byte(xor, cell_pixel_coordinates);
-        //log::debug!("XOR value cell contains pixels: {:?}", cell_pixel_coordinates);
+    /// * `cell_id` - The ID of the cell into which the byte should bwe written.
+    fn write_byte_by_cell_id(&mut self, data: &u8, cell_id: usize) {
+        let cell_pixel_coordinates = self.get_cell_pixel_coordinates(cell_id);
+        self.write_byte(data, cell_pixel_coordinates);
     }
 
     /// Encode the specified value into the pixels within a given cell.
@@ -209,20 +210,20 @@ impl StegaV1 {
     /// * `data` - The byte value to be encoded.
     /// * `coord` - The coordinates of the cell's pixels, into which the data will be encoded.
     ///
-    fn write_byte(&mut self, data: u8, coord: [Point; 2]) {
+    fn write_byte(&mut self, data: &u8, coord: [Point; 2]) {
         /*
           We convert everything into Little Endian to ensure everything operates
           as expected cross-platform. On a LE platform these will end up being
           no-op calls and so will not impact performance.
         */
         let data_le = data.to_le();
-        let bin = utils::u8_to_binary(&data_le);
+        /*let bin = utils::u8_to_binary(&data_le);
         if utils::is_little_endian() {
             //log::debug!("Note: the following bits will be in reverse order if you are working in little Endian (least significant bit first).");
             log::debug!("Data = 0b{}", utils::reverse_string(&bin));
         } else {
             log::debug!("Data = 0b{}", bin);
-        }
+        }*/
 
         let mut pixel_1 = self.reference_img.get_pixel_by_coord(coord[0]);
         let mut pixel_2 = self.reference_img.get_pixel_by_coord(coord[1]);
@@ -233,12 +234,12 @@ impl StegaV1 {
 
         let mut channel: usize = 0;
         for (i, mask) in utils::U8_BIT_MASKS.iter().enumerate() {
-            log::debug!(
+            /*log::debug!(
                 "Pixel {} (bit {}) = {}",
                 (i / 4) + 1,
                 i,
                 utils::is_bit_set(&data_le, mask)
-            );
+            );*/
             if i <= 4 {
                 current_pixel = &mut pixel_2;
                 channel = 0;
@@ -254,47 +255,6 @@ impl StegaV1 {
         // Write the modified pixels into the encoded data image.
         self.encoded_img.put_pixel_by_coord(coord[0], pixel_1);
         self.encoded_img.put_pixel_by_coord(coord[1], pixel_2);
-    }
-
-    /// Adjust the value of a channel by ±1.
-    ///
-    /// # Arguments
-    ///
-    /// * `pixel` - The value of the pixel's channels.
-    /// * `channel` - The index of the channel to be nudged.
-    ///
-    fn adjust_channel_value(&mut self, pixel: &mut image::Rgba<u8>, channel: usize) {
-        let mut value = pixel[channel];
-        //log::debug!("Modified value for channel {} = {}", channel, value);
-
-        if value == 0 {
-            // If we have a value of 0 then we can't go any lower without causing an underflow,
-            // so we will always add one.
-            value = 1;
-        } else if value == 255 {
-            // If we have a value of 255 then we can't go any higher without causing an overflow,
-            // so we will always subtract one.
-            value = 254;
-        } else {
-            // Here we can add or subtract. Which we choose will be determined by
-            // a random number generator call.
-            // This can never under or overflow due to the checks above.
-            if self.data_rng.gen_bool(0.5) {
-                value -= 1;
-            } else {
-                value += 1;
-            }
-        }
-
-        //log::debug!("Modified value for channel {} = {}", channel, value);
-        pixel[channel] = value;
-    }
-
-    /// Get the coordinates of the pixels that correspond to a random cell
-    /// from the available cell list.
-    fn get_random_cell_coords(&mut self) -> [Point; 2] {
-        let cell = self.get_random_cell();
-        self.get_cell_pixel_coordinates(cell)
     }
 }
 
@@ -406,41 +366,70 @@ impl Codec for StegaV1 {
             return Err(Error::ImageInsufficientSpace);
         }
 
-        // When seeding our RNG, we can't use the Argon2 hash for the positional random number generator
-        // as we will need the salt, which will not be available when initially reading the data back from the file.
+        // We can now safely shadow these values as we have
+        // constrained them to within a 32-bit value limit.
+        let total_cells = total_cells as usize;
+        let total_cells_needed = total_cells_needed as usize;
+
+        /*
+          When seeding our RNG, we can't use the Argon2 hash for the
+          positional random number generator as we will need the salt,
+          which will not be available when initially reading the data
+          back from the file.
+        */
         let sha256_key_hash_bytes = Hashers::sha3_256_string(&final_key);
         self.position_rng = StegaV1::u8_vec_to_seed(sha256_key_hash_bytes);
 
         let next: u32 = self.position_rng.gen();
         log::debug!("RNG test = {}", next);
 
-        // This contains the list of every unused cell. Once a cell has been used, it is removed.
-        // Initially I had planned to do with with a bitset, but it would require repeatedly checking
-        // to see if the cell had been used, which could lower performance in cases where the total
-        // number of available cells is close to the total number of cells needed to encode the data.
-        // TODO: maybe convert this to a hashmap if it is too large and impacts performance?
-        self.available_cells = (0..total_cells).collect();
+        // This will hold all of the data to be encoded.
+        let mut data = DataWrapperV1::new(total_cells, &mut self.data_rng);
 
-        let data_byte: u8 = 0xff;
-        self.write_byte_pair(data_byte);
+        // TODO: remove this once testing is finished.
+        data.push_value_with_xor(0xff);
+
+        // We need to fill the other cells with junk data.
+        // Luckily we have a helper method to do this for us!
+        // TODO: it might not be necessary to fill every unused pixel
+        // TODO: with random data. It might be safe to just write the
+        // TODO: cells that we are interested in here.
+        // TODO: that would dramatically improve performance.
+        data.fill_empty_values();
 
         /*
-        let version: u8 = 1;
-        log::debug!("0b{:08b}", version);
+           This contains the list of every unused cell. Once a cell has been used,
+           it is removed.
+           Initially I had planned to do with with a bitset, but it would require
+           repeatedly checking to see if the cell had been used, which could lower
+           performance in cases where the total number of available cells is close
+           to the total number of cells needed to encode the data.
+           TODO: convert this to a hashmap if it is too large and impacts performance?
+        */
+        self.data_cell_map = Vec::with_capacity(total_cells);
+        utils::fill_vector_sequential(&mut self.data_cell_map);
 
-        // We want to make sure that we convert everything into little Endian, to ensure that we can
-        // operate cross-platform.
-        let le_value = u8::to_le(version);
-        log::debug!("0b{:08b}", le_value);
+        /*
+           Now we will shuffle the cell list.
+           We will iterate over each data byte and we will search the
+           cell map for the current data index.
+           The value will be written to the cell ID that corresponds
+           to that index.
+           For example, if we were writing data byte 0 then we would
+           search the vector for the value 0. The index into which the
+           that byte would then be written would be the index at which
+           0 appears in the cell map vector.
+        */
+        self.data_cell_map.shuffle(&mut self.position_rng);
 
-        // The maximum is set above, so this casting is safe.
-        let plaintext_cell_bytes = u16::to_le_bytes(plaintext_bytes.len() as u16);
-
-        //let mut i = 0;
-        //while i <= 3 {
-        //    println!("Is {} bit set? {:?}", &i, is_bit_set(&i, &le_value));
-        //    i +=  1;
-        //}*/
+        // Iterate over each byte of data to be encoded.
+        for (i, byte) in data.bytes.iter().enumerate() {
+            //log::debug!("Searching for data index = {}.", di);
+            // Locate the index of the vector that contains the
+            // index of this data byte.
+            let cell_id = self.get_data_cell_index(&i);
+            self.write_byte_by_cell_id(byte, cell_id);
+        }
 
         // Testing, testing, 1, 2, 3.
         let pixel = self.encoded_img.get_pixel(0, 0);
@@ -450,9 +439,8 @@ impl Codec for StegaV1 {
             pixel[0], pixel[1], pixel[2], pixel[3]
         );
 
-        let new_pixel = image::Rgba([0, 0, 0, 255]);
-
-        self.encoded_img.put_pixel(0, 0, new_pixel);
+        //let new_pixel = image::Rgba([0, 0, 0, 255]);
+        //self.encoded_img.put_pixel(0, 0, new_pixel);
 
         // Save the modified image.
         let r = self.encoded_img.save(encoded_path);
@@ -511,5 +499,36 @@ impl Codec for StegaV1 {
 impl Default for StegaV1 {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+struct DataWrapperV1<'a> {
+    pub bytes: Vec<u8>,
+    rng: &'a mut ChaCha20Rng,
+}
+
+impl<'a> DataWrapperV1<'a> {
+    pub fn new(capacity: usize, rng: &'a mut ChaCha20Rng) -> Self {
+        Self {
+            bytes: Vec::with_capacity(capacity),
+            rng,
+        }
+    }
+
+    pub fn push_value(&mut self, value: u8) {
+        self.bytes.push(value);
+    }
+
+    pub fn push_value_with_xor(&mut self, value: u8) {
+        let xor: u8 = self.rng.gen();
+        let xor_data = value ^ xor;
+        self.push_value(xor_data);
+        self.push_value(xor);
+    }
+
+    pub fn fill_empty_values(&mut self) {
+        for _ in self.bytes.len()..self.bytes.capacity() {
+            self.bytes.push(self.rng.gen());
+        }
     }
 }
