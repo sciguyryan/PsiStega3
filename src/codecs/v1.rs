@@ -410,7 +410,7 @@ impl Codec for StegaV1 {
         utils::fill_vector_sequential(&mut self.data_cell_map);
 
         /*
-           Now we will shuffle the cell list.
+           Now we will shuffle the cell list!
            We will iterate over each data byte and we will search the
            cell map for the current data index.
            The value will be written to the cell ID that corresponds
