@@ -481,6 +481,10 @@ impl Default for StegaV1 {
     }
 }
 
+/// This structure will hold data to be encoded into an image.
+///
+/// Note: this structure handles little Endian conversions
+/// internally.
 struct DataWrapperV1 {
     pub bytes: Vec<u8>,
     rng: ChaCha20Rng,
@@ -499,10 +503,11 @@ impl DataWrapperV1 {
     }
 
     pub fn push_value_with_xor(&mut self, value: u8) {
-        let xor = (self.rng.gen_range(0..=255) as u8).to_le();
-        let xor_data = (value ^ xor).to_le();
-        self.push_value(xor_data);
-        self.push_value(xor);
+        let value_le = value.to_le();
+        let xor_le = (self.rng.gen_range(0..=255) as u8).to_le();
+        let xor_data_le = (value_le ^ xor_le).to_le();
+        self.push_value(xor_data_le);
+        self.push_value(xor_le);
     }
 
     pub fn fill_empty_values(&mut self) {
