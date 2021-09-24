@@ -30,9 +30,6 @@ const MAX_CELLS: u32 = 50_000_000;
 pub struct StegaV1 {
     /// The data index to cell ID map.
     data_cell_map: Vec<usize>,
-    /// The random number generator used to determine which cells will be used when
-    /// storing a given value.
-    data_rng: ChaCha20Rng,
     /// The random number generator used to create the XOR values that will be used total number to
     /// XOR the input data.
     position_rng: ChaCha20Rng,
@@ -46,7 +43,6 @@ impl StegaV1 {
     pub fn new() -> Self {
         Self {
             data_cell_map: Vec::with_capacity(1),
-            data_rng: ChaCha20Rng::from_entropy(),
             position_rng: ChaCha20Rng::from_entropy(),
             reference_img: ImageWrapper::new(),
             encoded_img: ImageWrapper::new(),
@@ -64,23 +60,13 @@ impl StegaV1 {
         let mut value = pixel[channel];
         //log::debug!("Modified value for channel {} = {}", channel, value);
 
-        if value == 0 {
-            // If we have a value of 0 then we can't go any lower without causing an underflow,
-            // so we will always add one.
-            value = 1;
-        } else if value == 255 {
-            // If we have a value of 255 then we can't go any higher without causing an overflow,
-            // so we will always subtract one.
-            value = 254;
+        // This will attempt to move the value as close to the median
+        // byte value (127) as possible.
+        // This is also far simpler than using a RNG!
+        if value >= 128 {
+            value -= 1;
         } else {
-            // Here we can add or subtract. Which we choose will be determined by
-            // a random number generator call.
-            // This can never under or overflow due to the checks above.
-            if self.data_rng.gen_bool(0.5) {
-                value -= 1;
-            } else {
-                value += 1;
-            }
+            value += 1;
         }
 
         //log::debug!("Modified value for channel {} = {}", channel, value);
@@ -384,7 +370,7 @@ impl Codec for StegaV1 {
         log::debug!("RNG test = {}", next);
 
         // This will hold all of the data to be encoded.
-        let mut data = DataWrapperV1::new(total_cells, &mut self.data_rng);
+        let mut data = DataWrapperV1::new(total_cells);
 
         // TODO: remove this once testing is finished.
         data.push_value_with_xor(0xff);
@@ -502,16 +488,16 @@ impl Default for StegaV1 {
     }
 }
 
-struct DataWrapperV1<'a> {
+struct DataWrapperV1 {
     pub bytes: Vec<u8>,
-    rng: &'a mut ChaCha20Rng,
+    rng: ChaCha20Rng,
 }
 
-impl<'a> DataWrapperV1<'a> {
-    pub fn new(capacity: usize, rng: &'a mut ChaCha20Rng) -> Self {
+impl DataWrapperV1 {
+    pub fn new(capacity: usize) -> Self {
         Self {
             bytes: Vec::with_capacity(capacity),
-            rng,
+            rng: ChaCha20Rng::from_entropy(),
         }
     }
 
@@ -520,8 +506,8 @@ impl<'a> DataWrapperV1<'a> {
     }
 
     pub fn push_value_with_xor(&mut self, value: u8) {
-        let xor: u8 = self.rng.gen();
-        let xor_data = value ^ xor;
+        let xor = (self.rng.gen_range(0..=255) as u8).to_le();
+        let xor_data = (value ^ xor).to_le();
         self.push_value(xor_data);
         self.push_value(xor);
     }

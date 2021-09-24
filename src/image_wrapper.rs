@@ -90,8 +90,7 @@ impl ImageWrapper {
             Ok(img) => {
                 // Convert the internal image into the correct colour type.
                 // This enforced that the output images are the correct type.
-                // TODO: should we simply convert everything that isn't
-                // TODO: RBGA16 into RGBA8 here instead?
+                // TODO: convert everything into Rgba8?
                 let i = match img.color() {
                     ColorType::Rgb8 | ColorType::Rgba8 => {
                         let rbga = img.into_rgba8();
