@@ -383,22 +383,15 @@ impl Codec for StegaV1 {
         // TODO: that would dramatically improve performance.
         data.fill_empty_values();
 
-        /*
-           This contains the list of every unused cell. Once a cell has been used,
-           it is removed.
-           Initially I had planned to do with with a bitset, but it would require
-           repeatedly checking to see if the cell had been used, which could lower
-           performance in cases where the total number of available cells is close
-           to the total number of cells needed to encode the data.
-           TODO: convert this to a hashmap if it is too large and impacts performance?
-        */
+        // Create and fill our vector with sequential values, one
+        // for each cell ID.
         self.data_cell_map = Vec::with_capacity(total_cells);
         utils::fill_vector_sequential(&mut self.data_cell_map);
 
         /*
-           Now we will shuffle the cell list!
-           We will iterate over each data byte and we will search the
-           cell map for the current data index.
+           Now we will shuffle the cell ID list!
+           We will iterate over each byte to be encoded and we will search
+           the cell map for the sequential byte number.
            The value will be written to the cell ID that corresponds
            to that index.
            For example, if we were writing data byte 0 then we would
