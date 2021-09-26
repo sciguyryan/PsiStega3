@@ -281,8 +281,6 @@ impl Codec for StegaV1 {
         /*
           We need to ensure that the total number of cells within the reference
           image is not too large.
-          This avoid any potential overflows and partially to avoids creating
-          excessive overheads.
           This is equal to the number of cells in a 10,000 by 10,000 pixel image.
         */
         if total_cells > MAX_CELLS {
@@ -340,12 +338,14 @@ impl Codec for StegaV1 {
         log::debug!("Plaintext string: {}", plaintext_str);*/
 
         /*
-          1 cell for the version, 4 cells for the total number of ciphertext cells, the salt, the nonce and the ciphertext.
+          1 cell for the version, 4 cells for the total number of cipher-text cells,
+          the salt, the nonce and the cipher-text itself.
+
           This value must be doubled as we need 2 cells per byte:
           one for the XOR encoded byte and one for the XOR byte.
+
           This value must be held within a 64-bit value to prevent integer overflow from occurring in the
           when running this on a 32-bit architecture.
-          This looks ugly, but I'm not sure that there is a better solution for now.
         */
         let total_ct_cells = ciphertext_bytes.len();
         let total_cells_needed =

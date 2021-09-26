@@ -1,6 +1,6 @@
 use crate::error::{Error, Result};
 
-use image::{ColorType, DynamicImage, GenericImage, GenericImageView, ImageError, ImageFormat};
+use image::{DynamicImage, GenericImage, GenericImageView, ImageError, ImageFormat};
 
 #[derive(Clone, Debug)]
 pub struct ImageWrapper {
@@ -21,9 +21,9 @@ impl ImageWrapper {
         }
     }
 
-    pub fn foo(&self) -> Vec<u8> {
+    /*pub fn foo(&self) -> Vec<u8> {
         self.img.to_bytes()
-    }
+    }*/
 
     #[allow(dead_code)]
     pub fn benfords_law(&self) -> [u32; 10] {
@@ -89,11 +89,9 @@ impl ImageWrapper {
         match image::open(file_path) {
             Ok(img) => {
                 // For simplicity, we convert everything into the
-                // RGBA8 data format.
-                let rgba8 = DynamicImage::ImageRgba8(img.into_rgba8());
-
+                // RGBA8 format.
                 let mut w = ImageWrapper {
-                    img: rgba8,
+                    img: DynamicImage::ImageRgba8(img.into_rgba8()),
                     read_only: false,
                     format: ImageFormat::Png,
                 };
@@ -107,8 +105,8 @@ impl ImageWrapper {
                 }
 
                 // TODO: remove this stuff.
-                let pineapple = w.foo();
-                log::debug!("{:?}", pineapple);
+                //let pineapple = w.foo();
+                //log::debug!("{:?}", pineapple);
 
                 Ok(w)
             }
