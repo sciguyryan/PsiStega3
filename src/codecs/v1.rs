@@ -397,24 +397,22 @@ impl Codec for StegaV1 {
 
         // Create and fill our vector with sequential values, one
         // for each cell ID.
-        let mut data_cell_map = Vec::with_capacity(total_cells);
-        utils::fill_vector_sequential(&mut data_cell_map);
+        let mut cell_list = Vec::with_capacity(total_cells);
+        utils::fill_vector_sequential(&mut cell_list);
 
+        // Randomize the order of the cell IDs.
+        cell_list.shuffle(&mut self.position_rng);
+
+        // Add the randomized entries to our cell map.
         self.data_cell_map = HashMap::with_capacity(total_cells);
-        for i in 0..total_cells {
-            unsafe {
-                // This is not actually unsafe code as cell_index will always
-                // be within the bounds of the vector.
-                // Unfortunately the compiler is unaware of that here.
-                let cell_index = self.position_rng.gen_range(0..data_cell_map.len());
-                let cell_id = data_cell_map.get_unchecked(cell_index);
-                self.data_cell_map.insert(i, *cell_id);
-            }
+        let mut i = 0;
+        while let Some(cell_id) = cell_list.pop() {
+            self.data_cell_map.insert(i, cell_id);
+            i += 1;
         }
 
-        // We no longer need to hold onto the space we reserved earlier
-        // as this vector will no longer be used.
-        data_cell_map.shrink_to_fit();
+        // Clean up the space we reserved earlier as we no longer need it.
+        cell_list.shrink_to_fit();
 
         // Iterate over each byte of data to be encoded.
         for (i, byte) in data.bytes.iter().enumerate() {
@@ -525,8 +523,10 @@ impl DataWrapperV1 {
     }
 
     pub fn fill_empty_values(&mut self) {
-        for _ in self.bytes.len()..self.bytes.capacity() {
-            self.bytes.push(self.rng.gen());
-        }
+        let mut vec: Vec<u8> = (self.bytes.len()..self.bytes.capacity())
+            .map(|_| self.rng.gen())
+            .collect();
+
+        self.bytes.append(&mut vec);
     }
 }
