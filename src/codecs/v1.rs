@@ -10,6 +10,7 @@ use aes_gcm::{
 };
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
+use std::collections::HashMap;
 use std::convert::TryFrom;
 
 // TODO - decide if we should use AES-GCM for AES-GCM-SIV. Slightly decreased performance, increased resistance to certain types of attack.
@@ -29,7 +30,7 @@ const MAX_CELLS: u32 = 50_000_000;
 #[derive(Debug)]
 pub struct StegaV1 {
     /// The data index to cell ID map.
-    data_cell_map: Vec<usize>,
+    data_cell_map: HashMap<usize, usize>,
     /// The random number generator used to create the XOR values that will be used total number to
     /// XOR the input data.
     position_rng: ChaCha20Rng,
@@ -37,15 +38,18 @@ pub struct StegaV1 {
     reference_img: ImageWrapper,
     /// The writable output image.
     encoded_img: ImageWrapper,
+    /// A RNG that will be used to handle data adjustments.
+    data_rng: ThreadRng,
 }
 
 impl StegaV1 {
     pub fn new() -> Self {
         Self {
-            data_cell_map: Vec::with_capacity(1),
+            data_cell_map: HashMap::with_capacity(1),
             position_rng: ChaCha20Rng::from_entropy(),
             reference_img: ImageWrapper::new(),
             encoded_img: ImageWrapper::new(),
+            data_rng: thread_rng(),
         }
     }
 
@@ -58,18 +62,26 @@ impl StegaV1 {
     ///
     fn adjust_channel_value(&mut self, pixel: &mut image::Rgba<u8>, channel: usize) {
         let mut value = pixel[channel];
-        //log::debug!("Modified value for channel {} = {}", channel, value);
 
-        // This will attempt to move the value as close to the median
-        // byte value (127) as possible.
-        // This is also far simpler than using a RNG!
-        if value >= 128 {
-            value -= 1;
+        if value == 0 {
+            // If we have a value of 0 then we can't go any lower without causing an underflow,
+            // so we will always add one.
+            value = 1;
+        } else if value == 255 {
+            // If we have a value of 255 then we can't go any higher without causing an overflow,
+            // so we will always subtract one.
+            value = 254;
         } else {
-            value += 1;
+            // Here we can add or subtract. Which we choose will be determined by
+            // a random number generator call.
+            // This can never under or overflow due to the checks above.
+            if self.data_rng.gen_bool(0.5) {
+                value -= 1;
+            } else {
+                value += 1;
+            }
         }
 
-        //log::debug!("Modified value for channel {} = {}", channel, value);
         pixel[channel] = value;
     }
 
@@ -92,8 +104,8 @@ impl StegaV1 {
     }
 
     fn get_data_cell_index(&self, value: &usize) -> usize {
-        match self.data_cell_map.iter().position(|v| v == value) {
-            Some(index) => index,
+        match self.data_cell_map.get(value) {
+            Some(index) => *index,
             None => {
                 panic!(
                     "The data index {} was not found in the cell map. This should never happen.",
@@ -385,21 +397,24 @@ impl Codec for StegaV1 {
 
         // Create and fill our vector with sequential values, one
         // for each cell ID.
-        self.data_cell_map = Vec::with_capacity(total_cells);
-        utils::fill_vector_sequential(&mut self.data_cell_map);
+        let mut data_cell_map = Vec::with_capacity(total_cells);
+        utils::fill_vector_sequential(&mut data_cell_map);
 
-        /*
-           Now we will shuffle the cell ID list!
-           We will iterate over each byte to be encoded and we will search
-           the cell map for the sequential byte number.
-           The value will be written to the cell ID that corresponds
-           to that index.
-           For example, if we were writing data byte 0 then we would
-           search the vector for the value 0. The index into which the
-           that byte would then be written would be the index at which
-           0 appears in the cell map vector.
-        */
-        self.data_cell_map.shuffle(&mut self.position_rng);
+        self.data_cell_map = HashMap::with_capacity(total_cells);
+        for i in 0..total_cells {
+            unsafe {
+                // This is not actually unsafe code as cell_index will always
+                // be within the bounds of the vector.
+                // Unfortunately the compiler is unaware of that here.
+                let cell_index = self.position_rng.gen_range(0..data_cell_map.len());
+                let cell_id = data_cell_map.get_unchecked(cell_index);
+                self.data_cell_map.insert(i, *cell_id);
+            }
+        }
+
+        // We no longer need to hold onto the space we reserved earlier
+        // as this vector will no longer be used.
+        data_cell_map.shrink_to_fit();
 
         // Iterate over each byte of data to be encoded.
         for (i, byte) in data.bytes.iter().enumerate() {
@@ -503,11 +518,10 @@ impl DataWrapperV1 {
     }
 
     pub fn push_value_with_xor(&mut self, value: u8) {
-        let value_le = value.to_le();
-        let xor_le = (self.rng.gen_range(0..=255) as u8).to_le();
-        let xor_data_le = (value_le ^ xor_le).to_le();
-        self.push_value(xor_data_le);
-        self.push_value(xor_le);
+        let xor = (self.rng.gen_range(0..=255) as u8).to_le();
+        let xor_data = value.to_le() ^ xor;
+        self.push_value(xor_data);
+        self.push_value(xor);
     }
 
     pub fn fill_empty_values(&mut self) {
