@@ -88,26 +88,12 @@ impl ImageWrapper {
     pub fn load_from_file(file_path: &str) -> Result<ImageWrapper> {
         match image::open(file_path) {
             Ok(img) => {
-                // Convert the internal image into the correct colour type.
-                // This enforced that the output images are the correct type.
-                // TODO: convert everything into Rgba8?
-                let i = match img.color() {
-                    ColorType::Rgb8 | ColorType::Rgba8 => {
-                        let rbga = img.into_rgba8();
-                        DynamicImage::ImageRgba8(rbga)
-                    }
-                    ColorType::Rgb16 | ColorType::Rgba16 => {
-                        let rbga = img.into_rgba16();
-                        DynamicImage::ImageRgba16(rbga)
-                    }
-                    _ => {
-                        // We currently do not handle any of the other format types.
-                        return Err(Error::ImageTypeInvalid);
-                    }
-                };
+                // For simplicity, we convert everything into the
+                // RGBA8 data format.
+                let rgba8 = DynamicImage::ImageRgba8(img.into_rgba8());
 
                 let mut w = ImageWrapper {
-                    img: i,
+                    img: rgba8,
                     read_only: false,
                     format: ImageFormat::Png,
                 };
