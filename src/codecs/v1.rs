@@ -1,7 +1,7 @@
 use crate::codecs::codec::Codec;
 use crate::error::{Error, Result};
 use crate::hashers::*;
-use crate::image_wrapper::{ImageWrapper, Point};
+use crate::image_wrapper::ImageWrapper;
 use crate::utils;
 
 use aes_gcm::{
@@ -53,56 +53,6 @@ impl StegaV1 {
         }
     }
 
-    /// Adjust the value of a channel by ±1.
-    ///
-    /// # Arguments
-    ///
-    /// * `pixel` - The value of the pixel's channels.
-    /// * `channel` - The index of the channel to be nudged.
-    ///
-    fn adjust_channel_value(&mut self, pixel: &mut image::Rgba<u8>, channel: usize) {
-        let mut value = pixel[channel];
-
-        if value == 0 {
-            // If we have a value of 0 then we can't go any lower without causing an underflow,
-            // so we will always add one.
-            value = 1;
-        } else if value == 255 {
-            // If we have a value of 255 then we can't go any higher without causing an overflow,
-            // so we will always subtract one.
-            value = 254;
-        } else {
-            // Here we can add or subtract. Which we choose will be determined by
-            // a random number generator call.
-            // This can never under or overflow due to the checks above.
-            if self.data_rng.gen_bool(0.5) {
-                value -= 1;
-            } else {
-                value += 1;
-            }
-        }
-
-        pixel[channel] = value;
-    }
-
-    /// Calculate the coordinates of the pixel pair that comprise a given cell.
-    ///
-    /// # Arguments
-    ///
-    /// * `cell_id` - The cell ID.
-    ///
-    /// Note: This method will return an array of a tuple where the tuple is in the coordinate configuration.
-    fn get_cell_pixel_coordinates(&self, cell_id: usize) -> [Point; 2] {
-        // Cell 0 contains pixels (0, 1), cell 1 contains pixels (2, 3), etc.
-        // The start pixel index can thus be calculated by the equation 2n.
-        let start_index = 2 * (cell_id as u32);
-
-        [
-            self.reference_img.pixel_coordinate(start_index),
-            self.reference_img.pixel_coordinate(start_index + 1),
-        ]
-    }
-
     fn get_data_cell_index(&self, value: &usize) -> usize {
         match self.data_cell_map.get(value) {
             Some(index) => *index,
@@ -115,9 +65,12 @@ impl StegaV1 {
         }
     }
 
+    fn get_pixel_index_by_cell_index(&self, cell_id: usize) -> usize {
+        // Each cell is 2 pixels in size.
+        cell_id * 2
+    }
+
     /// Calculate the total number of cells available in the reference image.
-    ///
-    /// Note: This method will return an array of a tuple where the tuple is in the coordinate configuration.
     fn get_total_cells(&self) -> u32 {
         // Each cell is 2x1 pixels in size.
         (self.reference_img.get_total_pixels() / 2) as u32
@@ -195,10 +148,10 @@ impl StegaV1 {
     /// # Arguments
     ///
     /// * `data` - The byte value to be written to the image.
-    /// * `cell_id` - The ID of the cell into which the byte should bwe written.
-    fn write_byte_by_cell_id(&mut self, data: &u8, cell_id: usize) {
-        let cell_pixel_coordinates = self.get_cell_pixel_coordinates(cell_id);
-        self.write_byte(data, cell_pixel_coordinates);
+    /// * `cell` - The index of the cell into which the byte should be written.
+    fn write_byte_by_cell_id(&mut self, data: &u8, cell: usize) {
+        let cell_start_index = self.get_pixel_index_by_cell_index(cell);
+        self.write_byte(data, cell_start_index);
     }
 
     /// Encode the specified value into the pixels within a given cell.
@@ -206,9 +159,9 @@ impl StegaV1 {
     /// # Arguments
     ///
     /// * `data` - The byte value to be encoded.
-    /// * `coord` - The coordinates of the cell's pixels, into which the data will be encoded.
+    /// * `cell_start` - The index of the first pixel of the cell, into which the data will be encoded.
     ///
-    fn write_byte(&mut self, data: &u8, coord: [Point; 2]) {
+    fn write_byte(&mut self, data: &u8, cell_start: usize) {
         /*
           We convert everything into Little Endian to ensure everything operates
           as expected cross-platform. On a LE platform these will end up being
@@ -223,36 +176,33 @@ impl StegaV1 {
             log::debug!("Data = 0b{}", bin);
         }*/
 
-        let mut pixel_1 = self.reference_img.get_pixel_by_coord(coord[0]);
-        let mut pixel_2 = self.reference_img.get_pixel_by_coord(coord[1]);
+        let pixel_bytes = self
+            .encoded_img
+            .get_contiguous_pixel_by_index_mut(cell_start, 2);
 
-        // This will hold a mutable reference to the current pixel
-        // that we are editing. Naturally we start with pixel 1.
-        let mut current_pixel = &mut pixel_1;
-
-        let mut channel: usize = 0;
-        for (i, mask) in utils::U8_BIT_MASKS.iter().enumerate() {
-            /*log::debug!(
-                "Pixel {} (bit {}) = {}",
-                (i / 4) + 1,
-                i,
-                utils::is_bit_set(&data_le, mask)
-            );*/
-            if i <= 4 {
-                current_pixel = &mut pixel_2;
-                channel = 0;
-            }
-
+        for (index, byte) in pixel_bytes.into_iter().enumerate() {
+            let mask = &utils::U8_BIT_MASKS[index];
             if utils::is_bit_set(&data_le, mask) {
-                self.adjust_channel_value(&mut current_pixel, channel);
+                if *byte == 0 {
+                    // If we have a value of 0 then we can't go any lower without causing an underflow,
+                    // so we will always add one.
+                    *byte = 1;
+                } else if *byte == 255 {
+                    // If we have a value of 255 then we can't go any higher without causing an overflow,
+                    // so we will always subtract one.
+                    *byte = 254;
+                } else {
+                    // Here we can add or subtract. Which we choose will be determined by
+                    // a random number generator call.
+                    // This can never under or overflow due to the checks above.
+                    if self.data_rng.gen_bool(0.5) {
+                        *byte -= 1;
+                    } else {
+                        *byte += 1;
+                    }
+                }
             }
-
-            channel += 1;
         }
-
-        // Write the modified pixels into the encoded data image.
-        self.encoded_img.put_pixel_by_coord(coord[0], pixel_1);
-        self.encoded_img.put_pixel_by_coord(coord[1], pixel_2);
     }
 }
 
@@ -424,7 +374,7 @@ impl Codec for StegaV1 {
         }
 
         // Testing, testing, 1, 2, 3.
-        let pixel = self.encoded_img.get_pixel(0, 0);
+        let pixel = self.encoded_img.get_pixel(0);
 
         println!(
             "rgba = {}, {}, {}, {}",
@@ -516,7 +466,7 @@ impl DataWrapperV1 {
     }
 
     pub fn push_value_with_xor(&mut self, value: u8) {
-        let xor = (self.rng.gen_range(0..=255) as u8).to_le();
+        let xor = self.rng.gen::<u8>().to_le();
         let xor_data = value.to_le() ^ xor;
         self.push_value(xor_data);
         self.push_value(xor);
