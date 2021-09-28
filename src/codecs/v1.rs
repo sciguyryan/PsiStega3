@@ -182,27 +182,22 @@ impl StegaV1 {
             .encoded_img
             .get_contiguous_pixel_by_index_mut(cell_start, 2);
 
-        for (index, byte) in pixel_bytes.into_iter().enumerate() {
-            let mask = &utils::U8_BIT_MASKS[index];
-            if utils::is_bit_set(&data_le, mask) {
-                if *byte == 0 {
-                    // If we have a value of 0 then we can't go any lower without causing an underflow,
-                    // so we will always add one.
-                    *byte = 1;
-                } else if *byte == 255 {
-                    // If we have a value of 255 then we can't go any higher without causing an overflow,
-                    // so we will always subtract one.
-                    *byte = 254;
-                } else {
-                    // Here we can add or subtract. Which we choose will be determined by
-                    // a random number generator call.
-                    // This can never under or overflow due to the checks above.
-                    if self.data_rng.gen_bool(0.5) {
-                        *byte -= 1;
-                    } else {
-                        *byte += 1;
+        for (i, b) in pixel_bytes.into_iter().enumerate() {
+            if utils::is_bit_set(&data_le, &utils::U8_BIT_MASKS[i]) {
+                // If the value is 0 then the new value will always be 1.
+                // If the value is 255 then the new value will always be 254.
+                // Otherwise the value will be randomly assigned to be ±1.
+                *b = match *b {
+                    0 => 1,
+                    1..=254 => {
+                        if self.data_rng.gen_bool(0.5) {
+                            *b - 1
+                        } else {
+                            *b + 1
+                        }
                     }
-                }
+                    255 => 254,
+                };
             }
         }
     }
