@@ -23,9 +23,11 @@ const P_COST: u32 = 3;
 /// The memory cost for use with the Argon2 hashing algorithm.
 const M_COST: u32 = 4096;
 /// The version of the Argon2 hashing algorithm to use.
-const VERSION: argon2::Version = argon2::Version::V0x13;
+const ARGON_VER: argon2::Version = argon2::Version::V0x13;
 /// The total maximum number of cells that an image may contain.
 const MAX_CELLS: u32 = 50_000_000;
+/// The version of this codec.
+const VERSION: u8 = 0;
 
 #[derive(Debug)]
 pub struct StegaV1 {
@@ -251,7 +253,7 @@ impl Codec for StegaV1 {
         // Generate a random salt for the Argon2 hashing function.
         let salt_bytes: [u8; 12] = utils::secure_random_bytes();
         let key_bytes_full =
-            Hashers::argon2_string(&final_key, salt_bytes, M_COST, P_COST, T_COST, VERSION)?;
+            Hashers::argon2_string(&final_key, salt_bytes, M_COST, P_COST, T_COST, ARGON_VER)?;
 
         // The AES-256 key is 256-bits (32 bytes) in length.
         let key_bytes = &key_bytes_full[..32];
