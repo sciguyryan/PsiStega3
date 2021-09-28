@@ -21,6 +21,7 @@ pub const U8_BIT_MASKS: [u8; 8] = [1, 2, 4, 8, 16, 32, 64, 128];
 ///
 /// * `value` - The value against which the bitmask should be checked.
 /// * `mask` - The bitmask to be applied.
+#[inline]
 pub fn is_bit_set(value: &u8, mask: &u8) -> bool {
     (value & mask) != 0
 }
