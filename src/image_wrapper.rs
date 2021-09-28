@@ -1,37 +1,52 @@
 use crate::error::{Error, Result};
 
-use image::{ColorType, DynamicImage, GenericImage, GenericImageView, ImageError, ImageFormat};
+use image::{DynamicImage, GenericImageView, ImageError, ImageFormat};
 
 #[derive(Clone, Debug)]
 pub struct ImageWrapper {
     /// The `DynamicImage` instance that is wrapped.
-    img: DynamicImage,
+    //img: DynamicImage,
+    image_bytes: Vec<u8>,
     /// A boolean indicating whether modifications to the image should be permitted.
     read_only: bool,
     /// The format of the image.
     format: ImageFormat,
+    /// The dimensions of the original image.
+    dimensions: (u32, u32),
 }
 
 impl ImageWrapper {
     pub fn new() -> Self {
         Self {
-            img: DynamicImage::new_bgra8(1, 1),
+            image_bytes: Vec::with_capacity(1),
             read_only: false,
             format: ImageFormat::Png,
+            dimensions: (1, 1),
         }
-    }
-
-    pub fn foo(&self) -> Vec<u8> {
-        self.img.to_bytes()
     }
 
     #[allow(dead_code)]
     pub fn benfords_law(&self) -> [u32; 10] {
+        let mut pixel = 0;
         let mut law = [0; 10];
-        for (_, _, pixel) in self.img.pixels() {
-            let val = pixel[0] as u16 + pixel[1] as u16 + pixel[2] as u16 + pixel[3] as u16;
-            let digit = (val % 10) as usize;
-            law[digit] += 1;
+        loop {
+            let p: Vec<&u8> = self.image_bytes.iter().skip(pixel * 4).take(4).collect();
+            if p.len() < 4 {
+                break;
+            }
+
+            // This is actually safe as we are ensuring that there will
+            // always be at least 4 entries in the vector above.
+            unsafe {
+                let val = **p.get_unchecked(0) as u16
+                    + **p.get_unchecked(1) as u16
+                    + **p.get_unchecked(2) as u16
+                    + **p.get_unchecked(3) as u16;
+                let digit = (val % 10) as usize;
+                law[digit] += 1;
+            }
+
+            pixel += 1;
         }
 
         law
@@ -39,21 +54,40 @@ impl ImageWrapper {
 
     /// Return the image's dimension.
     pub fn dimensions(&self) -> (u32, u32) {
-        self.img.dimensions()
+        self.dimensions
     }
 
-    /// Returns a specified number of contiguous pixels, originating from a [`Point`] object.
-    /// This is from the top left of the image.
-    #[allow(dead_code)]
-    pub fn get_contiguous_pixel_by_coord(&self, coord: Point, count: u16) -> Vec<image::Rgba<u8>> {
-        let (w, _) = self.img.dimensions();
-        let start = (coord.y * w + coord.x - 1) as usize;
-        self.img
-            .pixels()
+    /// Returns a vector containing references to the bytes that
+    /// represent the channels of the pixels that fall within the
+    /// specified index range.
+    pub fn get_contiguous_pixel_by_index(&self, pixel: usize, count: u16) -> Vec<&u8> {
+        let start = pixel * 4;
+        let channels = count as usize * 4;
+        let v: Vec<&u8> = self.image_bytes.iter().skip(start).take(channels).collect();
+
+        assert!(v.len() == channels);
+
+        v
+    }
+
+    /// Returns a vector containing mutable references to the bytes that
+    /// represent the channels of the pixels that fall within the
+    /// specified index range.
+    pub fn get_contiguous_pixel_by_index_mut(&mut self, pixel: usize, count: u16) -> Vec<&mut u8> {
+        assert!(!self.read_only);
+
+        let start = pixel * 4;
+        let channels = count as usize * 4;
+        let v: Vec<&mut u8> = self
+            .image_bytes
+            .iter_mut()
             .skip(start)
-            .take(count as usize)
-            .map(|(_, _, img)| img)
-            .collect()
+            .take(channels)
+            .collect();
+
+        assert!(v.len() == channels);
+
+        v
     }
 
     /// Get the format of the image.
@@ -61,21 +95,37 @@ impl ImageWrapper {
         self.format
     }
 
-    /// Return the value of a pixel at (x, y).
-    /// This is from the top left of the image.
-    pub fn get_pixel(&self, x: u32, y: u32) -> image::Rgba<u8> {
-        self.img.get_pixel(x, y)
+    /// Returns a vector containing references to the bytes that
+    /// represent the channels of the pixel at the specified index.
+    pub fn get_pixel(&self, pixel: usize) -> Vec<&u8> {
+        let start = pixel * 4;
+        let v: Vec<&u8> = self.image_bytes.iter().skip(start).take(4).collect();
+
+        // This should never happen as all images are transmuted
+        // into the RGBA8 format... but just in case.
+        assert!(v.len() == 4);
+
+        v
     }
 
-    /// Return the value of a pixel using a [`Point`] object.
-    /// This is from the top left of the image.
-    pub fn get_pixel_by_coord(&self, coord: Point) -> image::Rgba<u8> {
-        self.img.get_pixel(coord.x, coord.y)
+    /// Returns a vector containing mutable references to the bytes that
+    /// represent the channels of the pixel at the specified index.
+    pub fn get_pixel_mut(&mut self, pixel: usize) -> Vec<&mut u8> {
+        assert!(!self.read_only);
+
+        let start = pixel * 4;
+        let v: Vec<&mut u8> = self.image_bytes.iter_mut().skip(start).take(4).collect();
+
+        // This should never happen as all images are transmuted
+        // into the RGBA8 format... but just in case.
+        assert!(v.len() == 4);
+
+        v
     }
 
     /// Calculate the total number of pixels available in the reference image.
     pub fn get_total_pixels(&self) -> u64 {
-        let (w, h) = self.img.dimensions();
+        let (w, h) = self.dimensions;
         w as u64 * h as u64
     }
 
@@ -88,29 +138,15 @@ impl ImageWrapper {
     pub fn load_from_file(file_path: &str) -> Result<ImageWrapper> {
         match image::open(file_path) {
             Ok(img) => {
-                // Convert the internal image into the correct colour type.
-                // This enforced that the output images are the correct type.
-                // TODO: should we simply convert everything that isn't
-                // TODO: RBGA16 into RGBA8 here instead?
-                let i = match img.color() {
-                    ColorType::Rgb8 | ColorType::Rgba8 => {
-                        let rbga = img.into_rgba8();
-                        DynamicImage::ImageRgba8(rbga)
-                    }
-                    ColorType::Rgb16 | ColorType::Rgba16 => {
-                        let rbga = img.into_rgba16();
-                        DynamicImage::ImageRgba16(rbga)
-                    }
-                    _ => {
-                        // We currently do not handle any of the other format types.
-                        return Err(Error::ImageTypeInvalid);
-                    }
-                };
+                let image = DynamicImage::ImageRgba8(img.into_rgba8());
 
+                // For simplicity, we convert everything into the
+                // RGBA8 format.
                 let mut w = ImageWrapper {
-                    img: i,
+                    image_bytes: image.to_bytes(),
                     read_only: false,
                     format: ImageFormat::Png,
+                    dimensions: image.dimensions(),
                 };
 
                 // If we can't identify the image format then we can't work
@@ -120,10 +156,6 @@ impl ImageWrapper {
                 } else {
                     return Err(Error::ImageTypeInvalid);
                 }
-
-                // TODO: remove this stuff.
-                let pineapple = w.foo();
-                log::debug!("{:?}", pineapple);
 
                 Ok(w)
             }
@@ -142,40 +174,6 @@ impl ImageWrapper {
         self.read_only = state;
     }
 
-    /// Calculate the coordinates of a pixel from the pixel index.
-    ///
-    /// # Arguments
-    ///
-    /// * `pixel` - The index of the pixel within the image.
-    ///
-    pub fn pixel_coordinate(&self, pixel: u32) -> Point {
-        let w = self.img.dimensions().0;
-
-        // Note: strictly speaking we don't need to subtract the modulo
-        // when calculating 'y' as we are performing an integer division.
-        // I have none the less done this for the sake of safety and clarity.
-        let x = pixel % w;
-        let y = (pixel - x) / w;
-
-        Point::new(x, y)
-    }
-
-    /// Set the value of the the pixel at (x, y).
-    /// This is from the top left of the image.
-    pub fn put_pixel(&mut self, x: u32, y: u32, pixel: image::Rgba<u8>) -> bool {
-        if !self.read_only {
-            self.img.put_pixel(x, y, pixel);
-        }
-
-        self.read_only
-    }
-
-    /// Set the value of the the pixel using a [`Point`] object.
-    /// This is from the top left of the image.
-    pub fn put_pixel_by_coord(&mut self, coord: Point, pixel: image::Rgba<u8>) -> bool {
-        self.put_pixel(coord.x, coord.y, pixel)
-    }
-
     /// Save the buffer to a file at the specified path.
     ///
     /// # Arguments
@@ -191,22 +189,14 @@ impl ImageWrapper {
             )));
         }
 
-        // TODO: at present the output file type will depend on the
-        // TODO: output path file extension.
-        // TODO: Should this be restricted to being the same as the
-        // TODO: input format?
-        self.img.save(path)
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct Point {
-    pub x: u32,
-    pub y: u32,
-}
-
-impl Point {
-    fn new(x: u32, y: u32) -> Self {
-        Self { x, y }
+        let (w, h) = self.dimensions;
+        image::save_buffer_with_format(
+            path,
+            self.image_bytes.as_slice(),
+            w,
+            h,
+            image::ColorType::Rgba8,
+            self.format,
+        )
     }
 }
