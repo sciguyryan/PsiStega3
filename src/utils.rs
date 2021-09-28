@@ -1,4 +1,5 @@
 use core::fmt::Write;
+use rand::Rng;
 use rand_core::{OsRng, RngCore};
 use std::{ffi::OsStr, path::Path};
 
@@ -32,7 +33,6 @@ pub fn is_bit_set(value: &u8, mask: &u8) -> bool {
 ///
 /// Note: we ignore the error condition from write! as this is
 /// completely internal and is designed for use with debug code.
-#[cfg(debug_assertions)]
 #[allow(unused_must_use)]
 pub fn u8_array_to_hex(arr: &[u8]) -> String {
     let mut str = String::with_capacity(2 * arr.len());
@@ -50,7 +50,6 @@ pub fn u8_array_to_hex(arr: &[u8]) -> String {
 ///
 /// Note: we ignore the error condition from write! as this is
 /// completely internal and is designed for use with debug code.
-#[cfg(debug_assertions)]
 #[allow(unused_must_use, dead_code)]
 pub fn u8_to_binary(byte: &u8) -> String {
     let mut str = String::with_capacity(8);
@@ -113,11 +112,40 @@ pub fn fill_vector_sequential(vec: &mut Vec<usize>) {
 ///
 /// # Arguments
 ///
-/// * `vec` - The vector to be filled with values.
-///
+/// * `vec` - The vector in which the search should take place.
+/// * `value` - The value to be looked up in the vector.
 pub fn find_value_index_in_vec<T>(vec: &Vec<T>, value: &T) -> Option<usize>
 where
     T: PartialEq,
 {
     vec.iter().position(|v| v == value)
+}
+
+/// Fill a u8 vector with randomly generated values.
+///
+/// * `in_vec` - The vector to be filled with u8 values.
+/// * `rng` - The random number generator that will be used to generate the values.
+///
+/// Note: this method is intended to be called on vectors that have a predefined
+/// capacity.
+pub fn fast_fill_vec_random<T>(in_vec: &mut Vec<u8>, rng: &mut T)
+where
+    T: RngCore,
+{
+    const ARRAY_SIZE: usize = 64;
+    let total_needed = in_vec.capacity() - in_vec.len();
+    let iterations = total_needed / ARRAY_SIZE;
+    let remainder = total_needed - (iterations * ARRAY_SIZE);
+
+    let mut vec1: Vec<u8> = Vec::with_capacity(total_needed);
+    for _ in 0..iterations {
+        let mut rand_bytes: [u8; ARRAY_SIZE] = [0; ARRAY_SIZE];
+        rng.fill(&mut rand_bytes);
+        vec1.extend_from_slice(&rand_bytes);
+    }
+
+    let mut vec2: Vec<u8> = (0..remainder).map(|_| rng.gen()).collect();
+
+    in_vec.append(&mut vec1);
+    in_vec.append(&mut vec2);
 }

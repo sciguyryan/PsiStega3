@@ -165,7 +165,7 @@ impl StegaV1 {
         /*
           We convert everything into Little Endian to ensure everything operates
           as expected cross-platform. On a LE platform these will end up being
-          no-op calls and so will not impact performance.
+          no-op calls and so will not impact performance at all.
         */
         let data_le = data.to_le();
         /*let bin = utils::u8_to_binary(&data_le);
@@ -472,11 +472,16 @@ impl DataWrapperV1 {
         self.push_value(xor);
     }
 
-    pub fn fill_empty_values(&mut self) {
+    #[allow(dead_code)]
+    pub fn fill_empty_values_old(&mut self) {
         let mut vec: Vec<u8> = (self.bytes.len()..self.bytes.capacity())
             .map(|_| self.rng.gen())
             .collect();
 
         self.bytes.append(&mut vec);
+    }
+
+    pub fn fill_empty_values(&mut self) {
+        utils::fast_fill_vec_random(&mut self.bytes, &mut self.rng);
     }
 }
