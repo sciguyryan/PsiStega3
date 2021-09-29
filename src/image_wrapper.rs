@@ -30,21 +30,16 @@ impl ImageWrapper {
         let mut pixel = 0;
         let mut law = [0; 10];
         loop {
-            let p: Vec<&u8> = self.image_bytes.iter().skip(pixel * 4).take(4).collect();
+            let start = pixel * 4;
+            let end = start + 4;
+            let p = &self.image_bytes[start..end];
             if p.len() < 4 {
                 break;
             }
 
-            // This is actually safe as we are ensuring that there will
-            // always be at least 4 entries in the vector above.
-            unsafe {
-                let val = **p.get_unchecked(0) as u16
-                    + **p.get_unchecked(1) as u16
-                    + **p.get_unchecked(2) as u16
-                    + **p.get_unchecked(3) as u16;
-                let digit = (val % 10) as usize;
-                law[digit] += 1;
-            }
+            let val = p[0] as u16 + p[1] as u16 + p[2] as u16 + p[3] as u16;
+            let digit = (val % 10) as usize;
+            law[digit] += 1;
 
             pixel += 1;
         }
@@ -57,37 +52,37 @@ impl ImageWrapper {
         self.dimensions
     }
 
-    /// Returns a vector containing references to the bytes that
-    /// represent the channels of the pixels that fall within the
-    /// specified index range.
-    pub fn get_contiguous_pixel_by_index(&self, pixel: usize, count: u16) -> Vec<&u8> {
+    /// Get a reference slice to the channel data for a specified range of pixels.
+    ///
+    /// # Arguments
+    ///
+    /// * `pixel` - The index of the first pixel of data to be returned.
+    /// * `count` - The number of pixels of data to be returned.
+    #[allow(dead_code)]
+    pub fn get_contiguous_pixel_by_index(&self, pixel: usize, count: u16) -> &[u8] {
         let start = pixel * 4;
-        let channels = count as usize * 4;
-        let v: Vec<&u8> = self.image_bytes.iter().skip(start).take(channels).collect();
+        let end = start + (count * 4) as usize;
 
-        assert!(v.len() == channels);
+        let slice = &self.image_bytes[start..end];
+        assert!(slice.len() == count as usize * 4);
 
-        v
+        slice
     }
 
-    /// Returns a vector containing mutable references to the bytes that
-    /// represent the channels of the pixels that fall within the
-    /// specified index range.
-    pub fn get_contiguous_pixel_by_index_mut(&mut self, pixel: usize, count: u16) -> Vec<&mut u8> {
-        assert!(!self.read_only);
-
+    /// Get a mutable reference slice to the channel data for a specified range of pixels.
+    ///
+    /// # Arguments
+    ///
+    /// * `pixel` - The index of the first pixel of data to be returned.
+    /// * `count` - The number of pixels of data to be returned.
+    pub fn get_contiguous_pixel_by_index_mut(&mut self, pixel: usize, count: u16) -> &mut [u8] {
         let start = pixel * 4;
-        let channels = count as usize * 4;
-        let v: Vec<&mut u8> = self
-            .image_bytes
-            .iter_mut()
-            .skip(start)
-            .take(channels)
-            .collect();
+        let end = start + (count as usize * 4);
 
-        assert!(v.len() == channels);
+        let slice = &mut self.image_bytes[start..end];
+        assert!(slice.len() == count as usize * 4);
 
-        v
+        slice
     }
 
     /// Get the format of the image.
@@ -95,35 +90,39 @@ impl ImageWrapper {
         self.format
     }
 
-    /// Returns a vector containing references to the bytes that
-    /// represent the channels of the pixel at the specified index.
-    pub fn get_pixel(&self, pixel: usize) -> Vec<&u8> {
+    /// Get a reference slice to the channel data for a specified pixel.
+    ///
+    /// # Arguments
+    ///
+    /// * `pixel` - The index of the pixel to be returned.
+    #[allow(dead_code)]
+    pub fn get_pixel(&self, pixel: usize) -> &[u8] {
         let start = pixel * 4;
-        let v: Vec<&u8> = self.image_bytes.iter().skip(start).take(4).collect();
+        let end = start + 4;
 
-        // This should never happen as all images are transmuted
-        // into the RGBA8 format... but just in case.
-        assert!(v.len() == 4);
+        let slice = &self.image_bytes[start..end];
+        assert!(slice.len() == 4);
 
-        v
+        slice
     }
 
-    /// Returns a vector containing mutable references to the bytes that
-    /// represent the channels of the pixel at the specified index.
-    pub fn get_pixel_mut(&mut self, pixel: usize) -> Vec<&mut u8> {
-        assert!(!self.read_only);
-
+    /// Get a mutable reference slice to the channel data for a specified pixel.
+    ///
+    /// # Arguments
+    ///
+    /// * `pixel` - The index of the pixel to be returned.
+    #[allow(dead_code)]
+    pub fn get_pixel_mut(&mut self, pixel: usize) -> &mut [u8] {
         let start = pixel * 4;
-        let v: Vec<&mut u8> = self.image_bytes.iter_mut().skip(start).take(4).collect();
+        let end = start + 4;
 
-        // This should never happen as all images are transmuted
-        // into the RGBA8 format... but just in case.
-        assert!(v.len() == 4);
+        let slice = &mut self.image_bytes[start..end];
+        assert!(slice.len() == 4);
 
-        v
+        slice
     }
 
-    /// Calculate the total number of pixels available in the reference image.
+    /// Calculate the total number of pixels available in the image.
     pub fn get_total_pixels(&self) -> u64 {
         let (w, h) = self.dimensions;
         w as u64 * h as u64
@@ -180,7 +179,7 @@ impl ImageWrapper {
     ///
     /// * `path` - The path to which the file should be saved.
     ///
-    /// Note: the file type is derived from the file extension.
+    /// `Note:` the file type is derived from the file extension.
     pub fn save(&self, path: &str) -> image::ImageResult<()> {
         if self.read_only {
             return Err(ImageError::IoError(std::io::Error::new(

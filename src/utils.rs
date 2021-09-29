@@ -12,17 +12,46 @@ pub fn is_little_endian() -> bool {
     val == val2
 }
 
-/// A list of the bitmasks that can be applied to a u8 value.
+/// A list of the bitmasks that can check if a given but is set in a u8 value.
 pub const U8_BIT_MASKS: [u8; 8] = [1, 2, 4, 8, 16, 32, 64, 128];
+
+/// A list of the bitmasks that can be used to set the state of a bit in a u8 value.
+const U8_UNSET_BIT_MASK: [u8; 8] = [
+    255 - 1,
+    255 - 2,
+    255 - 4,
+    255 - 8,
+    255 - 16,
+    255 - 32,
+    255 - 64,
+    255 - 128,
+];
 
 /// Check if a bitmask is set for a given u8 value.
 ///
 /// # Arguments
 ///
 /// * `value` - The value against which the bitmask should be checked.
-/// * `mask` - The bitmask to be applied.
-pub fn is_bit_set(value: &u8, mask: &u8) -> bool {
-    (value & mask) != 0
+/// * `index` - The bit index to be modified
+#[inline]
+pub fn is_bit_set(value: &u8, index: usize) -> bool {
+    (value & U8_BIT_MASKS[index]) != 0
+}
+
+/// Set the state of a bit in a u8 value.
+///
+/// # Arguments
+///
+/// * `value` - The u8 value to be modified.
+/// * `index` - The bit index to be modified.
+/// * `state` - The final state of the bit.
+#[inline]
+pub fn set_bit_state(value: &mut u8, index: usize, state: bool) {
+    if state {
+        *value |= U8_BIT_MASKS[index];
+    } else {
+        *value &= U8_UNSET_BIT_MASK[index];
+    }
 }
 
 /// Convert a u8 slice into its hexadecimal representation.
@@ -128,6 +157,7 @@ where
 ///
 /// Note: this method is intended to be called on vectors that have a predefined
 /// capacity.
+#[inline]
 pub fn fast_fill_vec_random<T>(in_vec: &mut Vec<u8>, rng: &mut T)
 where
     T: RngCore,

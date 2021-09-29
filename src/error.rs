@@ -22,6 +22,8 @@ pub enum Error {
     ImageOpening,
     /// Image is too large.
     ImageTooLarge,
+    /// Image is too small.
+    ImageTooSmall,
     /// The image type is cannot be used for steganography.
     ImageTypeInvalid,
     /// Invalid version number.
@@ -42,7 +44,10 @@ impl fmt::Display for Error {
                 "there is insufficient space to encode the data within the image"
             }
             Error::ImageOpening => "error when attempting to load the specified image",
-            Error::ImageTooLarge => "the specified image is too large",
+            Error::ImageTooLarge => "the specified image is too large (> 10,000 x 10,000 pixels)",
+            Error::ImageTooSmall => {
+                "the specified image is too small (must be larger than 30 x 30 pixels)"
+            }
             Error::ImageTypeInvalid => "invalid image pixel type",
             Error::VersionInvalid => "invalid version number",
         })
