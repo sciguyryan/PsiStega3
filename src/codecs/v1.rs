@@ -487,7 +487,7 @@ impl Codec for StegaV1 {
         // TODO: with random data. It might be safe to just write the
         // TODO: cells that we are interested in here.
         // TODO: that would dramatically improve performance.
-        //data.fill_empty_values();
+        data.fill_empty_values();
 
         // Build the data index to positional cell index map.
         self.build_data_to_cell_index_map(&final_key);
