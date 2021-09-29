@@ -291,12 +291,9 @@ impl StegaV1 {
         log::debug!("Image format: {:?}", fmt);
 
         // We currently only support for the following formats for
-        // encoding: PNG, JPEG, GIF and bitmap images.
+        // encoding: PNG, GIF and bitmap images.
         match fmt {
-            image::ImageFormat::Png
-            | image::ImageFormat::Jpeg
-            | image::ImageFormat::Gif
-            | image::ImageFormat::Bmp => {}
+            image::ImageFormat::Png | image::ImageFormat::Gif | image::ImageFormat::Bmp => {}
             _ => {
                 return Err(Error::ImageTypeInvalid);
             }
@@ -481,6 +478,9 @@ impl Codec for StegaV1 {
         // Push some data.
         data.push_u8_slice_with_xor(&DATA_HEADER);
 
+        let str_bytes = String::from("Hello, world!").into_bytes();
+        data.push_u8_slice_with_xor(&str_bytes);
+
         // We need to fill the other cells with junk data.
         // Luckily we have a helper method to do this for us!
         // TODO: it might not be necessary to fill every unused pixel
@@ -548,9 +548,17 @@ impl Codec for StegaV1 {
             log::debug!("We did not find a valid header! 😢");
         }
 
-        let b = vec![original_byte_1, original_byte_2];
-        let s = String::from_utf8(b).unwrap();
-        println!("s = {}", s);
+        //let b = vec![original_byte_1, original_byte_2];
+        //let s = String::from_utf8(b).unwrap();
+        //println!("s = {}", s);
+
+        let mut bytes: Vec<u8> = Vec::new();
+        for (i, v) in (4..30).step_by(2).enumerate() {
+            let b = self.read_byte_with_xor(v);
+            bytes.push(b);
+        }
+
+        log::debug!("Message = {}", String::from_utf8(bytes).unwrap());
 
         /*
         // Iterate over each byte of data that is encoded.
