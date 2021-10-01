@@ -14,7 +14,7 @@ pub struct ImageWrapper {
     /// The dimensions of the original image.
     dimensions: (u32, u32),
     /// The underlying pixel data type of the image.
-    image_type: ImageDataType,
+    image_type: ImageColourSpace,
 }
 
 impl ImageWrapper {
@@ -24,7 +24,7 @@ impl ImageWrapper {
             read_only: false,
             format: ImageFormat::Png,
             dimensions: (1, 1),
-            image_type: ImageDataType::Bgr(8),
+            image_type: ImageColourSpace::Bgr(8),
         }
     }
 
@@ -148,16 +148,16 @@ impl ImageWrapper {
         match image::open(file_path) {
             Ok(img) => {
                 let image_type = match &img {
-                    ImageLuma8(_) => ImageDataType::Luma(8),
-                    ImageLumaA8(_) => ImageDataType::LumaA(8),
-                    ImageRgb8(_) => ImageDataType::Rgb(8),
-                    ImageRgba8(_) => ImageDataType::RgbA(8),
-                    ImageBgr8(_) => ImageDataType::Bgr(8),
-                    ImageBgra8(_) => ImageDataType::BgrA(8),
-                    ImageLuma16(_) => ImageDataType::Luma(16),
-                    ImageLumaA16(_) => ImageDataType::LumaA(16),
-                    ImageRgb16(_) => ImageDataType::Rgb(16),
-                    ImageRgba16(_) => ImageDataType::RgbA(16),
+                    ImageLuma8(_) => ImageColourSpace::Luma(8),
+                    ImageLumaA8(_) => ImageColourSpace::LumaA(8),
+                    ImageRgb8(_) => ImageColourSpace::Rgb(8),
+                    ImageRgba8(_) => ImageColourSpace::RgbA(8),
+                    ImageBgr8(_) => ImageColourSpace::Bgr(8),
+                    ImageBgra8(_) => ImageColourSpace::BgrA(8),
+                    ImageLuma16(_) => ImageColourSpace::Luma(16),
+                    ImageLumaA16(_) => ImageColourSpace::LumaA(16),
+                    ImageRgb16(_) => ImageColourSpace::Rgb(16),
+                    ImageRgba16(_) => ImageColourSpace::RgbA(16),
                 };
 
                 // For simplicity, we convert everything into the
@@ -226,11 +226,17 @@ impl ImageWrapper {
 }
 
 #[derive(Clone, Debug)]
-pub enum ImageDataType {
+pub enum ImageColourSpace {
+    /// Luma colour-space images.
     Luma(u8),
+    /// Luma colour-space images, with alpha channel.
     LumaA(u8),
+    /// Red, green, blue colour-space images.
     Rgb(u8),
+    /// Red, green, blue colour-space images, with an alpha channel.
     RgbA(u8),
+    // Blue, green, red colour-space images.
     Bgr(u8),
+        // Blue, green, red colour-space images, with an alpha channel.
     BgrA(u8),
 }
