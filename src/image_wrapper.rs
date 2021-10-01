@@ -1,6 +1,6 @@
 use crate::error::{Error, Result};
 
-use image::{DynamicImage, GenericImageView, ImageError, ImageFormat};
+use image::{ColorType, DynamicImage, GenericImageView, ImageError, ImageFormat};
 
 #[derive(Clone, Debug)]
 pub struct ImageWrapper {
@@ -13,8 +13,8 @@ pub struct ImageWrapper {
     format: ImageFormat,
     /// The dimensions of the original image.
     dimensions: (u32, u32),
-    /// The underlying pixel data type of the image.
-    image_type: ImageColourSpace,
+    /// The underlying pixel colour type of the image.
+    colour_type: ColorType,
 }
 
 impl ImageWrapper {
@@ -24,30 +24,8 @@ impl ImageWrapper {
             read_only: false,
             format: ImageFormat::Png,
             dimensions: (1, 1),
-            image_type: ImageColourSpace::Bgr(8),
+            colour_type: ColorType::Rgb8,
         }
-    }
-
-    #[allow(dead_code)]
-    pub fn benfords_law(&self) -> [u32; 10] {
-        let mut pixel = 0;
-        let mut law = [0; 10];
-        loop {
-            let start = pixel * 4;
-            let end = start + 4;
-            let p = &self.image_bytes[start..end];
-            if p.len() < 4 {
-                break;
-            }
-
-            let val = p[0] as u16 + p[1] as u16 + p[2] as u16 + p[3] as u16;
-            let digit = (val % 10) as usize;
-            law[digit] += 1;
-
-            pixel += 1;
-        }
-
-        law
     }
 
     /// Return the image's dimension.
@@ -55,35 +33,37 @@ impl ImageWrapper {
         self.dimensions
     }
 
-    /// Get a reference slice to the channel data for a specified range of pixels.
+    /// Get a reference slice for a specified number of subcells of data, starting from a given start index.
     ///
     /// # Arguments
     ///
-    /// * `pixel` - The index of the first pixel of data to be returned.
-    /// * `count` - The number of pixels of data to be returned.
+    /// * `start_index` - The starting index of the subcell to be returned.
+    /// * `count` - The number of subcells of data to be returned.
+    ///
+    /// `Note:` A subcell is space required to store a nibble of data.
     ///
     #[allow(dead_code)]
-    pub fn get_contiguous_pixel_by_index(&self, pixel: usize, count: u16) -> &[u8] {
-        let start = pixel * 4;
+    pub fn get_subcells_from_index(&self, start_index: usize, count: u16) -> &[u8] {
+        let start = start_index * 4;
         let end = start + (count * 4) as usize;
-
         let slice = &self.image_bytes[start..end];
         assert!(slice.len() == count as usize * 4);
 
         slice
     }
 
-    /// Get a mutable reference slice to the channel data for a specified range of pixels.
+    /// Get a mutable reference slice for a specified number of subcells of data, starting from a given start index.
     ///
     /// # Arguments
     ///
-    /// * `pixel` - The index of the first pixel of data to be returned.
-    /// * `count` - The number of pixels of data to be returned.
+    /// * `start_index` - The starting index of the subcell to be returned.
+    /// * `count` - The number of subcells of data to be returned.
     ///
-    pub fn get_contiguous_pixel_by_index_mut(&mut self, pixel: usize, count: u16) -> &mut [u8] {
-        let start = pixel * 4;
+    /// `Note:` A subcell is space required to store a nibble of data.
+    ///
+    pub fn get_subcells_from_index_mut(&mut self, start_index: usize, count: u16) -> &mut [u8] {
+        let start = start_index * 4;
         let end = start + (count as usize * 4);
-
         let slice = &mut self.image_bytes[start..end];
         assert!(slice.len() == count as usize * 4);
 
@@ -95,44 +75,45 @@ impl ImageWrapper {
         self.format
     }
 
-    /// Get a reference slice to the channel data for a specified pixel.
+    /// Get a reference slice for a specified subcell of data, starting from a given start index.
     ///
     /// # Arguments
     ///
-    /// * `pixel` - The index of the pixel to be returned.
+    /// * `start_index` - The starting index of the subcell to be returned.
+    ///
+    /// `Note:` A subcell is space required to store a nibble of data.
     ///
     #[allow(dead_code)]
-    pub fn get_pixel(&self, pixel: usize) -> &[u8] {
-        let start = pixel * 4;
+    pub fn get_subcell(&self, start_index: usize) -> &[u8] {
+        let start = start_index * 4;
         let end = start + 4;
-
         let slice = &self.image_bytes[start..end];
         assert!(slice.len() == 4);
 
         slice
     }
 
-    /// Get a mutable reference slice to the channel data for a specified pixel.
+    /// Get a mutable reference slice for a specified subcell of data, starting from a given start index.
     ///
     /// # Arguments
     ///
-    /// * `pixel` - The index of the pixel to be returned.
+    /// * `start_index` - The starting index of the subcell to be returned.
+    ///
+    /// `Note:` A subcell is space required to store a nibble of data.
     ///
     #[allow(dead_code)]
-    pub fn get_pixel_mut(&mut self, pixel: usize) -> &mut [u8] {
-        let start = pixel * 4;
+    pub fn get_subcell_mut(&mut self, start_index: usize) -> &mut [u8] {
+        let start = start_index * 4;
         let end = start + 4;
-
         let slice = &mut self.image_bytes[start..end];
         assert!(slice.len() == 4);
 
         slice
     }
 
-    /// Calculate the total number of pixels available in the image.
-    pub fn get_total_pixels(&self) -> u64 {
-        let (w, h) = self.dimensions;
-        w as u64 * h as u64
+    /// Calculate the total number of channels available in the image.
+    pub fn get_total_channels(&self) -> u64 {
+        self.image_bytes.len() as u64
     }
 
     /// Attempt to load an image from a file.
@@ -145,46 +126,47 @@ impl ImageWrapper {
         // Just to make the lines a little shorter.
         use DynamicImage::*;
 
-        match image::open(file_path) {
-            Ok(img) => {
-                let image_type = match &img {
-                    ImageLuma8(_) => ImageColourSpace::Luma(8),
-                    ImageLumaA8(_) => ImageColourSpace::LumaA(8),
-                    ImageRgb8(_) => ImageColourSpace::Rgb(8),
-                    ImageRgba8(_) => ImageColourSpace::RgbA(8),
-                    ImageBgr8(_) => ImageColourSpace::Bgr(8),
-                    ImageBgra8(_) => ImageColourSpace::BgrA(8),
-                    ImageLuma16(_) => ImageColourSpace::Luma(16),
-                    ImageLumaA16(_) => ImageColourSpace::LumaA(16),
-                    ImageRgb16(_) => ImageColourSpace::Rgb(16),
-                    ImageRgba16(_) => ImageColourSpace::RgbA(16),
-                };
-
-                // For simplicity, we convert everything into the
-                // RGBA8 format.
-                let image = ImageRgba8(img.into_rgba8());
-
-                let mut w = ImageWrapper {
-                    image_bytes: image.to_bytes(),
-                    read_only: false,
-                    format: ImageFormat::Png,
-                    dimensions: image.dimensions(),
-                    image_type,
-                };
-
-                // If we can't identify the image format then we cannot
-                // go any further here.
-                if let Ok(f) = ImageFormat::from_path(file_path) {
-                    w.format = f;
-                } else {
-                    return Err(Error::ImageTypeInvalid);
-                }
-
-                Ok(w)
-            }
+        let image = match image::open(file_path) {
+            Ok(img) => img,
             // TODO: add more granularity to the errors here.
-            Err(_) => Err(Error::ImageOpening),
+            Err(_) => return Err(Error::ImageOpening),
+        };
+
+        let colour_type = match &image {
+            ImageLuma8(_) => ColorType::L8,
+            ImageLumaA8(_) => ColorType::La8,
+            ImageRgb8(_) => ColorType::Rgb8,
+            ImageRgba8(_) => ColorType::Rgba8,
+            ImageBgr8(_) => ColorType::Bgr8,
+            ImageBgra8(_) => ColorType::Bgra8,
+            ImageLuma16(_) => ColorType::L16,
+            ImageLumaA16(_) => ColorType::La16,
+            ImageRgb16(_) => ColorType::Rgb16,
+            ImageRgba16(_) => ColorType::Rgb16,
+        };
+
+        // For simplicity, we convert everything into the
+        // RGBA8 format.
+        let dimensions = image.dimensions();
+
+        let mut w = ImageWrapper {
+            // TODO: Swap this to using as_bytes?
+            image_bytes: image.into_bytes(),
+            read_only: false,
+            format: ImageFormat::Png,
+            dimensions,
+            colour_type,
+        };
+
+        // If we can't identify the image format then we cannot
+        // go any further here.
+        if let Ok(f) = ImageFormat::from_path(file_path) {
+            w.format = f;
+        } else {
+            return Err(Error::ImageTypeInvalid);
         }
+
+        Ok(w)
     }
 
     /// Set the read-only state of the image wrapper.
@@ -219,24 +201,8 @@ impl ImageWrapper {
             self.image_bytes.as_slice(),
             w,
             h,
-            image::ColorType::Rgba8,
+            self.colour_type,
             self.format,
         )
     }
-}
-
-#[derive(Clone, Debug)]
-pub enum ImageColourSpace {
-    /// Luma colour-space images.
-    Luma(u8),
-    /// Luma colour-space images, with alpha channel.
-    LumaA(u8),
-    /// Red, green, blue colour-space images.
-    Rgb(u8),
-    /// Red, green, blue colour-space images, with an alpha channel.
-    RgbA(u8),
-    // Blue, green, red colour-space images.
-    Bgr(u8),
-        // Blue, green, red colour-space images, with an alpha channel.
-    BgrA(u8),
 }
