@@ -142,24 +142,27 @@ impl ImageWrapper {
     /// * `file_path` - The path to the image file.
     ///
     pub fn load_from_file(file_path: &str) -> Result<ImageWrapper> {
+        // Just to make the lines a little shorter.
+        use DynamicImage::*;
+
         match image::open(file_path) {
             Ok(img) => {
                 let image_type = match img {
-                    DynamicImage::ImageLuma8(_) => ImageDataType::Luma(8),
-                    DynamicImage::ImageLumaA8(_) => ImageDataType::LumaA(8),
-                    DynamicImage::ImageRgb8(_) => ImageDataType::Rgb(8),
-                    DynamicImage::ImageRgba8(_) => ImageDataType::RgbA(8),
-                    DynamicImage::ImageBgr8(_) => ImageDataType::Bgr(8),
-                    DynamicImage::ImageBgra8(_) => ImageDataType::BgrA(8),
-                    DynamicImage::ImageLuma16(_) => ImageDataType::Luma(16),
-                    DynamicImage::ImageLumaA16(_) => ImageDataType::LumaA(16),
-                    DynamicImage::ImageRgb16(_) => ImageDataType::Rgb(16),
-                    DynamicImage::ImageRgba16(_) => ImageDataType::RgbA(16),
+                    ImageLuma8(_) => ImageDataType::Luma(8),
+                    ImageLumaA8(_) => ImageDataType::LumaA(8),
+                    ImageRgb8(_) => ImageDataType::Rgb(8),
+                    ImageRgba8(_) => ImageDataType::RgbA(8),
+                    ImageBgr8(_) => ImageDataType::Bgr(8),
+                    ImageBgra8(_) => ImageDataType::BgrA(8),
+                    ImageLuma16(_) => ImageDataType::Luma(16),
+                    ImageLumaA16(_) => ImageDataType::LumaA(16),
+                    ImageRgb16(_) => ImageDataType::Rgb(16),
+                    ImageRgba16(_) => ImageDataType::RgbA(16),
                 };
 
                 // For simplicity, we convert everything into the
                 // RGBA8 format.
-                let image = DynamicImage::ImageRgba8(img.into_rgba8());
+                let image = ImageRgba8(img.into_rgba8());
 
                 let mut w = ImageWrapper {
                     image_bytes: image.to_bytes(),
@@ -169,8 +172,8 @@ impl ImageWrapper {
                     image_type,
                 };
 
-                // If we can't identify the image format then we can't work
-                // with this file format.
+                // If we can't identify the image format then we cannot
+                // go any further here.
                 if let Ok(f) = ImageFormat::from_path(file_path) {
                     w.format = f;
                 } else {
