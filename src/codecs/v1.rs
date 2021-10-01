@@ -66,6 +66,7 @@ impl StegaV1 {
     /// # Arguments
     ///
     /// * `key` - The key that should be used to seed the random number generator.
+    ///
     fn build_data_to_cell_index_map(&mut self, key: &str) {
         /*
           When seeding our RNG, we can't use the Argon2 hash for the
@@ -106,6 +107,7 @@ impl StegaV1 {
     ///
     /// Note: this method will panic if the data cell is not present in the map.
     /// In practice this should never occur.
+    ///
     fn get_data_cell_index(&self, data_index: &usize) -> usize {
         match self.data_cell_map.get(data_index) {
             Some(index) => *index,
@@ -157,6 +159,7 @@ impl StegaV1 {
     ///
     /// Note: this method will read 2 pixels worth of data, starting at
     /// the specified index.
+    ///
     fn read_byte(&self, cell_start: usize) -> u8 {
         // Extract the bytes representing the pixel channels
         // from the images.
@@ -206,6 +209,7 @@ impl StegaV1 {
     ///
     /// Note: this method will read 2 pixels worth of data, starting at
     /// the specified index.
+    ///
     fn read_byte_by_data_index(&self, data_index: usize) -> u8 {
         // First we will look up the cell to which this
         // byte of data will be encoded within the image.
@@ -230,6 +234,7 @@ impl StegaV1 {
     ///
     /// Note: this method will read 4 pixels worth of data: 2 for the
     /// XOR-encoded byte an 2 more for the XOR value byte.
+    ///
     fn read_byte_with_xor(&self, data_index: usize) -> u8 {
         let b1 = self.read_byte_by_data_index(data_index);
         let b2 = self.read_byte_by_data_index(data_index + 1);
@@ -375,6 +380,7 @@ impl StegaV1 {
     ///
     /// * `data` - The byte value to be written to the image.
     /// * `data_index` - The index of the data byte to be written.
+    ///
     fn write_byte_by_data_index(&mut self, data: &u8, data_index: usize) {
         // First we will look up the cell to which this
         // byte of data will be encoded within the image.

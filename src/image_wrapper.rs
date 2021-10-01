@@ -13,6 +13,8 @@ pub struct ImageWrapper {
     format: ImageFormat,
     /// The dimensions of the original image.
     dimensions: (u32, u32),
+    /// The underlying pixel data type of the image.
+    image_type: ImageDataType,
 }
 
 impl ImageWrapper {
@@ -22,6 +24,7 @@ impl ImageWrapper {
             read_only: false,
             format: ImageFormat::Png,
             dimensions: (1, 1),
+            image_type: ImageDataType::Bgr(8),
         }
     }
 
@@ -58,6 +61,7 @@ impl ImageWrapper {
     ///
     /// * `pixel` - The index of the first pixel of data to be returned.
     /// * `count` - The number of pixels of data to be returned.
+    ///
     #[allow(dead_code)]
     pub fn get_contiguous_pixel_by_index(&self, pixel: usize, count: u16) -> &[u8] {
         let start = pixel * 4;
@@ -75,6 +79,7 @@ impl ImageWrapper {
     ///
     /// * `pixel` - The index of the first pixel of data to be returned.
     /// * `count` - The number of pixels of data to be returned.
+    ///
     pub fn get_contiguous_pixel_by_index_mut(&mut self, pixel: usize, count: u16) -> &mut [u8] {
         let start = pixel * 4;
         let end = start + (count as usize * 4);
@@ -95,6 +100,7 @@ impl ImageWrapper {
     /// # Arguments
     ///
     /// * `pixel` - The index of the pixel to be returned.
+    ///
     #[allow(dead_code)]
     pub fn get_pixel(&self, pixel: usize) -> &[u8] {
         let start = pixel * 4;
@@ -111,6 +117,7 @@ impl ImageWrapper {
     /// # Arguments
     ///
     /// * `pixel` - The index of the pixel to be returned.
+    ///
     #[allow(dead_code)]
     pub fn get_pixel_mut(&mut self, pixel: usize) -> &mut [u8] {
         let start = pixel * 4;
@@ -137,15 +144,29 @@ impl ImageWrapper {
     pub fn load_from_file(file_path: &str) -> Result<ImageWrapper> {
         match image::open(file_path) {
             Ok(img) => {
-                let image = DynamicImage::ImageRgba8(img.into_rgba8());
+                let image_type = match img {
+                    DynamicImage::ImageLuma8(_) => ImageDataType::Luma(8),
+                    DynamicImage::ImageLumaA8(_) => ImageDataType::LumaA(8),
+                    DynamicImage::ImageRgb8(_) => ImageDataType::Rgb(8),
+                    DynamicImage::ImageRgba8(_) => ImageDataType::RgbA(8),
+                    DynamicImage::ImageBgr8(_) => ImageDataType::Bgr(8),
+                    DynamicImage::ImageBgra8(_) => ImageDataType::BgrA(8),
+                    DynamicImage::ImageLuma16(_) => ImageDataType::Luma(16),
+                    DynamicImage::ImageLumaA16(_) => ImageDataType::LumaA(16),
+                    DynamicImage::ImageRgb16(_) => ImageDataType::Rgb(16),
+                    DynamicImage::ImageRgba16(_) => ImageDataType::RgbA(16),
+                };
 
                 // For simplicity, we convert everything into the
                 // RGBA8 format.
+                let image = DynamicImage::ImageRgba8(img.into_rgba8());
+
                 let mut w = ImageWrapper {
                     image_bytes: image.to_bytes(),
                     read_only: false,
                     format: ImageFormat::Png,
                     dimensions: image.dimensions(),
+                    image_type,
                 };
 
                 // If we can't identify the image format then we can't work
@@ -180,6 +201,7 @@ impl ImageWrapper {
     /// * `path` - The path to which the file should be saved.
     ///
     /// `Note:` the file type is derived from the file extension.
+    ///
     pub fn save(&self, path: &str) -> image::ImageResult<()> {
         if self.read_only {
             return Err(ImageError::IoError(std::io::Error::new(
@@ -198,4 +220,14 @@ impl ImageWrapper {
             self.format,
         )
     }
+}
+
+#[derive(Clone, Debug)]
+pub enum ImageDataType {
+    Luma(u8),
+    LumaA(u8),
+    Rgb(u8),
+    RgbA(u8),
+    Bgr(u8),
+    BgrA(u8),
 }
