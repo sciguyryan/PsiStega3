@@ -147,7 +147,7 @@ impl ImageWrapper {
 
         match image::open(file_path) {
             Ok(img) => {
-                let image_type = match img {
+                let image_type = match &img {
                     ImageLuma8(_) => ImageDataType::Luma(8),
                     ImageLumaA8(_) => ImageDataType::LumaA(8),
                     ImageRgb8(_) => ImageDataType::Rgb(8),

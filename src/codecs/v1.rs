@@ -292,13 +292,15 @@ impl StegaV1 {
     /// * `image` - A reference to a [`ImageWrapper`] object.
     ///
     fn validate_image(image: &ImageWrapper) -> Result<()> {
+        use image::ImageFormat::*;
+
         let fmt = image.get_image_format();
         log::debug!("Image format: {:?}", fmt);
 
         // We currently only support for the following formats for
         // encoding: PNG, GIF and bitmap images.
         match fmt {
-            image::ImageFormat::Png | image::ImageFormat::Gif | image::ImageFormat::Bmp => {}
+            Png | Gif | Bmp => {}
             _ => {
                 return Err(Error::ImageTypeInvalid);
             }
@@ -349,13 +351,13 @@ impl StegaV1 {
           as expected cross-platform. On a LE platform these will end up being
           no-op calls and so will not impact performance at all.
         */
-        let data_le = data.to_le();
+        let data = data.to_le();
         let bytes = self
             .encoded_img
             .get_contiguous_pixel_by_index_mut(cell_start, 2);
 
         for (i, b) in bytes.iter_mut().enumerate() {
-            if utils::is_bit_set(&data_le, i) {
+            if utils::is_bit_set(&data, i) {
                 // If the value is 0 then the new value will always be 1.
                 // If the value is 255 then the new value will always be 254.
                 // Otherwise the value will be randomly assigned to be ±1.
