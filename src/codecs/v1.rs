@@ -233,33 +233,6 @@ impl StegaV1 {
         self.read_u8(ref_img, enc_img, cell_start_index)
     }
 
-    /// Read 2 bytes of data: the XOR'ed value and the XOR value.
-    ///
-    /// # Arguments
-    ///
-    /// * `ref_img` - A reference to the [`ImageWrapper`] that holds the reference image.
-    /// * `enc_img` - A reference to the [`ImageWrapper`] that holds the encoded image.
-    /// * `data_index` - The index of the data byte to be read.
-    ///
-    /// # Returns
-    ///
-    /// * A byte of data, the result of the XOR operation on the two decoded bytes.
-    ///
-    /// Note: this method will read 16 channels worth of data: 8 for the
-    /// XOR-encoded byte an 8 more for the XOR value byte.
-    ///
-    fn read_u8_with_xor(
-        &self,
-        ref_img: &ImageWrapper,
-        enc_img: &ImageWrapper,
-        data_index: usize,
-    ) -> u8 {
-        let b1 = self.read_u8_by_index(ref_img, enc_img, data_index);
-        let b2 = self.read_u8_by_index(ref_img, enc_img, data_index + 1);
-
-        u8::from_le(b1) ^ u8::from_le(b2)
-    }
-
     /// Create a seedable RNG object with a defined 32-byte seed.
     ///
     /// # Arguments
@@ -468,7 +441,7 @@ impl Codec for StegaV1 {
         }
 
         // This will hold all of the data to be encoded.
-        let mut data = DataEncodeWrapper::new(total_cells as usize);
+        let mut data = DataEncoder::new(total_cells as usize);
 
         // Push the version indicator.
         data.push_u8_with_xor(VERSION);
@@ -476,9 +449,6 @@ impl Codec for StegaV1 {
         // Put the total number of cipher-text cells needed.
         log::debug!("total_ct_cells = {}", total_ct_cells);
         data.push_u32_with_xor(total_ct_cells as u32);
-
-        //let str_bytes = String::from("Hello, world!").into_bytes();
-        //data.push_u8_slice_with_xor(&str_bytes);
 
         // We need to fill the other cells with junk data.
         // Luckily we have a helper method to do this for us!
@@ -495,9 +465,9 @@ impl Codec for StegaV1 {
         final_key.clear();
 
         // Iterate over each byte of data to be encoded.
-        for (i, byte) in data.bytes.iter().enumerate() {
+        data.bytes.iter().enumerate().for_each(|(i, byte)| {
             self.write_u8_by_data_index(&mut img, byte, i);
-        }
+        });
 
         // Save the modified image.
         let r = img.save(encoded_path);
@@ -531,17 +501,18 @@ impl Codec for StegaV1 {
 
         // This will hold all of the decoded data.
         let total_cells = StegaV1::get_total_cells(&enc_image) as usize;
-        let mut data = DataDecodeWrapper::new(total_cells);
+        let mut data = DataDecoder::new(total_cells);
 
         // Read every byte of data from the images.
-        for i in 0..total_cells {
+        (0..total_cells).for_each(|i| {
             let val = self.read_u8_by_index(&ref_image, &enc_image, i);
             data.push_u8(val);
-        }
+        });
 
-        // Convert the XOR byte pairs into the original bytes.
+        // Decode the XOR-encoded values back into the original values.
         data.decode();
 
+        // The first byte should be the version indicator.
         if data.pop_u8() == VERSION {
             log::debug!("We found a valid version indicator! 🙂");
         } else {
@@ -549,6 +520,8 @@ impl Codec for StegaV1 {
             return Err(Error::VersionInvalid);
         }
 
+        // The next set of bytes should be the total number of cipher-text bytes
+        // cells that have been encoded.
         let total_ct_cells = data.pop_u32();
         log::debug!("total_ct_cells = {}", total_ct_cells);
 
@@ -601,12 +574,12 @@ impl Default for StegaV1 {
 ///
 /// Note: this structure handles little Endian conversions
 /// internally.
-pub struct DataDecodeWrapper {
+pub struct DataDecoder {
     bytes: VecDeque<u8>,
     decoded: bool,
 }
 
-impl DataDecodeWrapper {
+impl DataDecoder {
     pub fn new(capacity: usize) -> Self {
         Self {
             bytes: VecDeque::with_capacity(capacity),
@@ -619,7 +592,7 @@ impl DataDecodeWrapper {
         let new_len = self.bytes.len() / 2;
         let mut new_vec: VecDeque<u8> = VecDeque::with_capacity(new_len);
 
-        for _ in 0..new_len {
+        (0..new_len).for_each(|_| {
             // We know that there will always be a byte here.
             let xor_value = self.bytes.pop_front().unwrap();
             let xor = self.bytes.pop_front();
@@ -635,7 +608,7 @@ impl DataDecodeWrapper {
             } else {
                 new_vec.push_back(xor_value);
             }
-        }
+        });
 
         self.bytes = new_vec;
         self.decoded = true;
@@ -662,9 +635,9 @@ impl DataDecodeWrapper {
         assert!(self.decoded);
 
         let mut bytes = [0u8; 4];
-        for i in &mut bytes {
+        bytes.iter_mut().for_each(|i| {
             *i = self.pop_u8();
-        }
+        });
 
         u32::from_le_bytes(bytes)
     }
@@ -687,12 +660,12 @@ impl DataDecodeWrapper {
 ///
 /// Note: this structure handles little Endian conversions
 /// internally.
-pub struct DataEncodeWrapper {
+pub struct DataEncoder {
     bytes: Vec<u8>,
     rng: ChaCha20Rng,
 }
 
-impl DataEncodeWrapper {
+impl DataEncoder {
     pub fn new(capacity: usize) -> Self {
         Self {
             bytes: Vec::with_capacity(capacity),
@@ -736,9 +709,9 @@ impl DataEncodeWrapper {
     /// `Note:` the 1st byte will be the XOR-encoded data and the second will be the XOR value byte.
     ///
     pub fn push_u8_slice_with_xor(&mut self, slice: &[u8]) {
-        for b in slice {
+        slice.iter().for_each(|b| {
             self.push_u8_with_xor(*b);
-        }
+        });
     }
 
     /// Push a XOR-encoded byte into the byte list.
