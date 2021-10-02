@@ -1,8 +1,5 @@
 use crate::error::Result;
 
-/// This is the the magic byte header (Ψ).
-pub const DATA_HEADER: [u8; 2] = [0xCE, 0xA8];
-
 pub trait Codec {
     /// Encrypt and encode the information into a target image.
     ///

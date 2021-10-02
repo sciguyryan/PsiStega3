@@ -1,4 +1,4 @@
-use crate::codecs::codec::{Codec, DATA_HEADER};
+use crate::codecs::codec::Codec;
 use crate::error::{Error, Result};
 use crate::hashers::*;
 use crate::image_wrapper::ImageWrapper;
@@ -466,7 +466,7 @@ impl Codec for StegaV1 {
             .expect("encryption failure!"); // NOTE: handle this error to avoid panics!
 
         /*
-          2 cells for the magic bytes header, 1 cell for the version,
+          1 cell for the version,
           4 cells for the total number of stored cipher-text cells,
           the salt, the nonce and the cipher-text itself.
 
@@ -479,8 +479,7 @@ impl Codec for StegaV1 {
           Note: a cell represents the space in which a byte of data can be encoded.
         */
         let total_ct_cells = ciphertext_bytes.len();
-        let total_cells_needed = (DATA_HEADER.len() as u64 /* magic bytes header */
-            + 1 /* version (u8) */
+        let total_cells_needed = (1 /* version (u8) */
             + 4 /* the total number of stored cipher-text cells (u32) */
             + 12 /* the length of the Argon2 salt (u8) */
             + 12 /* the length of the AES-256 nonce (u8) */
@@ -508,7 +507,7 @@ impl Codec for StegaV1 {
         let total_cells_needed = total_cells_needed as u32;
 
         // Push some data.
-        data.push_u8_slice_with_xor(&DATA_HEADER);
+        data.push_u8_with_xor(VERSION);
 
         let str_bytes = String::from("Hello, world!").into_bytes();
         data.push_u8_slice_with_xor(&str_bytes);
@@ -519,7 +518,7 @@ impl Codec for StegaV1 {
         // TODO: with random data. It might be safe to just write the
         // TODO: cells that we are interested in here.
         // TODO: that would dramatically improve performance.
-        data.fill_empty_values();
+        data.fill_empty_bytes();
 
         // Build the data index to positional cell index map.
         self.build_data_to_cell_index_map(&final_key);
@@ -562,23 +561,20 @@ impl Codec for StegaV1 {
         // Build the data index to positional cell index map.
         self.build_data_to_cell_index_map(&final_key);
 
-        let original_byte_1 = self.read_u8_with_xor(0);
-        log::debug!("byte 1: {}", original_byte_1);
+        let version_byte = self.read_u8_with_xor(0);
+        log::debug!("version_byte: {}", version_byte);
+
+        if version_byte == VERSION {
+            log::debug!("We found a valid version indicator! 🙂");
+        } else {
+            log::debug!("We did not find a version indicator! 😢");
+            return Err(Error::VersionInvalid);
+        }
 
         // Remember, index 1 is the XOR byte, so the next byte of data
         // will be read from cells 2 and 3.
-        let original_byte_2 = self.read_u8_with_xor(2);
-        log::debug!("byte 2: {}", original_byte_2);
-
-        let header = [original_byte_1, original_byte_2];
-        if header == DATA_HEADER {
-            log::debug!("We found a valid header! 🙂");
-        } else {
-            log::debug!("We did not find a valid header! 😢");
-        }
-
         let mut bytes: Vec<u8> = Vec::new();
-        for (i, v) in (4..30).step_by(2).enumerate() {
+        for (i, v) in (2..28).step_by(2).enumerate() {
             let b = self.read_u8_with_xor(v);
             bytes.push(b);
         }
@@ -639,7 +635,7 @@ impl DataEncodeWrapper {
 
     #[deprecated]
     #[allow(dead_code)]
-    pub fn fill_empty_values_old(&mut self) {
+    pub fn fill_empty_bytes_old(&mut self) {
         let mut vec: Vec<u8> = (self.bytes.len()..self.bytes.capacity())
             .map(|_| self.rng.gen())
             .collect();
@@ -648,7 +644,7 @@ impl DataEncodeWrapper {
     }
 
     /// Fill any unused slots in the byte list with random byte data.
-    pub fn fill_empty_values(&mut self) {
+    pub fn fill_empty_bytes(&mut self) {
         utils::fast_fill_vec_random(&mut self.bytes, &mut self.rng);
     }
 
@@ -657,7 +653,7 @@ impl DataEncodeWrapper {
     /// # Arguments
     ///
     /// * `value` - The byte to be stored.
-    pub fn push_value(&mut self, value: u8) {
+    pub fn push_u8(&mut self, value: u8) {
         self.bytes.push(value);
     }
 
@@ -672,7 +668,7 @@ impl DataEncodeWrapper {
     /// `Note:` the 1st byte will be the XOR-encoded data and the second will be the XOR value byte.
     pub fn push_u8_slice_with_xor(&mut self, slice: &[u8]) {
         for b in slice {
-            self.push_value_with_xor(*b);
+            self.push_u8_with_xor(*b);
         }
     }
 
@@ -685,10 +681,10 @@ impl DataEncodeWrapper {
     /// `Note:` every byte added will add `2` bytes to the internal byte list.
     ///
     /// `Note:` the 1st byte will be the XOR-encoded data and the second will be the XOR value byte.
-    pub fn push_value_with_xor(&mut self, value: u8) {
+    pub fn push_u8_with_xor(&mut self, value: u8) {
         let xor = self.rng.gen::<u8>().to_le();
         let xor_data = value.to_le() ^ xor;
-        self.push_value(xor_data);
-        self.push_value(xor);
+        self.push_u8(xor_data);
+        self.push_u8(xor);
     }
 }
