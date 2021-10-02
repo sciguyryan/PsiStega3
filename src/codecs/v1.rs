@@ -452,8 +452,8 @@ impl Codec for StegaV1 {
             + 12 /* the length of the Argon2 salt (u8) */
             + 12 /* the length of the AES-256 nonce (u8) */
             + total_ct_cells as u64)
-            * 2; /* 2 pixels per cell */
-        log::debug!("Cells needed to encode data: {}", total_cells_needed);
+            * 2; /* 2 subcells per cell */
+        log::debug!("total_cells_needed: {}", total_cells_needed);
 
         // In total we can never store more than 0xffffffff bytes of data to ensure that the values
         // of usize never exceeds the maximum value of the u32 type.
@@ -531,7 +531,7 @@ impl Codec for StegaV1 {
 
         // This will hold all of the decoded data.
         let total_cells = StegaV1::get_total_cells(&enc_image) as usize;
-        let mut data = DataDecodeWrapper::new(total_cells as usize);
+        let mut data = DataDecodeWrapper::new(total_cells);
 
         // Read every byte of data from the images.
         for i in 0..total_cells {
@@ -539,57 +539,38 @@ impl Codec for StegaV1 {
             data.push_u8(val);
         }
 
-        if data.pop_u8_with_xor() == VERSION {
+        // Convert the XOR byte pairs into the original bytes.
+        data.decode();
+
+        if data.pop_u8() == VERSION {
             log::debug!("We found a valid version indicator! 🙂");
         } else {
             log::debug!("We did not find a version indicator! 😢");
             return Err(Error::VersionInvalid);
         }
 
-        log::debug!("total_ct_cells = {}", data.pop_u32_with_xor());
+        let total_ct_cells = data.pop_u32();
+        log::debug!("total_ct_cells = {}", total_ct_cells);
 
-        return Ok("");
+        let total_cells_needed = (1 /* version (u8) */
+            + 4 /* the total number of stored cipher-text cells (u32) */
+            + 12 /* the length of the Argon2 salt (u8) */
+            + 12 /* the length of the AES-256 nonce (u8) */
+            + total_ct_cells as u64)
+            * 2; /* 2 subcells per cell */
+        log::debug!("total_cells_needed = {}", total_cells_needed);
 
-        //log::debug!("bytes[0..2] = {:?}", &data.bytes[..100]);
-
-        /*let mut data_index = 0;
-        let version_byte = self.read_u8_with_xor(data_index);
-        log::debug!("version_byte: {}", version_byte);
-
-        if version_byte == VERSION {
-            log::debug!("We found a valid version indicator! 🙂");
-        } else {
-            log::debug!("We did not find a version indicator! 😢");
-            return Err(Error::VersionInvalid);
+        // In total we can never store more than 0xffffffff bytes of data to ensure that the values
+        // of usize never exceeds the maximum value of the u32 type.
+        if total_cells_needed > 0xffffffff {
+            return Err(Error::DataTooLarge);
         }
 
-        data_index += 2;
-
-        // Remember, index 1 is the XOR byte, so the next byte of data
-        // will be read from cells 2 and 3.
-        let version_byte = self.read_u32_with_xor(data_index);
-
-        data_index += 8;
-
-        return Ok("");
-
-        let mut bytes: Vec<u8> = Vec::new();
-        for (i, v) in (2..28).step_by(2).enumerate() {
-            let b = self.read_u8_with_xor(v);
-            bytes.push(b);
+        // Do we have enough space within the image to encode the data?
+        let total_cells = StegaV1::get_total_cells(&enc_image);
+        if total_cells_needed > total_cells {
+            return Err(Error::ImageInsufficientSpace);
         }
-
-        log::debug!("Message = {}", String::from_utf8(bytes).unwrap());*/
-
-        /*
-        // Iterate over each byte of data that is encoded.
-        for (i, byte) in data.bytes.iter().enumerate() {
-            //log::debug!("Searching for data index = {}.", di);
-            // Locate the index of the vector that contains the
-            // index of this data byte.
-            let cell_id = self.get_data_cell_index(&i);
-            self.write_byte_by_cell_id(byte, cell_id);
-        }*/
 
         /*let plaintext_bytes = cipher.decrypt(nonce, ciphertext_bytes.as_ref())
             .expect("decryption failure!"); // NOTE: handle this error to avoid panics!
@@ -621,56 +602,68 @@ impl Default for StegaV1 {
 /// Note: this structure handles little Endian conversions
 /// internally.
 pub struct DataDecodeWrapper {
-    pub bytes: VecDeque<u8>,
+    bytes: VecDeque<u8>,
+    decoded: bool,
 }
 
 impl DataDecodeWrapper {
     pub fn new(capacity: usize) -> Self {
         Self {
             bytes: VecDeque::with_capacity(capacity),
+            decoded: false,
         }
     }
 
-    /// Pop a raw byte from the front of the byte list.
+    /// Iterates through each XOR'ed byte and XOR pair, adds the value produced by applying the XOR operation on them to the internal list.
+    fn decode(&mut self) {
+        let new_len = self.bytes.len() / 2;
+        let mut new_vec: VecDeque<u8> = VecDeque::with_capacity(new_len);
+
+        for _ in 0..new_len {
+            // We know that there will always be a byte here.
+            let xor_value = self.bytes.pop_front().unwrap();
+            let xor = self.bytes.pop_front();
+
+            /*
+              If the number of cells is not divisible by 2 then
+                the final cell will not have a corresponding XOR cell.
+              In that case the final cell value will be the XOR value.
+              This is fine as it will contain no useful data in any event.
+            */
+            if let Some(x) = xor {
+                new_vec.push_back(xor_value ^ x);
+            } else {
+                new_vec.push_back(xor_value);
+            }
+        }
+
+        self.bytes = new_vec;
+        self.decoded = true;
+    }
+
+    /// Pop a XOR-decoded byte from the front of the byte list.
+    ///
     fn pop_u8(&mut self) -> u8 {
-        // In theory we should never hit a case where this would return None.
-        // If it does then something has gone very wrong.
+        assert!(self.decoded);
+
+        // We do not need to worry about decoding these values from little
+        // Endian because that will have been done when loading the values.
         self.bytes.pop_front().unwrap()
     }
 
-    /// Pop a XOR decoded byte from the front of the byte list.
+    /// Pop a XOR-decoded u32 from the front of the byte list.
     ///
-    /// `Note:` This method will pop `2` bytes from the internal vector.
+    /// `Note:` This method will pop `4` bytes from the internal vector.
     ///
-    fn pop_u8_with_xor(&mut self) -> u8 {
-        let xor_data = self.pop_u8();
-        let xor = self.pop_u8();
-
-        xor_data ^ xor
-    }
-
-    /// Pop a raw u32 from the byte list.
+    /// `Note:` this method will automatically convert the returned value
+    /// from little Endian to the correct bit-format.
+    ///
     fn pop_u32(&mut self) -> u32 {
-        let mut bytes = [0u8; 4];
+        assert!(self.decoded);
 
+        let mut bytes = [0u8; 4];
         for i in &mut bytes {
             *i = self.pop_u8();
-        }
-
-        u32::from_le_bytes(bytes)
-    }
-
-    /// Pop a XOR decoded u32 from the front of the byte list.
-    ///
-    /// `Note:` This method will pop `8` bytes from the internal vector.
-    ///
-    fn pop_u32_with_xor(&mut self) -> u32 {
-        let mut bytes = [0u8; 4];
-
-        for i in &mut bytes {
-            let xor_data = self.pop_u8();
-            let xor = self.pop_u8();
-            *i = xor_data ^ xor;
         }
 
         u32::from_le_bytes(bytes)
@@ -680,10 +673,13 @@ impl DataDecodeWrapper {
     ///
     /// # Arguments
     ///
-    /// * `value` - The byte to be stored
+    /// * `value` - The byte to be stored in the internal vector.
+    ///
+    /// `Note:` this method will automatically convert the returned value
+    /// from little Endian to the appropriate bit-format.
     ///
     fn push_u8(&mut self, value: u8) {
-        self.bytes.push_back(value);
+        self.bytes.push_back(u8::from_le(value));
     }
 }
 

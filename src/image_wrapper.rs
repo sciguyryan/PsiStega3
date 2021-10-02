@@ -18,16 +18,6 @@ pub struct ImageWrapper {
 }
 
 impl ImageWrapper {
-    pub fn new() -> Self {
-        Self {
-            image_bytes: Vec::with_capacity(1),
-            read_only: false,
-            format: ImageFormat::Png,
-            dimensions: (1, 1),
-            colour_type: ColorType::Rgb8,
-        }
-    }
-
     /// Return the image's dimension.
     pub fn dimensions(&self) -> (u32, u32) {
         self.dimensions
