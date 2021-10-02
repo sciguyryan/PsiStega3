@@ -4,8 +4,6 @@ use image::{ColorType, DynamicImage, GenericImageView, ImageError, ImageFormat};
 
 #[derive(Clone, Debug)]
 pub struct ImageWrapper {
-    /// The `DynamicImage` instance that is wrapped.
-    //img: DynamicImage,
     image_bytes: Vec<u8>,
     /// A boolean indicating whether modifications to the image should be permitted.
     read_only: bool,
@@ -32,7 +30,6 @@ impl ImageWrapper {
     ///
     /// `Note:` A subcell is space required to store a nibble of data.
     ///
-    #[allow(dead_code)]
     pub fn get_subcells_from_index(&self, start_index: usize, count: u16) -> &[u8] {
         let start = start_index * 4;
         let end = start + (count * 4) as usize;
@@ -138,7 +135,6 @@ impl ImageWrapper {
         let dimensions = image.dimensions();
 
         let mut w = ImageWrapper {
-            // TODO: Swap this to using as_bytes?
             image_bytes: image.into_bytes(),
             read_only: false,
             format: ImageFormat::Png,
@@ -184,13 +180,6 @@ impl ImageWrapper {
         }
 
         let (w, h) = self.dimensions;
-        image::save_buffer_with_format(
-            path,
-            self.image_bytes.as_slice(),
-            w,
-            h,
-            self.colour_type,
-            self.format,
-        )
+        image::save_buffer_with_format(path, &self.image_bytes, w, h, self.colour_type, self.format)
     }
 }
