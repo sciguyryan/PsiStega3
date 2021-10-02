@@ -135,8 +135,6 @@ impl ImageWrapper {
             ImageRgba16(_) => ColorType::Rgb16,
         };
 
-        // For simplicity, we convert everything into the
-        // RGBA8 format.
         let dimensions = image.dimensions();
 
         let mut w = ImageWrapper {
