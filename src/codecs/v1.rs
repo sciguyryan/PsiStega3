@@ -11,7 +11,7 @@ use aes_gcm::{
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
 use std::collections::{HashMap, VecDeque};
-use std::convert::TryFrom;
+use std::convert::{TryFrom, TryInto};
 
 // TODO - decide if we should use AES-GCM for AES-GCM-SIV. Slightly decreased performance, increased resistance to certain types of attack.
 // TODO - this might be something that is used in a v2 algorithm if not implemented here.
@@ -32,7 +32,7 @@ const MIN_CELLS: u64 = 312;
 const VERSION: u8 = 1;
 
 #[derive(Debug)]
-pub struct StegaV1 {
+pub(crate) struct StegaV1 {
     /// The data index to cell ID map.
     data_cell_map: HashMap<usize, usize>,
     /// The read-only reference image.
@@ -57,13 +57,12 @@ impl StegaV1 {
     ///
     fn build_data_to_cell_index_map(&mut self, img: &ImageWrapper, key: &str) {
         /*
-          When seeding our RNG, we can't use the Argon2 hash for the
-          positional random number generator as we will need the salt,
-          which will not be available when initially reading the data
-          back from the file.
+          When we can't use the Argon2 hash for the positional RNG
+          as we will need the salt, which will not be available when
+          initially reading the data from the file.
         */
-        let hash_bytes = Hashers::sha3_256_string(key);
-        let mut rng: ChaCha20Rng = StegaV1::u8_slice_to_seed(&hash_bytes);
+        let bytes = Hashers::sha3_256_string(key);
+        let mut rng: ChaCha20Rng = StegaV1::u8_slice_to_seed(&bytes);
 
         // It doesn't matter if we call this on reference or encoded
         // as they will have the same value at this point.
@@ -80,8 +79,8 @@ impl StegaV1 {
         // Add the randomized entries to our cell map.
         self.data_cell_map = HashMap::with_capacity(total_cells);
         let mut i = 0;
-        while let Some(cell_id) = cell_list.pop() {
-            self.data_cell_map.insert(i, cell_id);
+        while let Some(id) = cell_list.pop() {
+            self.data_cell_map.insert(i, id);
             i += 1;
         }
     }
@@ -147,10 +146,7 @@ impl StegaV1 {
     ///
     fn load_image(file_path: &str, read_only: bool) -> Result<ImageWrapper> {
         // See: https://github.com/image-rs/image
-        let mut img = ImageWrapper::load_from_file(file_path)?;
-
-        // Assign the image to the struct field.
-        img.set_read_only(read_only);
+        let img = ImageWrapper::load_from_file(file_path, read_only)?;
 
         // Validate if the image file can be used.
         StegaV1::validate_image(&img)?;
@@ -172,30 +168,26 @@ impl StegaV1 {
     fn read_u8(&self, ref_img: &ImageWrapper, enc_img: &ImageWrapper, cell_start: usize) -> u8 {
         // Extract the bytes representing the pixel channels
         // from the images.
-        let ref_bytes = ref_img.get_subcells_from_index(cell_start, 2);
-        let enc_bytes = enc_img.get_subcells_from_index(cell_start, 2);
+        let r_bytes = ref_img.get_subcells_from_index(cell_start, 2);
+        let e_bytes = enc_img.get_subcells_from_index(cell_start, 2);
 
         let mut byte = 0u8;
         for i in 0..8 {
             // This block is actually safe because we verify that the loaded
             // image has a total number of channels that is divisible by 8.
-            let ref_c: &u8;
-            let enc_c: &u8;
+            let ref_b: &u8;
+            let enc_b: &u8;
             unsafe {
                 // Get the value of the channel for the reference and encoded
                 // images.
-                ref_c = ref_bytes.get_unchecked(i);
-                enc_c = enc_bytes.get_unchecked(i);
+                ref_b = r_bytes.get_unchecked(i);
+                enc_b = e_bytes.get_unchecked(i);
             }
-
-            // This is the absolute difference between the channels
-            // of the two images.
-            let diff = (*ref_c as i32 - *enc_c as i32).abs();
 
             // We do not need to clear the bit if the variance is
             // zero as the bits are zero by default.
             // This allows us to slightly optimise things here.
-            if diff == 0 {
+            if (*ref_b as i32 - *enc_b as i32).abs() == 0 {
                 continue;
             }
 
@@ -216,6 +208,7 @@ impl StegaV1 {
     /// Note: this method will read 8 channels worth of data, starting at
     /// the specified index.
     ///
+    #[inline]
     fn read_u8_by_index(
         &self,
         ref_img: &ImageWrapper,
@@ -352,6 +345,7 @@ impl StegaV1 {
     /// * `data` - The byte value to be written to the image.
     /// * `data_index` - The index of the data byte to be written.
     ///
+    #[inline]
     fn write_u8_by_data_index(&mut self, img: &mut ImageWrapper, data: &u8, data_index: usize) {
         // First we will look up the cell to which this
         // byte of data will be encoded within the image.
@@ -369,27 +363,37 @@ impl Codec for StegaV1 {
     fn encode(
         &mut self,
         original_path: &str,
-        key: &str,
+        key: String,
         plaintext: &str,
         encoded_path: &str,
     ) -> Result<()> {
         log::debug!("Loading image file @ {}", &original_path);
-        // We do not actually need to load the reference image at all here,
-        // which will save some memory.
+        // We don't need to hold a separate reference image instance here.
         let mut img = StegaV1::load_image(original_path, false)?;
 
         let file_hash_bytes = Hashers::sha3_512_file(original_path);
         let file_hash_string = utils::u8_array_to_hex(&file_hash_bytes);
 
-        // The key for the encryption is the SHA3-512 hash of the input image file
-        // combined with the plaintext key.
-        let mut final_key: String = key.to_string();
-        final_key.push_str(&file_hash_string);
+        /*
+          The key for the encryption is the SHA3-512 hash of the input image file
+          combined with the plaintext key.
+
+          It intentional that we take ownership of the key as it will be
+          cleared from memory when this function exits.
+        */
+        let mut composite_key = key;
+        composite_key.push_str(&file_hash_string);
 
         // Generate a random salt for the Argon2 hashing function.
         let salt_bytes: [u8; 12] = utils::secure_random_bytes();
-        let key_bytes_full =
-            Hashers::argon2_string(&final_key, salt_bytes, M_COST, P_COST, T_COST, ARGON_VER)?;
+        let key_bytes_full = Hashers::argon2_string(
+            &composite_key,
+            salt_bytes,
+            M_COST,
+            P_COST,
+            T_COST,
+            ARGON_VER,
+        )?;
 
         // The AES-256 key is 256-bits (32 bytes) in length.
         let key_bytes = &key_bytes_full[..32];
@@ -412,10 +416,10 @@ impl Codec for StegaV1 {
           the salt, the nonce and the cipher-text itself.
 
           This value must be doubled as we need 2 cells per byte:
-          one for the XOR encoded byte and one for the XOR byte.
+            one for the XOR encoded byte and one for the XOR byte.
 
           This value must be held within a 64-bit value to prevent integer overflow
-          from occurring in the when running this on a 32-bit architecture.
+            from occurring in the when running this on a 32-bit architecture.
 
           Note: a cell represents the space in which a byte of data can be encoded.
         */
@@ -424,12 +428,13 @@ impl Codec for StegaV1 {
             + 4 /* the total number of stored cipher-text cells (u32) */
             + 12 /* the length of the Argon2 salt (u8) */
             + 12 /* the length of the AES-256 nonce (u8) */
-            + total_ct_cells as u64)
+            + ciphertext_bytes.len() as u64)
             * 2; /* 2 subcells per cell */
         log::debug!("total_cells_needed: {}", total_cells_needed);
 
-        // In total we can never store more than 0xffffffff bytes of data to ensure that the values
-        // of usize never exceeds the maximum value of the u32 type.
+        // In total we can never store more than 0xffffffff bytes of data to
+        // ensure that the values of usize never exceeds the maximum value
+        // of the u32 type.
         if total_cells_needed > 0xffffffff {
             return Err(Error::DataTooLarge);
         }
@@ -443,15 +448,23 @@ impl Codec for StegaV1 {
         // This will hold all of the data to be encoded.
         let mut data = DataEncoder::new(total_cells as usize);
 
-        // Push the version indicator.
+        // Add the version indicator.
         data.push_u8_with_xor(VERSION);
 
-        // Put the total number of cipher-text cells needed.
-        log::debug!("total_ct_cells = {}", total_ct_cells);
+        // Add the total number of cipher-text cells needed.
         data.push_u32_with_xor(total_ct_cells as u32);
 
-        // We need to fill the other cells with junk data.
-        // Luckily we have a helper method to do this for us!
+        // Add the Argon2 salt bytes.
+        data.push_u8_slice_with_xor(&salt_bytes);
+
+        // Add the AES nonce bytes.
+        data.push_u8_slice_with_xor(&nonce_bytes);
+
+        // Add the cipher-text bytes.
+        data.push_u8_slice_with_xor(&ciphertext_bytes);
+
+        // Fill all of the unused cells with junk random data.
+        // Yes, I know... I'm evil.
         // TODO: it might not be necessary to fill every unused pixel
         // TODO: with random data. It might be safe to just write the
         // TODO: cells that we are interested in here.
@@ -459,10 +472,10 @@ impl Codec for StegaV1 {
         data.fill_empty_bytes();
 
         // Build the data index to positional cell index map.
-        self.build_data_to_cell_index_map(&img, &final_key);
+        self.build_data_to_cell_index_map(&img, &composite_key);
 
         // Clear the key since it is no longer needed.
-        final_key.clear();
+        composite_key.clear();
 
         // Iterate over each byte of data to be encoded.
         data.bytes.iter().enumerate().for_each(|(i, byte)| {
@@ -470,13 +483,15 @@ impl Codec for StegaV1 {
         });
 
         // Save the modified image.
-        let r = img.save(encoded_path);
-        log::debug!("result = {:?}", r);
+        if let Err(e) = img.save(encoded_path) {
+            // TODO: Add more granularity here.
+            return Err(Error::ImageSaving);
+        }
 
         Ok(())
     }
 
-    fn decode(&mut self, original_path: &str, key: &str, encoded_path: &str) -> Result<&str> {
+    fn decode(&mut self, original_path: &str, key: String, encoded_path: &str) -> Result<String> {
         log::debug!("Loading (reference) image file @ {}", &original_path);
         let ref_image = StegaV1::load_image(original_path, true)?;
 
@@ -493,11 +508,13 @@ impl Codec for StegaV1 {
 
         // The key for the encryption is the SHA3-512 hash of the input image file
         // combined with the plaintext key.
-        let mut final_key: String = key.to_string();
-        final_key.push_str(&file_hash_string);
+        // It intentional that we take ownership of the key as it will be
+        // cleared from memory when this function exits.
+        let mut composite_key = key;
+        composite_key.push_str(&file_hash_string);
 
         // Build the data index to positional cell index map.
-        self.build_data_to_cell_index_map(&enc_image, &final_key);
+        self.build_data_to_cell_index_map(&enc_image, &composite_key);
 
         // This will hold all of the decoded data.
         let total_cells = StegaV1::get_total_cells(&enc_image) as usize;
@@ -523,7 +540,6 @@ impl Codec for StegaV1 {
         // The next set of bytes should be the total number of cipher-text bytes
         // cells that have been encoded.
         let total_ct_cells = data.pop_u32();
-        log::debug!("total_ct_cells = {}", total_ct_cells);
 
         let total_cells_needed = (1 /* version (u8) */
             + 4 /* the total number of stored cipher-text cells (u32) */
@@ -531,7 +547,6 @@ impl Codec for StegaV1 {
             + 12 /* the length of the AES-256 nonce (u8) */
             + total_ct_cells as u64)
             * 2; /* 2 subcells per cell */
-        log::debug!("total_cells_needed = {}", total_cells_needed);
 
         // In total we can never store more than 0xffffffff bytes of data to ensure that the values
         // of usize never exceeds the maximum value of the u32 type.
@@ -539,28 +554,56 @@ impl Codec for StegaV1 {
             return Err(Error::DataTooLarge);
         }
 
-        // Do we have enough space within the image to encode the data?
+        // Do we have enough space within the image to decode the data?
         let total_cells = StegaV1::get_total_cells(&enc_image);
         if total_cells_needed > total_cells {
             return Err(Error::ImageInsufficientSpace);
         }
 
-        /*let plaintext_bytes = cipher.decrypt(nonce, ciphertext_bytes.as_ref())
-            .expect("decryption failure!"); // NOTE: handle this error to avoid panics!
+        // Note: we can unwrap these values as we will assert if the
+        //   length of the vector is not equal to the length we requested.
+        // Next, we get the Argon2 salt bytes.
+        let salt_bytes: [u8; 12] = data.pop_vec(12).try_into().unwrap();
 
-        log::debug!("Plaintext bytes: {:?}", plaintext_bytes);
+        // Next, we get the AES nonce bytes.
+        let nonce_bytes: [u8; 12] = data.pop_vec(12).try_into().unwrap();
 
-        // This code will not be kept around, so we can safely use clone here.
-        let plaintext_str = match String::from_utf8(plaintext_bytes.clone()) {
-            Ok(s) => s,
-            Err(e) => panic!("Invalid UTF-8 sequence: {}", e),
+        // Add the cipher-text bytes.
+        let ciphertext_bytes = data.pop_vec(total_ct_cells as usize);
+
+        // Now we can compute the Argon2 hash.
+        let key_bytes_full = Hashers::argon2_string(
+            &composite_key,
+            salt_bytes,
+            M_COST,
+            P_COST,
+            T_COST,
+            ARGON_VER,
+        )?;
+
+        // The AES-256 key is 256-bits (32 bytes) in length.
+        let key_bytes = &key_bytes_full[..32];
+
+        let key = Key::from_slice(key_bytes);
+        let cipher = Aes256Gcm::new(key);
+        let nonce = Nonce::from_slice(&nonce_bytes);
+
+        /*
+          Attempt to decrypt the cipher-text bytes with
+          the extracted information.
+
+          This will fail if the information is invalid, which could occurring
+          because of changes to either of the image files, or simply because
+          no encrypted information was held inside the images.
+        */
+        let plaintext_bytes = match cipher.decrypt(nonce, ciphertext_bytes.as_ref()) {
+            Ok(v) => v,
+            Err(_) => {
+                return Err(Error::DecryptionFailed);
+            }
         };
 
-        log::debug!("Plaintext string: {}", plaintext_str);*/
-
-        // Todo: clear final key after decryption completed.
-
-        Ok("")
+        Ok(String::from_utf8_lossy(&plaintext_bytes).to_string())
     }
 }
 
@@ -574,28 +617,25 @@ impl Default for StegaV1 {
 ///
 /// Note: this structure handles little Endian conversions
 /// internally.
-pub struct DataDecoder {
+struct DataDecoder {
+    xor_bytes: VecDeque<u8>,
     bytes: VecDeque<u8>,
-    decoded: bool,
 }
 
 impl DataDecoder {
     pub fn new(capacity: usize) -> Self {
         Self {
-            bytes: VecDeque::with_capacity(capacity),
-            decoded: false,
+            xor_bytes: VecDeque::with_capacity(capacity),
+            bytes: VecDeque::with_capacity(capacity / 2),
         }
     }
 
     /// Iterates through each XOR'ed byte and XOR pair, adds the value produced by applying the XOR operation on them to the internal list.
     fn decode(&mut self) {
-        let new_len = self.bytes.len() / 2;
-        let mut new_vec: VecDeque<u8> = VecDeque::with_capacity(new_len);
-
-        (0..new_len).for_each(|_| {
-            // We know that there will always be a byte here.
-            let xor_value = self.bytes.pop_front().unwrap();
-            let xor = self.bytes.pop_front();
+        let len = self.xor_bytes.len() / 2;
+        (0..len).for_each(|_| {
+            let xor_value = self.xor_bytes.pop_front().unwrap();
+            let xor = self.xor_bytes.pop_front();
 
             /*
               If the number of cells is not divisible by 2 then
@@ -604,20 +644,18 @@ impl DataDecoder {
               This is fine as it will contain no useful data in any event.
             */
             if let Some(x) = xor {
-                new_vec.push_back(xor_value ^ x);
+                self.bytes.push_back(xor_value ^ x);
             } else {
-                new_vec.push_back(xor_value);
+                self.bytes.push_back(xor_value);
             }
         });
 
-        self.bytes = new_vec;
-        self.decoded = true;
+        self.xor_bytes.shrink_to_fit();
     }
 
     /// Pop a XOR-decoded byte from the front of the byte list.
-    ///
     fn pop_u8(&mut self) -> u8 {
-        assert!(self.decoded);
+        assert!(!self.bytes.is_empty());
 
         // We do not need to worry about decoding these values from little
         // Endian because that will have been done when loading the values.
@@ -632,7 +670,7 @@ impl DataDecoder {
     /// from little Endian to the correct bit-format.
     ///
     fn pop_u32(&mut self) -> u32 {
-        assert!(self.decoded);
+        assert!(self.bytes.len() >= 4);
 
         let mut bytes = [0u8; 4];
         bytes.iter_mut().for_each(|i| {
@@ -640,6 +678,21 @@ impl DataDecoder {
         });
 
         u32::from_le_bytes(bytes)
+    }
+
+    /// Pop a XOR-decoded vector of bytes front of the byte list.
+    ///
+    /// `Note:` This method will pop `2` bytes from the internal vector for each byte returned.
+    ///
+    fn pop_vec(&mut self, count: usize) -> Vec<u8> {
+        assert!(self.bytes.len() >= count);
+
+        let mut bytes = Vec::with_capacity(count);
+        (0..count).for_each(|_| {
+            bytes.push(self.pop_u8());
+        });
+
+        bytes
     }
 
     /// Add a byte of data into the byte list.
@@ -652,7 +705,7 @@ impl DataDecoder {
     /// from little Endian to the appropriate bit-format.
     ///
     fn push_u8(&mut self, value: u8) {
-        self.bytes.push_back(u8::from_le(value));
+        self.xor_bytes.push_back(u8::from_le(value));
     }
 }
 
@@ -660,7 +713,7 @@ impl DataDecoder {
 ///
 /// Note: this structure handles little Endian conversions
 /// internally.
-pub struct DataEncoder {
+struct DataEncoder {
     bytes: Vec<u8>,
     rng: ChaCha20Rng,
 }

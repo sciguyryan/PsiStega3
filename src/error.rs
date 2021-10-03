@@ -12,6 +12,8 @@ pub enum Error {
     Argon2NoHash,
     /// The total amount number of cells exceeds the maximum.
     DataTooLarge,
+    /// The data could not be decrypted; the data was invalid.
+    DecryptionFailed,
     /// Invalid image dimensions.
     ImageDimensionsInvalid,
     /// The dimensions of the encoded image are different than those of the reference image.
@@ -20,6 +22,8 @@ pub enum Error {
     ImageInsufficientSpace,
     /// There was an error when attempting to load an image file.
     ImageOpening,
+    /// There was an error when attempting to save an image file.
+    ImageSaving,
     /// Image is too large.
     ImageTooLarge,
     /// Image is too small.
@@ -36,6 +40,7 @@ impl fmt::Display for Error {
             Error::Argon2InvalidParams => "one or more invalid parameters passed to argon2 hasher",
             Error::Argon2NoHash => "error creating an Argon2 hash with the specified parameters",
             Error::DataTooLarge => "the data is too large",
+            Error::DecryptionFailed => "the data could not be decrypted; the data was invalid.",
             Error::ImageDimensionsInvalid => {
                 "invalid image dimensions: the total number of pixels must be divisible by two"
             }
@@ -44,6 +49,7 @@ impl fmt::Display for Error {
                 "there is insufficient space to encode the data within the image"
             }
             Error::ImageOpening => "error when attempting to load the specified image",
+            Error::ImageSaving => "error when attempting to save the specified image",
             Error::ImageTooLarge => "the specified image is too large (> 10,000 x 10,000 pixels)",
             Error::ImageTooSmall => {
                 "the specified image is too small (must be larger than 30 x 30 pixels)"

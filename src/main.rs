@@ -15,8 +15,8 @@ fn main() {
     SimpleLogger::new().init().unwrap();
 
     // These strings are obviously just for testing.
-    let input = "This is a test.";
-    let password = "banana123";
+    let input = String::from("This is a test.");
+    let password = String::from("banana123");
 
     let input_img_path = "D:\\GitHub\\PsiStega3\\test-images\\b.png";
     let output_img_path = "D:\\GitHub\\PsiStega3\\test-images\\b2.png";
@@ -25,10 +25,13 @@ fn main() {
 
     log::debug!("{}", "-".repeat(32));
     log::debug!("Starting encoding...");
-    let e = stega.encode(input_img_path, password, input, output_img_path);
+    let e = stega.encode(input_img_path, password.clone(), &input, output_img_path);
+    log::debug!("Result = {:?}", e);
     log::debug!("{}", "-".repeat(32));
     log::debug!("Starting decoding...");
-    let s = stega.decode(input_img_path, password, output_img_path);
+    let d = stega.decode(input_img_path, password, output_img_path);
+    log::debug!("Result = {:?}", d);
+    log::debug!("{}", "-".repeat(32));
 
     // Wait for user input.
     let mut input_string = String::new();

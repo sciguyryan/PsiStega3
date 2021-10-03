@@ -1,9 +1,9 @@
 use crate::error::{Error, Result};
 
-use image::{ColorType, DynamicImage, GenericImageView, ImageError, ImageFormat};
+use image::{ColorType, DynamicImage, GenericImageView, ImageFormat};
 
 #[derive(Clone, Debug)]
-pub struct ImageWrapper {
+pub(crate) struct ImageWrapper {
     image_bytes: Vec<u8>,
     /// A boolean indicating whether modifications to the image should be permitted.
     read_only: bool,
@@ -33,10 +33,9 @@ impl ImageWrapper {
     pub fn get_subcells_from_index(&self, start_index: usize, count: u16) -> &[u8] {
         let start = start_index * 4;
         let end = start + (count * 4) as usize;
-        let slice = &self.image_bytes[start..end];
-        assert!(slice.len() == count as usize * 4);
 
-        slice
+        assert!(end <= self.image_bytes.len());
+        &self.image_bytes[start..end]
     }
 
     /// Get a mutable reference slice for a specified number of subcells of data, starting from a given start index.
@@ -51,10 +50,9 @@ impl ImageWrapper {
     pub fn get_subcells_from_index_mut(&mut self, start_index: usize, count: u16) -> &mut [u8] {
         let start = start_index * 4;
         let end = start + (count as usize * 4);
-        let slice = &mut self.image_bytes[start..end];
-        assert!(slice.len() == count as usize * 4);
 
-        slice
+        assert!(end <= self.image_bytes.len());
+        &mut self.image_bytes[start..end]
     }
 
     /// Get the format of the image.
@@ -74,10 +72,9 @@ impl ImageWrapper {
     pub fn get_subcell(&self, start_index: usize) -> &[u8] {
         let start = start_index * 4;
         let end = start + 4;
-        let slice = &self.image_bytes[start..end];
-        assert!(slice.len() == 4);
 
-        slice
+        assert!(end <= self.image_bytes.len());
+        &self.image_bytes[start..end]
     }
 
     /// Get a mutable reference slice for a specified subcell of data, starting from a given start index.
@@ -92,10 +89,9 @@ impl ImageWrapper {
     pub fn get_subcell_mut(&mut self, start_index: usize) -> &mut [u8] {
         let start = start_index * 4;
         let end = start + 4;
-        let slice = &mut self.image_bytes[start..end];
-        assert!(slice.len() == 4);
 
-        slice
+        assert!(end <= self.image_bytes.len());
+        &mut self.image_bytes[start..end]
     }
 
     /// Calculate the total number of channels available in the image.
@@ -109,7 +105,7 @@ impl ImageWrapper {
     ///
     /// * `file_path` - The path to the image file.
     ///
-    pub fn load_from_file(file_path: &str) -> Result<ImageWrapper> {
+    pub fn load_from_file(file_path: &str, read_only: bool) -> Result<ImageWrapper> {
         // Just to make the lines a little shorter.
         use DynamicImage::*;
 
@@ -136,7 +132,7 @@ impl ImageWrapper {
 
         let mut w = ImageWrapper {
             image_bytes: image.into_bytes(),
-            read_only: false,
+            read_only,
             format: ImageFormat::Png,
             dimensions,
             colour_type,
@@ -153,16 +149,6 @@ impl ImageWrapper {
         Ok(w)
     }
 
-    /// Set the read-only state of the image wrapper.
-    ///
-    /// # Arguments
-    ///
-    /// * `state` - The new read-only state of the wrapper.
-    ///
-    pub fn set_read_only(&mut self, state: bool) {
-        self.read_only = state;
-    }
-
     /// Save the buffer to a file at the specified path.
     ///
     /// # Arguments
@@ -172,12 +158,7 @@ impl ImageWrapper {
     /// `Note:` the file type is derived from the file extension.
     ///
     pub fn save(&self, path: &str) -> image::ImageResult<()> {
-        if self.read_only {
-            return Err(ImageError::IoError(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                "attempted to write to a read-only file",
-            )));
-        }
+        assert!(!self.read_only, "attempted to write to a read-only file");
 
         let (w, h) = self.dimensions;
         image::save_buffer_with_format(path, &self.image_bytes, w, h, self.colour_type, self.format)
