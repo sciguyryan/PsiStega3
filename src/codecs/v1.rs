@@ -405,10 +405,21 @@ impl Codec for StegaV1 {
         let nonce_bytes: [u8; 12] = utils::secure_random_bytes();
         let nonce = Nonce::from_slice(&nonce_bytes);
 
-        let plaintext_bytes = plaintext.as_bytes();
-        let ciphertext_bytes = cipher
-            .encrypt(nonce, plaintext_bytes.as_ref())
-            .expect("encryption failure!"); // NOTE: handle this error to avoid panics!
+        /*
+          Attempt to decrypt the cipher-text bytes with
+          the extracted information.
+
+          This will fail if the information is invalid, which could occurring
+          because of changes to either of the image files, or simply because
+          no encrypted information was held inside the images.
+        */
+        let pt_bytes = plaintext.as_bytes();
+        let ct_bytes = match cipher.encrypt(nonce, pt_bytes.as_ref()) {
+            Ok(v) => v,
+            Err(_) => {
+                return Err(Error::EncryptionFailed);
+            }
+        };
 
         /*
           1 cell for the version,
@@ -423,12 +434,12 @@ impl Codec for StegaV1 {
 
           Note: a cell represents the space in which a byte of data can be encoded.
         */
-        let total_ct_cells = ciphertext_bytes.len();
+        let total_ct_cells = ct_bytes.len();
         let total_cells_needed = (1 /* version (u8) */
             + 4 /* the total number of stored cipher-text cells (u32) */
             + 12 /* the length of the Argon2 salt (u8) */
             + 12 /* the length of the AES-256 nonce (u8) */
-            + ciphertext_bytes.len() as u64)
+            + ct_bytes.len() as u64)
             * 2; /* 2 subcells per cell */
         log::debug!("total_cells_needed: {}", total_cells_needed);
 
@@ -461,7 +472,7 @@ impl Codec for StegaV1 {
         data.push_u8_slice_with_xor(&nonce_bytes);
 
         // Add the cipher-text bytes.
-        data.push_u8_slice_with_xor(&ciphertext_bytes);
+        data.push_u8_slice_with_xor(&ct_bytes);
 
         // Fill all of the unused cells with junk random data.
         // Yes, I know... I'm evil.
@@ -569,7 +580,7 @@ impl Codec for StegaV1 {
         let nonce_bytes: [u8; 12] = data.pop_vec(12).try_into().unwrap();
 
         // Add the cipher-text bytes.
-        let ciphertext_bytes = data.pop_vec(total_ct_cells as usize);
+        let ct_bytes = data.pop_vec(total_ct_cells as usize);
 
         // Now we can compute the Argon2 hash.
         let key_bytes_full = Hashers::argon2_string(
@@ -596,14 +607,14 @@ impl Codec for StegaV1 {
           because of changes to either of the image files, or simply because
           no encrypted information was held inside the images.
         */
-        let plaintext_bytes = match cipher.decrypt(nonce, ciphertext_bytes.as_ref()) {
+        let pt_bytes = match cipher.decrypt(nonce, ct_bytes.as_ref()) {
             Ok(v) => v,
             Err(_) => {
                 return Err(Error::DecryptionFailed);
             }
         };
 
-        Ok(String::from_utf8_lossy(&plaintext_bytes).to_string())
+        Ok(String::from_utf8_lossy(&pt_bytes).to_string())
     }
 }
 

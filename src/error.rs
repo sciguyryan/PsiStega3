@@ -14,6 +14,8 @@ pub enum Error {
     DataTooLarge,
     /// The data could not be decrypted; the data was invalid.
     DecryptionFailed,
+    /// The data could not be encrypted.
+    EncryptionFailed,
     /// Invalid image dimensions.
     ImageDimensionsInvalid,
     /// The dimensions of the encoded image are different than those of the reference image.
@@ -41,6 +43,7 @@ impl fmt::Display for Error {
             Error::Argon2NoHash => "error creating an Argon2 hash with the specified parameters",
             Error::DataTooLarge => "the data is too large",
             Error::DecryptionFailed => "the data could not be decrypted; the data was invalid.",
+            Error::EncryptionFailed => "the data could not be encrypted",
             Error::ImageDimensionsInvalid => {
                 "invalid image dimensions: the total number of pixels must be divisible by two"
             }
