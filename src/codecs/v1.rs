@@ -1,4 +1,4 @@
-use crate::codecs::codec::{Codec, DATA_HEADER};
+use crate::codecs::codec::Codec;
 use crate::error::{Error, Result};
 use crate::hashers::*;
 use crate::image_wrapper::ImageWrapper;
@@ -10,8 +10,8 @@ use aes_gcm::{
 };
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
-use std::collections::HashMap;
-use std::convert::TryFrom;
+use std::collections::{HashMap, VecDeque};
+use std::convert::{TryFrom, TryInto};
 
 // TODO - decide if we should use AES-GCM for AES-GCM-SIV. Slightly decreased performance, increased resistance to certain types of attack.
 // TODO - this might be something that is used in a v2 algorithm if not implemented here.
@@ -29,35 +29,22 @@ const MAX_CELLS: u64 = 50_000_000;
 /// The minimum number of cells that an image may contain.
 const MIN_CELLS: u64 = 312;
 /// The version of this codec.
-const VERSION: u8 = 0;
-
-enum ImageType {
-    Encoded,
-    Reference,
-}
+const VERSION: u8 = 1;
 
 #[derive(Debug)]
-pub struct StegaV1 {
+pub(crate) struct StegaV1 {
     /// The data index to cell ID map.
     data_cell_map: HashMap<usize, usize>,
     /// The read-only reference image.
-    reference_img: ImageWrapper,
-    /// The writable output image.
-    encoded_img: ImageWrapper,
     /// A RNG that will be used to handle data adjustments.
     data_rng: ThreadRng,
-    /// The number of cells within the image(s).
-    total_cells: u64,
 }
 
 impl StegaV1 {
     pub fn new() -> Self {
         Self {
             data_cell_map: HashMap::with_capacity(1),
-            reference_img: ImageWrapper::new(),
-            encoded_img: ImageWrapper::new(),
             data_rng: thread_rng(),
-            total_cells: 0,
         }
     }
 
@@ -66,20 +53,20 @@ impl StegaV1 {
     /// # Arguments
     ///
     /// * `key` - The key that should be used to seed the random number generator.
-    fn build_data_to_cell_index_map(&mut self, key: &str) {
+    /// * `img` - A reference to the [`ImageWrapper`] that holds the image.
+    ///
+    fn build_data_to_cell_index_map(&mut self, img: &ImageWrapper, key: &str) {
         /*
-          When seeding our RNG, we can't use the Argon2 hash for the
-          positional random number generator as we will need the salt,
-          which will not be available when initially reading the data
-          back from the file.
+          When we can't use the Argon2 hash for the positional RNG
+          as we will need the salt, which will not be available when
+          initially reading the data from the file.
         */
-        let hash_bytes = Hashers::sha3_256_string(key);
-        let mut rng: ChaCha20Rng = StegaV1::u8_vec_to_seed(&hash_bytes);
+        let bytes = Hashers::sha3_256_string(key);
+        let mut rng: ChaCha20Rng = StegaV1::u8_slice_to_seed(&bytes);
 
-        let next: u32 = rng.gen();
-        log::debug!("RNG test = {}", next);
-
-        let total_cells = self.total_cells as usize;
+        // It doesn't matter if we call this on reference or encoded
+        // as they will have the same value at this point.
+        let total_cells = StegaV1::get_total_cells(img) as usize;
 
         // Create and fill our vector with sequential values, one
         // for each cell ID.
@@ -92,8 +79,8 @@ impl StegaV1 {
         // Add the randomized entries to our cell map.
         self.data_cell_map = HashMap::with_capacity(total_cells);
         let mut i = 0;
-        while let Some(cell_id) = cell_list.pop() {
-            self.data_cell_map.insert(i, cell_id);
+        while let Some(id) = cell_list.pop() {
+            self.data_cell_map.insert(i, id);
             i += 1;
         }
     }
@@ -106,6 +93,7 @@ impl StegaV1 {
     ///
     /// Note: this method will panic if the data cell is not present in the map.
     /// In practice this should never occur.
+    ///
     fn get_data_cell_index(&self, data_index: &usize) -> usize {
         match self.data_cell_map.get(data_index) {
             Some(index) => *index,
@@ -118,81 +106,92 @@ impl StegaV1 {
         }
     }
 
+    /// Calculate the start index from which the specified cell originates.
+    ///
+    /// # Arguments
+    ///
+    /// * `cell_index` - The cell data index, for which the start index should be calculated.
+    ///
     #[inline]
-    /// Calculate the pixel from which the specified cell index originates.
-    fn get_pixel_start_by_cell_index(&self, cell_index: usize) -> usize {
-        // Each cell is 2 pixels in size.
+    fn get_start_by_cell_index(&self, cell_index: usize) -> usize {
+        // Each cell is 2 subcells (16 channels) in length.
         cell_index * 2
     }
 
-    /// Calculate the total number of cells available in the reference image.
+    /// Calculate the total number of cells available in a given image.
+    ///
+    /// # Arguments
+    ///
+    /// * `img` - A reference to the [`ImageWrapper`] that holds the image.
+    ///
     #[inline]
-    fn get_total_cells(image: &ImageWrapper) -> u64 {
-        // Each cell is 2x1 pixels in size.
-        image.get_total_pixels() / 2
+    fn get_total_cells(img: &ImageWrapper) -> u64 {
+        // 1 byte is 8 bits in length.
+        // We  can store 1 bit per channel.
+        img.get_total_channels() / 8
     }
 
-    /// Attempt to load and validate an image file, returning a [`ImageWrapper`] if successful.
+    /// Loads an image from file and validates that the image is suitable for steganography.
     ///
     /// # Arguments
     ///
     /// * `file_path` - The path to the image file.
+    /// * `read_only` - The read-only state of the image.
     ///
-    fn load_image(file_path: &str) -> Result<ImageWrapper> {
+    /// # Returns
+    ///
+    /// A [`Result`] containing a [`ImageWrapper`] if the image was successfully loaded and if the image is suitable for steganography.
+    ///
+    /// Otherwise an error will be returned.
+    ///
+    fn load_image(file_path: &str, read_only: bool) -> Result<ImageWrapper> {
         // See: https://github.com/image-rs/image
-        let wrapper = ImageWrapper::load_from_file(file_path)?;
+        let img = ImageWrapper::load_from_file(file_path, read_only)?;
 
-        // The image was successfully loaded.
-        // Now we need to validate if the file can be used.
-        StegaV1::validate_image(&wrapper)?;
+        // Validate if the image file can be used.
+        StegaV1::validate_image(&img)?;
 
-        Ok(wrapper)
+        Ok(img)
     }
 
-    /// Read a byte of encoded data, starting at a specified pixel index.
+    /// Read a byte of encoded data, starting at a specified index.
     ///
     /// # Arguments
     ///
-    /// * `cell_start` - The pixel index from which the encoded data should be read.
+    /// * `ref_img` - A reference to the [`ImageWrapper`] that holds the reference image.
+    /// * `enc_img` - A reference to the [`ImageWrapper`] that holds the encoded image.
+    /// * `cell_start` - The index from which the encoded data should be read.
     ///
-    /// Note: this method will read 2 pixels worth of data, starting at
+    /// Note: this method will read 8 channels worth of data, starting at
     /// the specified index.
-    fn read_byte(&self, cell_start: usize) -> u8 {
+    ///
+    fn read_u8(&self, ref_img: &ImageWrapper, enc_img: &ImageWrapper, cell_start: usize) -> u8 {
         // Extract the bytes representing the pixel channels
         // from the images.
-        let ref_bytes = self
-            .reference_img
-            .get_contiguous_pixel_by_index(cell_start, 2);
-
-        let enc_bytes = self
-            .encoded_img
-            .get_contiguous_pixel_by_index(cell_start, 2);
+        let r_bytes = ref_img.get_subcells_from_index(cell_start, 2);
+        let e_bytes = enc_img.get_subcells_from_index(cell_start, 2);
 
         let mut byte = 0u8;
         for i in 0..8 {
             // This block is actually safe because we verify that the loaded
-            // image has a total number of pixels that is divisible by two.
-            // We also convert all loaded image into RGBA-8, so we know that
-            // there will always be 4 channels per pixel.
+            // image has a total number of channels that is divisible by 8.
+            let ref_b: &u8;
+            let enc_b: &u8;
             unsafe {
                 // Get the value of the channel for the reference and encoded
                 // images.
-                let ref_c = ref_bytes.get_unchecked(i);
-                let enc_c = enc_bytes.get_unchecked(i);
-
-                // This is the absolute difference between the channels
-                // of the two images.
-                let diff = (*ref_c as i32 - *enc_c as i32).abs();
-
-                // We do not need to clear the bit if the variance is
-                // zero as the bits are zero by default.
-                // This allows us to slightly optimise things here.
-                if diff == 0 {
-                    continue;
-                }
-
-                utils::set_bit_state(&mut byte, i, true);
+                ref_b = r_bytes.get_unchecked(i);
+                enc_b = e_bytes.get_unchecked(i);
             }
+
+            // We do not need to clear the bit if the variance is
+            // zero as the bits are zero by default.
+            // This allows us to slightly optimise things here.
+            if (*ref_b as i32 - *enc_b as i32).abs() == 0 {
+                continue;
+            }
+
+            utils::set_bit_state(&mut byte, i, true);
         }
 
         byte
@@ -202,66 +201,29 @@ impl StegaV1 {
     ///
     /// # Arguments
     ///
+    /// * `ref_img` - A reference to the [`ImageWrapper`] that holds the reference image.
+    /// * `enc_img` - A reference to the [`ImageWrapper`] that holds the encoded image.
     /// * `data_index` - The index of the data byte to be read.
     ///
-    /// Note: this method will read 2 pixels worth of data, starting at
+    /// Note: this method will read 8 channels worth of data, starting at
     /// the specified index.
-    fn read_byte_by_data_index(&self, data_index: usize) -> u8 {
+    ///
+    #[inline]
+    fn read_u8_by_index(
+        &self,
+        ref_img: &ImageWrapper,
+        enc_img: &ImageWrapper,
+        data_index: usize,
+    ) -> u8 {
         // First we will look up the cell to which this
         // byte of data will be encoded within the image.
         let cell_index = self.get_data_cell_index(&data_index);
 
         // Now we will look up the start position for the cell.
-        let cell_start_index = self.get_pixel_start_by_cell_index(cell_index);
+        let cell_start_index = self.get_start_by_cell_index(cell_index);
 
         // Finally we can decode and read a byte of data from the cell.
-        self.read_byte(cell_start_index)
-    }
-
-    /// Read 2 bytes of data: the XOR'ed value and the XOR value.
-    ///
-    /// # Arguments
-    ///
-    /// * `data_index` - The index of the data byte to be read.
-    ///
-    /// # Returns
-    ///
-    /// * A byte of data, the result of the XOR operation on the two decoded bytes.
-    ///
-    /// Note: this method will read 4 pixels worth of data: 2 for the
-    /// XOR-encoded byte an 2 more for the XOR value byte.
-    fn read_byte_with_xor(&self, data_index: usize) -> u8 {
-        let b1 = self.read_byte_by_data_index(data_index);
-        let b2 = self.read_byte_by_data_index(data_index + 1);
-
-        u8::from_le(b1) ^ u8::from_le(b2)
-    }
-
-    /// Sets the encoded or reference images. This method also updates the internal total cell value.
-    ///
-    /// # Arguments
-    ///
-    /// * `img` - the [`ImageWrapper`] object to be held.
-    /// * `img_type` - the [`ImageType`] of the image.
-    /// * `read_only` - the read-only state of the image.
-    ///
-    fn set_image(&mut self, img: ImageWrapper, img_type: ImageType, read_only: bool) {
-        // If this method is being called from the decode function
-        // then the dimensions of the reference and encoded images
-        // are verified as being equal.
-        // This makes updating this each time safe.
-        self.total_cells = StegaV1::get_total_cells(&img);
-
-        // This will be a reference to the underlying struct
-        // field that we will be modifying.
-        let internal_img = match img_type {
-            ImageType::Encoded => &mut self.encoded_img,
-            ImageType::Reference => &mut self.reference_img,
-        };
-
-        // Assign the image to the struct field.
-        *internal_img = img;
-        internal_img.set_read_only(read_only);
+        self.read_u8(ref_img, enc_img, cell_start_index)
     }
 
     /// Create a seedable RNG object with a defined 32-byte seed.
@@ -270,7 +232,7 @@ impl StegaV1 {
     ///
     /// * `bytes` - The slice of u8 values to be used as the seed.
     ///
-    fn u8_vec_to_seed<R: SeedableRng<Seed = [u8; 32]>>(bytes: &[u8]) -> R {
+    fn u8_slice_to_seed<R: SeedableRng<Seed = [u8; 32]>>(bytes: &[u8]) -> R {
         assert!(
             bytes.len() == 32,
             "Byte vector is not 32 bytes (256-bits) in length."
@@ -284,30 +246,35 @@ impl StegaV1 {
     ///
     /// # Arguments
     ///
-    /// * `image` - A reference to a [`ImageWrapper`] object.
+    /// * `img` - A reference to the [`ImageWrapper`] that holds the image.
     ///
-    fn validate_image(image: &ImageWrapper) -> Result<()> {
-        let fmt = image.get_image_format();
+    fn validate_image(img: &ImageWrapper) -> Result<()> {
+        use image::ImageFormat::*;
+
+        let fmt = img.get_image_format();
         log::debug!("Image format: {:?}", fmt);
 
         // We currently only support for the following formats for
         // encoding: PNG, GIF and bitmap images.
         match fmt {
-            image::ImageFormat::Png | image::ImageFormat::Gif | image::ImageFormat::Bmp => {}
+            Png | Gif | Bmp => {}
             _ => {
                 return Err(Error::ImageTypeInvalid);
             }
         }
 
-        let (w, h) = image.dimensions();
+        let (w, h) = img.dimensions();
         log::debug!("Image dimensions: ({},{})", w, h);
 
-        let pixels = w * h;
-        if pixels % 2 != 0 {
+        // The total number of channels must be divisible by 8.
+        // This will ensure that we can always encode a given byte
+        // of data.
+        let channels = img.get_total_channels();
+        if channels % 8 != 0 {
             return Err(Error::ImageDimensionsInvalid);
         }
 
-        let total_cells = StegaV1::get_total_cells(image);
+        let total_cells = StegaV1::get_total_cells(img);
         log::debug!("Total available cells: {}", &total_cells);
 
         /*
@@ -335,37 +302,38 @@ impl StegaV1 {
     ///
     /// # Arguments
     ///
+    /// * `img` - A mutable reference to the [`ImageWrapper`] in which the data should be encoded.
     /// * `data` - The byte value to be encoded.
     /// * `cell_start` - The index of the first pixel of the cell into which the data will be encoded.
     ///
-    fn write_byte(&mut self, data: &u8, cell_start: usize) {
+    fn write_u8(&mut self, img: &mut ImageWrapper, data: &u8, cell_start: usize) {
         /*
           We convert everything into Little Endian to ensure everything operates
           as expected cross-platform. On a LE platform these will end up being
           no-op calls and so will not impact performance at all.
         */
-        let data_le = data.to_le();
-        let bytes = self
-            .encoded_img
-            .get_contiguous_pixel_by_index_mut(cell_start, 2);
+        let data = data.to_le();
+        let bytes = img.get_subcells_from_index_mut(cell_start, 2);
 
         for (i, b) in bytes.iter_mut().enumerate() {
-            if utils::is_bit_set(&data_le, i) {
-                // If the value is 0 then the new value will always be 1.
-                // If the value is 255 then the new value will always be 254.
-                // Otherwise the value will be randomly assigned to be ±1.
-                *b = match *b {
-                    0 => 1,
-                    1..=254 => {
-                        if self.data_rng.gen_bool(0.5) {
-                            *b - 1
-                        } else {
-                            *b + 1
-                        }
-                    }
-                    255 => 254,
-                };
+            if !utils::is_bit_set(&data, i) {
+                continue;
             }
+
+            // If the value is 0 then the new value will always be 1.
+            // If the value is 255 then the new value will always be 254.
+            // Otherwise the value will be randomly assigned to be ±1.
+            *b = match *b {
+                0 => 1,
+                1..=254 => {
+                    if self.data_rng.gen_bool(0.5) {
+                        *b - 1
+                    } else {
+                        *b + 1
+                    }
+                }
+                255 => 254,
+            };
         }
     }
 
@@ -373,18 +341,21 @@ impl StegaV1 {
     ///
     /// # Arguments
     ///
+    /// * `img` - A mutable reference to the [`ImageWrapper`] in which the data should be encoded.
     /// * `data` - The byte value to be written to the image.
     /// * `data_index` - The index of the data byte to be written.
-    fn write_byte_by_data_index(&mut self, data: &u8, data_index: usize) {
+    ///
+    #[inline]
+    fn write_u8_by_data_index(&mut self, img: &mut ImageWrapper, data: &u8, data_index: usize) {
         // First we will look up the cell to which this
         // byte of data will be encoded within the image.
         let cell_index = self.get_data_cell_index(&data_index);
 
         // Now we will look up the start position for the cell.
-        let cell_start_index = self.get_pixel_start_by_cell_index(cell_index);
+        let cell_start_index = self.get_start_by_cell_index(cell_index);
 
         // Finally we can write a byte of data to the cell.
-        self.write_byte(data, cell_start_index);
+        self.write_u8(img, data, cell_start_index);
     }
 }
 
@@ -392,31 +363,37 @@ impl Codec for StegaV1 {
     fn encode(
         &mut self,
         original_path: &str,
-        key: &str,
+        key: String,
         plaintext: &str,
         encoded_path: &str,
     ) -> Result<()> {
-        log::debug!("Loading (reference) image file @ {}", &original_path);
-        let img = StegaV1::load_image(original_path)?;
-
-        // The reference image, read-only as it must not be modified.
-        // The encoded image will contain all of the encoded data.
-        // Initially it is a clone of the reference image but will be modified later.
-        self.set_image(img.clone(), ImageType::Reference, true);
-        self.set_image(img, ImageType::Encoded, false);
+        log::debug!("Loading image file @ {}", &original_path);
+        // We don't need to hold a separate reference image instance here.
+        let mut img = StegaV1::load_image(original_path, false)?;
 
         let file_hash_bytes = Hashers::sha3_512_file(original_path);
         let file_hash_string = utils::u8_array_to_hex(&file_hash_bytes);
 
-        // The key for the encryption is the SHA3-512 hash of the input image file
-        // combined with the plaintext key.
-        let mut final_key: String = key.to_string();
-        final_key.push_str(&file_hash_string);
+        /*
+          The key for the encryption is the SHA3-512 hash of the input image file
+          combined with the plaintext key.
+
+          It intentional that we take ownership of the key as it will be
+          cleared from memory when this function exits.
+        */
+        let mut composite_key = key;
+        composite_key.push_str(&file_hash_string);
 
         // Generate a random salt for the Argon2 hashing function.
         let salt_bytes: [u8; 12] = utils::secure_random_bytes();
-        let key_bytes_full =
-            Hashers::argon2_string(&final_key, salt_bytes, M_COST, P_COST, T_COST, ARGON_VER)?;
+        let key_bytes_full = Hashers::argon2_string(
+            &composite_key,
+            salt_bytes,
+            M_COST,
+            P_COST,
+            T_COST,
+            ARGON_VER,
+        )?;
 
         // The AES-256 key is 256-bits (32 bytes) in length.
         let key_bytes = &key_bytes_full[..32];
@@ -428,33 +405,159 @@ impl Codec for StegaV1 {
         let nonce_bytes: [u8; 12] = utils::secure_random_bytes();
         let nonce = Nonce::from_slice(&nonce_bytes);
 
-        let plaintext_bytes = plaintext.as_bytes();
-        let ciphertext_bytes = cipher
-            .encrypt(nonce, plaintext_bytes.as_ref())
-            .expect("encryption failure!"); // NOTE: handle this error to avoid panics!
+        /*
+          Attempt to decrypt the cipher-text bytes with
+          the extracted information.
+
+          This will fail if the information is invalid, which could occurring
+          because of changes to either of the image files, or simply because
+          no encrypted information was held inside the images.
+        */
+        let pt_bytes = plaintext.as_bytes();
+        let ct_bytes = match cipher.encrypt(nonce, pt_bytes.as_ref()) {
+            Ok(v) => v,
+            Err(_) => {
+                return Err(Error::EncryptionFailed);
+            }
+        };
 
         /*
-          2 cells for the magic bytes header, 1 cell for the version,
-          4 cells for the total number of cipher-text cells,
+          1 cell for the version,
+          4 cells for the total number of stored cipher-text cells,
           the salt, the nonce and the cipher-text itself.
 
           This value must be doubled as we need 2 cells per byte:
-          one for the XOR encoded byte and one for the XOR byte.
+            one for the XOR encoded byte and one for the XOR byte.
 
           This value must be held within a 64-bit value to prevent integer overflow
-          from occurring in the when running this on a 32-bit architecture.
+            from occurring in the when running this on a 32-bit architecture.
 
           Note: a cell represents the space in which a byte of data can be encoded.
         */
-        let total_ct_cells = ciphertext_bytes.len();
-        let total_cells_needed = (DATA_HEADER.len() as u64 /* magic bytes header */
-            + 1 /* version */
-            + 4 /* the total number of cipher-text cells */
-            + salt_bytes.len() as u64 /* the length of the Argon2 salt */
-            + nonce_bytes.len() as u64 /* the length of the AES-256 nonce */
+        let total_ct_cells = ct_bytes.len();
+        let total_cells_needed = (1 /* version (u8) */
+            + 4 /* the total number of stored cipher-text cells (u32) */
+            + 12 /* the length of the Argon2 salt (u8) */
+            + 12 /* the length of the AES-256 nonce (u8) */
+            + ct_bytes.len() as u64)
+            * 2; /* 2 subcells per cell */
+        log::debug!("total_cells_needed: {}", total_cells_needed);
+
+        // In total we can never store more than 0xffffffff bytes of data to
+        // ensure that the values of usize never exceeds the maximum value
+        // of the u32 type.
+        if total_cells_needed > 0xffffffff {
+            return Err(Error::DataTooLarge);
+        }
+
+        // Do we have enough space within the image to encode the data?
+        let total_cells = StegaV1::get_total_cells(&img);
+        if total_cells_needed > total_cells {
+            return Err(Error::ImageInsufficientSpace);
+        }
+
+        // This will hold all of the data to be encoded.
+        let mut data = DataEncoder::new(total_cells as usize);
+
+        // Add the version indicator.
+        data.push_u8_with_xor(VERSION);
+
+        // Add the total number of cipher-text cells needed.
+        data.push_u32_with_xor(total_ct_cells as u32);
+
+        // Add the Argon2 salt bytes.
+        data.push_u8_slice_with_xor(&salt_bytes);
+
+        // Add the AES nonce bytes.
+        data.push_u8_slice_with_xor(&nonce_bytes);
+
+        // Add the cipher-text bytes.
+        data.push_u8_slice_with_xor(&ct_bytes);
+
+        // Fill all of the unused cells with junk random data.
+        // Yes, I know... I'm evil.
+        // TODO: it might not be necessary to fill every unused pixel
+        // TODO: with random data. It might be safe to just write the
+        // TODO: cells that we are interested in here.
+        // TODO: that would dramatically improve performance.
+        data.fill_empty_bytes();
+
+        // Build the data index to positional cell index map.
+        self.build_data_to_cell_index_map(&img, &composite_key);
+
+        // Clear the key since it is no longer needed.
+        composite_key.clear();
+
+        // Iterate over each byte of data to be encoded.
+        data.bytes.iter().enumerate().for_each(|(i, byte)| {
+            self.write_u8_by_data_index(&mut img, byte, i);
+        });
+
+        // Save the modified image.
+        if let Err(e) = img.save(encoded_path) {
+            // TODO: Add more granularity here.
+            return Err(Error::ImageSaving);
+        }
+
+        Ok(())
+    }
+
+    fn decode(&mut self, original_path: &str, key: String, encoded_path: &str) -> Result<String> {
+        log::debug!("Loading (reference) image file @ {}", &original_path);
+        let ref_image = StegaV1::load_image(original_path, true)?;
+
+        log::debug!("Loading (encoded) image file @ {}", &encoded_path);
+        let enc_image = StegaV1::load_image(encoded_path, true)?;
+
+        // The reference and encoded images must have the same dimensions.
+        if enc_image.dimensions() != ref_image.dimensions() {
+            return Err(Error::ImageDimensionsMismatch);
+        }
+
+        let file_hash_bytes = Hashers::sha3_512_file(original_path);
+        let file_hash_string = utils::u8_array_to_hex(&file_hash_bytes);
+
+        // The key for the encryption is the SHA3-512 hash of the input image file
+        // combined with the plaintext key.
+        // It intentional that we take ownership of the key as it will be
+        // cleared from memory when this function exits.
+        let mut composite_key = key;
+        composite_key.push_str(&file_hash_string);
+
+        // Build the data index to positional cell index map.
+        self.build_data_to_cell_index_map(&enc_image, &composite_key);
+
+        // This will hold all of the decoded data.
+        let total_cells = StegaV1::get_total_cells(&enc_image) as usize;
+        let mut data = DataDecoder::new(total_cells);
+
+        // Read every byte of data from the images.
+        (0..total_cells).for_each(|i| {
+            let val = self.read_u8_by_index(&ref_image, &enc_image, i);
+            data.push_u8(val);
+        });
+
+        // Decode the XOR-encoded values back into the original values.
+        data.decode();
+
+        // The first byte should be the version indicator.
+        if data.pop_u8() == VERSION {
+            log::debug!("We found a valid version indicator! 🙂");
+        } else {
+            log::debug!("We did not find a version indicator! 😢");
+            return Err(Error::VersionInvalid);
+        }
+
+        // The next set of bytes should be the total number of cipher-text bytes
+        // cells that have been encoded.
+        let total_ct_cells = data.pop_u32();
+
+        let total_cells_needed = (1 /* version (u8) */
+            + 4 /* the total number of stored cipher-text cells (u32) */
+            + 12 /* the length of the Argon2 salt (u8) */
+            + 12 /* the length of the AES-256 nonce (u8) */
             + total_ct_cells as u64)
-            * 2; /* 2 pixels per cell */
-        log::debug!("Cells needed to encode data: {}", total_cells_needed);
+            * 2; /* 2 subcells per cell */
 
         // In total we can never store more than 0xffffffff bytes of data to ensure that the values
         // of usize never exceeds the maximum value of the u32 type.
@@ -462,130 +565,56 @@ impl Codec for StegaV1 {
             return Err(Error::DataTooLarge);
         }
 
-        // Do we have enough space within the image to encode the data?
-        let total_cells = self.total_cells;
+        // Do we have enough space within the image to decode the data?
+        let total_cells = StegaV1::get_total_cells(&enc_image);
         if total_cells_needed > total_cells {
             return Err(Error::ImageInsufficientSpace);
         }
 
-        // This will hold all of the data to be encoded.
-        let mut data = DataEncodeWrapper::new(self.total_cells as usize);
+        // Note: we can unwrap these values as we will assert if the
+        //   length of the vector is not equal to the length we requested.
+        // Next, we get the Argon2 salt bytes.
+        let salt_bytes: [u8; 12] = data.pop_vec(12).try_into().unwrap();
 
-        // We can now safely shadow this value as we have
-        // constrained them to within a 32-bit value limit.
-        let total_cells_needed = total_cells_needed as u32;
+        // Next, we get the AES nonce bytes.
+        let nonce_bytes: [u8; 12] = data.pop_vec(12).try_into().unwrap();
 
-        // Push some data.
-        data.push_u8_slice_with_xor(&DATA_HEADER);
+        // Add the cipher-text bytes.
+        let ct_bytes = data.pop_vec(total_ct_cells as usize);
 
-        let str_bytes = String::from("Hello, world!").into_bytes();
-        data.push_u8_slice_with_xor(&str_bytes);
+        // Now we can compute the Argon2 hash.
+        let key_bytes_full = Hashers::argon2_string(
+            &composite_key,
+            salt_bytes,
+            M_COST,
+            P_COST,
+            T_COST,
+            ARGON_VER,
+        )?;
 
-        // We need to fill the other cells with junk data.
-        // Luckily we have a helper method to do this for us!
-        // TODO: it might not be necessary to fill every unused pixel
-        // TODO: with random data. It might be safe to just write the
-        // TODO: cells that we are interested in here.
-        // TODO: that would dramatically improve performance.
-        data.fill_empty_values();
+        // The AES-256 key is 256-bits (32 bytes) in length.
+        let key_bytes = &key_bytes_full[..32];
 
-        // Build the data index to positional cell index map.
-        self.build_data_to_cell_index_map(&final_key);
-
-        // Clear the key since it is no longer needed.
-        final_key.clear();
-
-        // Iterate over each byte of data to be encoded.
-        for (i, byte) in data.bytes.iter().enumerate() {
-            self.write_byte_by_data_index(byte, i);
-        }
-
-        // Save the modified image.
-        let r = self.encoded_img.save(encoded_path);
-        log::debug!("result = {:?}", r);
-
-        Ok(())
-    }
-
-    fn decode(&mut self, original_path: &str, key: &str, encoded_path: &str) -> Result<&str> {
-        log::debug!("Loading (reference) image file @ {}", &original_path);
-        let ref_image = StegaV1::load_image(original_path)?;
-
-        log::debug!("Loading (encoded) image file @ {}", &encoded_path);
-        let enc_image = StegaV1::load_image(encoded_path)?;
-
-        // The reference and encoded images must have the same dimensions.
-        if ref_image.dimensions() != enc_image.dimensions() {
-            return Err(Error::ImageDimensionsMismatch);
-        }
-
-        self.set_image(enc_image, ImageType::Encoded, true);
-        self.set_image(ref_image, ImageType::Reference, true);
-
-        let file_hash_bytes = Hashers::sha3_512_file(original_path);
-        let file_hash_string = utils::u8_array_to_hex(&file_hash_bytes);
-
-        // The key for the encryption is the SHA3-512 hash of the input image file
-        // combined with the plaintext key.
-        let mut final_key: String = key.to_string();
-        final_key.push_str(&file_hash_string);
-
-        // Build the data index to positional cell index map.
-        self.build_data_to_cell_index_map(&final_key);
-
-        let original_byte_1 = self.read_byte_with_xor(0);
-        log::debug!("byte 1: {}", original_byte_1);
-
-        // Remember, index 1 is the XOR byte, so the next byte of data
-        // will be read from cells 2 and 3.
-        let original_byte_2 = self.read_byte_with_xor(2);
-        log::debug!("byte 2: {}", original_byte_2);
-
-        let header = [original_byte_1, original_byte_2];
-        if header == DATA_HEADER {
-            log::debug!("We found a valid header! 🙂");
-        } else {
-            log::debug!("We did not find a valid header! 😢");
-        }
-
-        //let b = vec![original_byte_1, original_byte_2];
-        //let s = String::from_utf8(b).unwrap();
-        //println!("s = {}", s);
-
-        let mut bytes: Vec<u8> = Vec::new();
-        for (i, v) in (4..30).step_by(2).enumerate() {
-            let b = self.read_byte_with_xor(v);
-            bytes.push(b);
-        }
-
-        log::debug!("Message = {}", String::from_utf8(bytes).unwrap());
+        let key = Key::from_slice(key_bytes);
+        let cipher = Aes256Gcm::new(key);
+        let nonce = Nonce::from_slice(&nonce_bytes);
 
         /*
-        // Iterate over each byte of data that is encoded.
-        for (i, byte) in data.bytes.iter().enumerate() {
-            //log::debug!("Searching for data index = {}.", di);
-            // Locate the index of the vector that contains the
-            // index of this data byte.
-            let cell_id = self.get_data_cell_index(&i);
-            self.write_byte_by_cell_id(byte, cell_id);
-        }*/
+          Attempt to decrypt the cipher-text bytes with
+          the extracted information.
 
-        /*let plaintext_bytes = cipher.decrypt(nonce, ciphertext_bytes.as_ref())
-            .expect("decryption failure!"); // NOTE: handle this error to avoid panics!
-
-        log::debug!("Plaintext bytes: {:?}", plaintext_bytes);
-
-        // This code will not be kept around, so we can safely use clone here.
-        let plaintext_str = match String::from_utf8(plaintext_bytes.clone()) {
-            Ok(s) => s,
-            Err(e) => panic!("Invalid UTF-8 sequence: {}", e),
+          This will fail if the information is invalid, which could occurring
+          because of changes to either of the image files, or simply because
+          no encrypted information was held inside the images.
+        */
+        let pt_bytes = match cipher.decrypt(nonce, ct_bytes.as_ref()) {
+            Ok(v) => v,
+            Err(_) => {
+                return Err(Error::DecryptionFailed);
+            }
         };
 
-        log::debug!("Plaintext string: {}", plaintext_str);*/
-
-        // Todo: clear final key after decryption completed.
-
-        Ok("")
+        Ok(String::from_utf8_lossy(&pt_bytes).to_string())
     }
 }
 
@@ -595,16 +624,112 @@ impl Default for StegaV1 {
     }
 }
 
+/// This structure will hold the decoded data.
+///
+/// Note: this structure handles little Endian conversions
+/// internally.
+struct DataDecoder {
+    xor_bytes: VecDeque<u8>,
+    bytes: VecDeque<u8>,
+}
+
+impl DataDecoder {
+    pub fn new(capacity: usize) -> Self {
+        Self {
+            xor_bytes: VecDeque::with_capacity(capacity),
+            bytes: VecDeque::with_capacity(capacity / 2),
+        }
+    }
+
+    /// Iterates through each XOR'ed byte and XOR pair, adds the value produced by applying the XOR operation on them to the internal list.
+    fn decode(&mut self) {
+        let len = self.xor_bytes.len() / 2;
+        (0..len).for_each(|_| {
+            let xor_value = self.xor_bytes.pop_front().unwrap();
+            let xor = self.xor_bytes.pop_front();
+
+            /*
+              If the number of cells is not divisible by 2 then
+                the final cell will not have a corresponding XOR cell.
+              In that case the final cell value will be the XOR value.
+              This is fine as it will contain no useful data in any event.
+            */
+            if let Some(x) = xor {
+                self.bytes.push_back(xor_value ^ x);
+            } else {
+                self.bytes.push_back(xor_value);
+            }
+        });
+
+        self.xor_bytes.shrink_to_fit();
+    }
+
+    /// Pop a XOR-decoded byte from the front of the byte list.
+    fn pop_u8(&mut self) -> u8 {
+        assert!(!self.bytes.is_empty());
+
+        // We do not need to worry about decoding these values from little
+        // Endian because that will have been done when loading the values.
+        self.bytes.pop_front().unwrap()
+    }
+
+    /// Pop a XOR-decoded u32 from the front of the byte list.
+    ///
+    /// `Note:` This method will pop `4` bytes from the internal vector.
+    ///
+    /// `Note:` this method will automatically convert the returned value
+    /// from little Endian to the correct bit-format.
+    ///
+    fn pop_u32(&mut self) -> u32 {
+        assert!(self.bytes.len() >= 4);
+
+        let mut bytes = [0u8; 4];
+        bytes.iter_mut().for_each(|i| {
+            *i = self.pop_u8();
+        });
+
+        u32::from_le_bytes(bytes)
+    }
+
+    /// Pop a XOR-decoded vector of bytes front of the byte list.
+    ///
+    /// `Note:` This method will pop `2` bytes from the internal vector for each byte returned.
+    ///
+    fn pop_vec(&mut self, count: usize) -> Vec<u8> {
+        assert!(self.bytes.len() >= count);
+
+        let mut bytes = Vec::with_capacity(count);
+        (0..count).for_each(|_| {
+            bytes.push(self.pop_u8());
+        });
+
+        bytes
+    }
+
+    /// Add a byte of data into the byte list.
+    ///
+    /// # Arguments
+    ///
+    /// * `value` - The byte to be stored in the internal vector.
+    ///
+    /// `Note:` this method will automatically convert the returned value
+    /// from little Endian to the appropriate bit-format.
+    ///
+    fn push_u8(&mut self, value: u8) {
+        self.xor_bytes.push_back(u8::from_le(value));
+    }
+}
+
 /// This structure will hold data to be encoded into an image.
 ///
 /// Note: this structure handles little Endian conversions
 /// internally.
-pub struct DataEncodeWrapper {
+struct DataEncoder {
     bytes: Vec<u8>,
     rng: ChaCha20Rng,
 }
 
-impl DataEncodeWrapper {
+impl DataEncoder {
     pub fn new(capacity: usize) -> Self {
         Self {
             bytes: Vec::with_capacity(capacity),
@@ -614,7 +739,7 @@ impl DataEncodeWrapper {
 
     #[deprecated]
     #[allow(dead_code)]
-    pub fn fill_empty_values_old(&mut self) {
+    pub fn fill_empty_bytes_old(&mut self) {
         let mut vec: Vec<u8> = (self.bytes.len()..self.bytes.capacity())
             .map(|_| self.rng.gen())
             .collect();
@@ -623,7 +748,7 @@ impl DataEncodeWrapper {
     }
 
     /// Fill any unused slots in the byte list with random byte data.
-    pub fn fill_empty_values(&mut self) {
+    pub fn fill_empty_bytes(&mut self) {
         utils::fast_fill_vec_random(&mut self.bytes, &mut self.rng);
     }
 
@@ -632,7 +757,8 @@ impl DataEncodeWrapper {
     /// # Arguments
     ///
     /// * `value` - The byte to be stored.
-    fn push_value(&mut self, value: u8) {
+    ///
+    fn push_u8(&mut self, value: u8) {
         self.bytes.push(value);
     }
 
@@ -645,10 +771,11 @@ impl DataEncodeWrapper {
     /// `Note:` byte yielded by the slice will be added `2` bytes to the internal byte list.
     ///
     /// `Note:` the 1st byte will be the XOR-encoded data and the second will be the XOR value byte.
+    ///
     pub fn push_u8_slice_with_xor(&mut self, slice: &[u8]) {
-        for b in slice {
-            self.push_value_with_xor(*b);
-        }
+        slice.iter().for_each(|b| {
+            self.push_u8_with_xor(*b);
+        });
     }
 
     /// Push a XOR-encoded byte into the byte list.
@@ -660,10 +787,22 @@ impl DataEncodeWrapper {
     /// `Note:` every byte added will add `2` bytes to the internal byte list.
     ///
     /// `Note:` the 1st byte will be the XOR-encoded data and the second will be the XOR value byte.
-    pub fn push_value_with_xor(&mut self, value: u8) {
+    ///
+    pub fn push_u8_with_xor(&mut self, value: u8) {
         let xor = self.rng.gen::<u8>().to_le();
         let xor_data = value.to_le() ^ xor;
-        self.push_value(xor_data);
-        self.push_value(xor);
+        self.push_u8(xor_data);
+        self.push_u8(xor);
+    }
+
+    /// Add a u32 value of data into the byte list (4 bytes).
+    ///
+    /// # Arguments
+    ///
+    /// * `value` - The u32 to be stored.
+    ///
+    pub fn push_u32_with_xor(&mut self, value: u32) {
+        let bytes = value.to_le_bytes();
+        self.push_u8_slice_with_xor(&bytes);
     }
 }

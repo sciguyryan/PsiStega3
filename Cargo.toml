@@ -22,7 +22,7 @@ sha3 = "0.9.1"
 simple_logger = "1.13.0"
 
 [target.'cfg(windows)'.build-dependencies]
-winres = "0.1.11"
+winres = "0.1.12"
 
 [profile.dev]
 opt-level = 0
