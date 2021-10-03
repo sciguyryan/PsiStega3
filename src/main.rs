@@ -5,11 +5,13 @@ mod image_wrapper;
 mod utils;
 mod version;
 
-use crate::codecs::v1;
+use crate::codecs::v1::StegaV1;
 
 use codecs::codec::Codec;
 use simple_logger::SimpleLogger;
 use std::io::stdin;
+
+//ookneporlygs
 
 fn main() {
     SimpleLogger::new().init().unwrap();
@@ -18,10 +20,10 @@ fn main() {
     let input = String::from("This is a test.");
     let password = String::from("banana123");
 
-    let input_img_path = "D:\\GitHub\\PsiStega3\\test-images\\b.png";
-    let output_img_path = "D:\\GitHub\\PsiStega3\\test-images\\b2.png";
+    let input_img_path = "D:\\GitHub\\PsiStega3\\test-images\\a.png";
+    let output_img_path = "D:\\GitHub\\PsiStega3\\test-images\\a2.png";
 
-    let mut stega = v1::StegaV1::new();
+    let mut stega = StegaV1::new(true);
 
     log::debug!("{}", "-".repeat(32));
     log::debug!("Starting encoding...");

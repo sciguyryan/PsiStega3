@@ -31,7 +31,8 @@ const U8_UNSET_BIT_MASK: [u8; 8] = [
 /// # Arguments
 ///
 /// * `value` - The value against which the bitmask should be checked.
-/// * `index` - The bit index to be modified
+/// * `index` - The bit index to be modified.
+///
 #[inline]
 pub(crate) fn is_bit_set(value: &u8, index: usize) -> bool {
     (value & U8_BIT_MASKS[index]) != 0
@@ -44,6 +45,7 @@ pub(crate) fn is_bit_set(value: &u8, index: usize) -> bool {
 /// * `value` - The u8 value to be modified.
 /// * `index` - The bit index to be modified.
 /// * `state` - The final state of the bit.
+///
 #[inline]
 pub(crate) fn set_bit_state(value: &mut u8, index: usize, state: bool) {
     if state {
@@ -61,6 +63,7 @@ pub(crate) fn set_bit_state(value: &mut u8, index: usize, state: bool) {
 ///
 /// Note: we ignore the error condition from write! as this is
 /// completely internal and is designed for use with debug code.
+///
 #[allow(unused_must_use)]
 pub(crate) fn u8_array_to_hex(arr: &[u8]) -> String {
     let mut str = String::with_capacity(2 * arr.len());
@@ -78,6 +81,7 @@ pub(crate) fn u8_array_to_hex(arr: &[u8]) -> String {
 ///
 /// Note: we ignore the error condition from write! as this is
 /// completely internal and is designed for use with debug code.
+///
 #[allow(unused_must_use, dead_code)]
 pub(crate) fn u8_to_binary(byte: &u8) -> String {
     let mut str = String::with_capacity(8);
@@ -101,6 +105,7 @@ pub(crate) fn secure_random_bytes<const N: usize>() -> [u8; N] {
 ///
 /// Note: this is a very basic implementation that is intended for debugging with a
 /// limited character set. Do not use for an untested string.
+///
 #[allow(dead_code)]
 pub(crate) fn reverse_string(str: &str) -> String {
     str.chars().rev().collect::<String>()
@@ -114,6 +119,7 @@ pub(crate) fn reverse_string(str: &str) -> String {
 ///
 /// Note: this method will only operate as expected if an explicit
 /// capacity has been specified.
+///
 pub(crate) fn fill_vector_sequential(vec: &mut Vec<usize>) {
     for i in 0..vec.capacity() {
         vec.insert(i, i);
@@ -127,6 +133,7 @@ pub(crate) fn fill_vector_sequential(vec: &mut Vec<usize>) {
 ///
 /// Note: this method is intended to be called on vectors that have a predefined
 /// capacity.
+///
 #[inline]
 pub(crate) fn fast_fill_vec_random<T>(in_vec: &mut Vec<u8>, rng: &mut T)
 where

@@ -16,12 +16,12 @@ use std::convert::{TryFrom, TryInto};
 // TODO - decide if we should use AES-GCM for AES-GCM-SIV. Slightly decreased performance, increased resistance to certain types of attack.
 // TODO - this might be something that is used in a v2 algorithm if not implemented here.
 
-/// The time cost for use with the Argon2 hashing algorithm.
-const T_COST: u32 = 6;
-/// The parallel cost for use with the Argon2 hashing algorithm.
-const P_COST: u32 = 3;
-/// The memory cost for use with the Argon2 hashing algorithm.
-const M_COST: u32 = 4096;
+/// The time cost (iterations) for use with the Argon2 hashing algorithm.
+const T_COST: u32 = 8;
+/// The parallel cost (threads) for use with the Argon2 hashing algorithm.
+const P_COST: u32 = 8;
+/// The memory cost (kilobytes) for use with the Argon2 hashing algorithm.
+const M_COST: u32 = 65536;
 /// The version of the Argon2 hashing algorithm to use.
 const ARGON_VER: argon2::Version = argon2::Version::V0x13;
 /// The maximum number of cells that an image may contain.
@@ -38,13 +38,16 @@ pub(crate) struct StegaV1 {
     /// The read-only reference image.
     /// A RNG that will be used to handle data adjustments.
     data_rng: ThreadRng,
+    /// If the noise layer should be applied to the output image.
+    noise_layer: bool,
 }
 
 impl StegaV1 {
-    pub fn new() -> Self {
+    pub fn new(noise_layer: bool) -> Self {
         Self {
             data_cell_map: HashMap::with_capacity(1),
             data_rng: thread_rng(),
+            noise_layer,
         }
     }
 
@@ -460,19 +463,19 @@ impl Codec for StegaV1 {
         let mut data = DataEncoder::new(total_cells as usize);
 
         // Add the version indicator.
-        data.push_u8_with_xor(VERSION);
+        data.push_u8(VERSION);
 
         // Add the total number of cipher-text cells needed.
-        data.push_u32_with_xor(total_ct_cells as u32);
+        data.push_u32(total_ct_cells as u32);
 
         // Add the Argon2 salt bytes.
-        data.push_u8_slice_with_xor(&salt_bytes);
+        data.push_u8_slice(&salt_bytes);
 
         // Add the AES nonce bytes.
-        data.push_u8_slice_with_xor(&nonce_bytes);
+        data.push_u8_slice(&nonce_bytes);
 
         // Add the cipher-text bytes.
-        data.push_u8_slice_with_xor(&ct_bytes);
+        data.push_u8_slice(&ct_bytes);
 
         // Fill all of the unused cells with junk random data.
         // Yes, I know... I'm evil.
@@ -480,7 +483,9 @@ impl Codec for StegaV1 {
         // TODO: with random data. It might be safe to just write the
         // TODO: cells that we are interested in here.
         // TODO: that would dramatically improve performance.
-        data.fill_empty_bytes();
+        if self.noise_layer {
+            data.fill_empty_bytes();
+        }
 
         // Build the data index to positional cell index map.
         self.build_data_to_cell_index_map(&img, &composite_key);
@@ -620,7 +625,7 @@ impl Codec for StegaV1 {
 
 impl Default for StegaV1 {
     fn default() -> Self {
-        Self::new()
+        Self::new(true)
     }
 }
 
@@ -642,7 +647,7 @@ impl DataDecoder {
     }
 
     /// Iterates through each XOR'ed byte and XOR pair, adds the value produced by applying the XOR operation on them to the internal list.
-    fn decode(&mut self) {
+    pub fn decode(&mut self) {
         let len = self.xor_bytes.len() / 2;
         (0..len).for_each(|_| {
             let xor_value = self.xor_bytes.pop_front().unwrap();
@@ -665,8 +670,8 @@ impl DataDecoder {
     }
 
     /// Pop a XOR-decoded byte from the front of the byte list.
-    fn pop_u8(&mut self) -> u8 {
-        assert!(!self.bytes.is_empty());
+    pub fn pop_u8(&mut self) -> u8 {
+        assert!(!self.bytes.is_empty(), "insufficient values in list");
 
         // We do not need to worry about decoding these values from little
         // Endian because that will have been done when loading the values.
@@ -680,8 +685,8 @@ impl DataDecoder {
     /// `Note:` this method will automatically convert the returned value
     /// from little Endian to the correct bit-format.
     ///
-    fn pop_u32(&mut self) -> u32 {
-        assert!(self.bytes.len() >= 4);
+    pub fn pop_u32(&mut self) -> u32 {
+        assert!(self.bytes.len() >= 4, "insufficient values in list");
 
         let mut bytes = [0u8; 4];
         bytes.iter_mut().for_each(|i| {
@@ -695,8 +700,8 @@ impl DataDecoder {
     ///
     /// `Note:` This method will pop `2` bytes from the internal vector for each byte returned.
     ///
-    fn pop_vec(&mut self, count: usize) -> Vec<u8> {
-        assert!(self.bytes.len() >= count);
+    pub fn pop_vec(&mut self, count: usize) -> Vec<u8> {
+        assert!(self.bytes.len() >= count, "insufficient values in list");
 
         let mut bytes = Vec::with_capacity(count);
         (0..count).for_each(|_| {
@@ -715,8 +720,24 @@ impl DataDecoder {
     /// `Note:` this method will automatically convert the returned value
     /// from little Endian to the appropriate bit-format.
     ///
-    fn push_u8(&mut self, value: u8) {
+    pub fn push_u8(&mut self, value: u8) {
         self.xor_bytes.push_back(u8::from_le(value));
+    }
+
+    /// Add each byte from a slice of bytes into the XOR byte list.
+    ///
+    /// # Arguments
+    ///
+    /// * `values` - The bytes to be stored in the internal vector.
+    ///
+    /// `Note:` this method will automatically convert the returned value
+    /// from little Endian to the appropriate bit-format.
+    ///
+    #[allow(dead_code)]
+    pub fn push_u8_slice(&mut self, values: &[u8]) {
+        values.iter().for_each(|v| {
+            self.push_u8(*v);
+        });
     }
 }
 
@@ -737,16 +758,6 @@ impl DataEncoder {
         }
     }
 
-    #[deprecated]
-    #[allow(dead_code)]
-    pub fn fill_empty_bytes_old(&mut self) {
-        let mut vec: Vec<u8> = (self.bytes.len()..self.bytes.capacity())
-            .map(|_| self.rng.gen())
-            .collect();
-
-        self.bytes.append(&mut vec);
-    }
-
     /// Fill any unused slots in the byte list with random byte data.
     pub fn fill_empty_bytes(&mut self) {
         utils::fast_fill_vec_random(&mut self.bytes, &mut self.rng);
@@ -758,11 +769,11 @@ impl DataEncoder {
     ///
     /// * `value` - The byte to be stored.
     ///
-    fn push_u8(&mut self, value: u8) {
+    fn push_u8_direct(&mut self, value: u8) {
         self.bytes.push(value);
     }
 
-    /// Push a sequence of XOR-encoded bytes from a slice into the byte list.
+    /// Push a sequence of bytes from a slice into the byte list. Each byte will be XOR-encoded.
     ///
     /// # Arguments
     ///
@@ -772,13 +783,13 @@ impl DataEncoder {
     ///
     /// `Note:` the 1st byte will be the XOR-encoded data and the second will be the XOR value byte.
     ///
-    pub fn push_u8_slice_with_xor(&mut self, slice: &[u8]) {
+    pub fn push_u8_slice(&mut self, slice: &[u8]) {
         slice.iter().for_each(|b| {
-            self.push_u8_with_xor(*b);
+            self.push_u8(*b);
         });
     }
 
-    /// Push a XOR-encoded byte into the byte list.
+    /// Push a byte into the byte list. The byte will be XOR-encoded.
     ///
     /// # Arguments
     ///
@@ -788,21 +799,130 @@ impl DataEncoder {
     ///
     /// `Note:` the 1st byte will be the XOR-encoded data and the second will be the XOR value byte.
     ///
-    pub fn push_u8_with_xor(&mut self, value: u8) {
+    pub fn push_u8(&mut self, value: u8) {
         let xor = self.rng.gen::<u8>().to_le();
         let xor_data = value.to_le() ^ xor;
-        self.push_u8(xor_data);
-        self.push_u8(xor);
+        self.push_u8_direct(xor_data);
+        self.push_u8_direct(xor);
     }
 
-    /// Add a u32 value of data into the byte list (4 bytes).
+    /// Add a u32 value of data into the byte list (4 bytes). Each byte will be XOR-encoded.
     ///
     /// # Arguments
     ///
     /// * `value` - The u32 to be stored.
     ///
-    pub fn push_u32_with_xor(&mut self, value: u32) {
+    pub fn push_u32(&mut self, value: u32) {
         let bytes = value.to_le_bytes();
-        self.push_u8_slice_with_xor(&bytes);
+        self.push_u8_slice(&bytes);
+    }
+}
+
+#[cfg(test)]
+mod tests_encoder {
+    use super::{DataDecoder, DataEncoder};
+
+    #[test]
+    fn encoder_fill_random() {
+        let capacity = 8;
+        let mut encoder = DataEncoder::new(capacity);
+        encoder.fill_empty_bytes();
+        assert!(encoder.bytes.len() == capacity);
+    }
+
+    #[test]
+    #[should_panic(expected = "insufficient values in list")]
+    fn roundtrip_insufficient_values() {
+        let mut encoder = DataEncoder::new(8);
+        let mut decoder = DataDecoder::new(8);
+
+        let in_val: u8 = 0xAB;
+        encoder.push_u8(in_val);
+
+        decoder.push_u8_slice(&encoder.bytes);
+        decoder.decode();
+
+        // This should fail as there will not be enough bytes to pop from the vector.
+        let _ = decoder.pop_u32();
+    }
+
+    #[test]
+    #[should_panic(expected = "insufficient values in list")]
+    fn roundtrip_no_values() {
+        let mut encoder = DataEncoder::new(2);
+        let mut decoder = DataDecoder::new(2);
+
+        let in_val: u8 = 0xAB;
+        encoder.push_u8(in_val);
+
+        decoder.push_u8_slice(&encoder.bytes);
+        decoder.decode();
+
+        // The second call should fail as there will be no bytes to pop
+        // from the vector.
+        let _ = decoder.pop_u8();
+        let _ = decoder.pop_u8();
+    }
+
+    #[test]
+    #[should_panic(expected = "insufficient values in list")]
+    fn roundtrip_not_decoded() {
+        let mut encoder = DataEncoder::new(2);
+        let mut decoder = DataDecoder::new(2);
+
+        let in_val: u8 = 0xAB;
+        encoder.push_u8(in_val);
+        assert!(encoder.bytes.len() == 2);
+
+        decoder.push_u8_slice(&encoder.bytes);
+        // Note: decode function has not been executed here.
+
+        let _ = decoder.pop_u8();
+    }
+
+    #[test]
+    fn u8_roundtrip() {
+        let mut encoder = DataEncoder::new(2);
+        let mut decoder = DataDecoder::new(2);
+
+        let in_val: u8 = 0xAB;
+        encoder.push_u8(in_val);
+        assert!(encoder.bytes.len() == 2);
+
+        decoder.push_u8_slice(&encoder.bytes);
+        decoder.decode();
+
+        assert!(in_val == decoder.pop_u8());
+    }
+
+    #[test]
+    fn u8_slice_roundtrip() {
+        let mut encoder = DataEncoder::new(8);
+        let mut decoder = DataDecoder::new(8);
+
+        let in_val: [u8; 4] = [0x00, 0x01, 0x02, 0x03];
+        encoder.push_u8_slice(&in_val);
+        assert!(encoder.bytes.len() == 8);
+
+        decoder.push_u8_slice(&encoder.bytes);
+        decoder.decode();
+
+        let out_val = decoder.pop_vec(4);
+        assert!(in_val[..] == out_val[..]);
+    }
+
+    #[test]
+    fn u32_roundtrip() {
+        let mut encoder = DataEncoder::new(8);
+        let mut decoder = DataDecoder::new(8);
+
+        let in_val: u32 = 0xDEADBEEF;
+        encoder.push_u32(in_val);
+        assert!(encoder.bytes.len() == 8);
+
+        decoder.push_u8_slice(&encoder.bytes);
+        decoder.decode();
+
+        assert!(in_val == decoder.pop_u32());
     }
 }
