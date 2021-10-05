@@ -13,8 +13,8 @@ use rand_chacha::ChaCha20Rng;
 use std::collections::{HashMap, VecDeque};
 use std::convert::{TryFrom, TryInto};
 
-// TODO - decide if we should use AES-GCM for AES-GCM-SIV. Slightly decreased performance, increased resistance to certain types of attack.
-// TODO - this might be something that is used in a v2 algorithm if not implemented here.
+// TODO - should should use AES-GCM or AES-GCM-SIV? Slightly decreased performance, increased resistance to certain types of attack.
+// TODO - this might be something that is used in a v2 algorithm, if not implemented here.
 
 /// The time cost (iterations) for use with the Argon2 hashing algorithm.
 const T_COST: u32 = 8;
@@ -32,7 +32,7 @@ const MIN_CELLS: u64 = 312;
 const VERSION: u8 = 1;
 
 #[derive(Debug)]
-pub(crate) struct StegaV1 {
+pub struct StegaV1 {
     /// The data index to cell ID map.
     data_cell_map: HashMap<usize, usize>,
     /// The read-only reference image.
@@ -259,6 +259,10 @@ impl StegaV1 {
 
         // We currently only support for the following formats for
         // encoding: PNG, GIF and bitmap images.
+        // TODO: check if any of the other support format types
+        // TODO: are suitable for use here.
+        // TODO: webp encoding is viable if a dependency on the
+        // TODO: webp crate is added.
         match fmt {
             Png | Gif | Bmp => {}
             _ => {
@@ -671,7 +675,7 @@ impl DataDecoder {
 
     /// Pop a XOR-decoded byte from the front of the byte list.
     pub fn pop_u8(&mut self) -> u8 {
-        assert!(!self.bytes.is_empty(), "insufficient values in list");
+        assert!(!self.bytes.is_empty(), "insufficient values available");
 
         // We do not need to worry about decoding these values from little
         // Endian because that will have been done when loading the values.
@@ -686,7 +690,7 @@ impl DataDecoder {
     /// from little Endian to the correct bit-format.
     ///
     pub fn pop_u32(&mut self) -> u32 {
-        assert!(self.bytes.len() >= 4, "insufficient values in list");
+        assert!(self.bytes.len() >= 4, "insufficient values available");
 
         let mut bytes = [0u8; 4];
         bytes.iter_mut().for_each(|i| {
@@ -701,7 +705,7 @@ impl DataDecoder {
     /// `Note:` This method will pop `2` bytes from the internal vector for each byte returned.
     ///
     pub fn pop_vec(&mut self, count: usize) -> Vec<u8> {
-        assert!(self.bytes.len() >= count, "insufficient values in list");
+        assert!(self.bytes.len() >= count, "insufficient values available");
 
         let mut bytes = Vec::with_capacity(count);
         (0..count).for_each(|_| {
@@ -819,7 +823,7 @@ impl DataEncoder {
 }
 
 #[cfg(test)]
-mod tests_encoder {
+mod tests_encoder_decoder {
     use super::{DataDecoder, DataEncoder};
 
     #[test]
@@ -831,7 +835,7 @@ mod tests_encoder {
     }
 
     #[test]
-    #[should_panic(expected = "insufficient values in list")]
+    #[should_panic(expected = "insufficient values available")]
     fn roundtrip_insufficient_values() {
         let mut encoder = DataEncoder::new(8);
         let mut decoder = DataDecoder::new(8);
@@ -847,7 +851,7 @@ mod tests_encoder {
     }
 
     #[test]
-    #[should_panic(expected = "insufficient values in list")]
+    #[should_panic(expected = "insufficient values available")]
     fn roundtrip_no_values() {
         let mut encoder = DataEncoder::new(2);
         let mut decoder = DataDecoder::new(2);
@@ -865,7 +869,7 @@ mod tests_encoder {
     }
 
     #[test]
-    #[should_panic(expected = "insufficient values in list")]
+    #[should_panic(expected = "insufficient values available")]
     fn roundtrip_not_decoded() {
         let mut encoder = DataEncoder::new(2);
         let mut decoder = DataDecoder::new(2);

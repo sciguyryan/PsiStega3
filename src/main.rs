@@ -20,8 +20,8 @@ fn main() {
     let input = String::from("This is a test.");
     let password = String::from("banana123");
 
-    let input_img_path = "D:\\GitHub\\PsiStega3\\test-images\\a.png";
-    let output_img_path = "D:\\GitHub\\PsiStega3\\test-images\\a2.png";
+    let input_img_path = "D:\\GitHub\\PsiStega3\\test-images\\b.png";
+    let output_img_path = "D:\\GitHub\\PsiStega3\\test-images\\b2.png";
 
     let mut stega = StegaV1::new(true);
 
