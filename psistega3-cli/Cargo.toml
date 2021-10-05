@@ -1,0 +1,21 @@
+[package]
+name = "psistega3-cli"
+version = "0.1.0"
+authors = ["Ryan Jones-Ward <sciguyryan@gmail.com>"]
+edition = "2018"
+readme = "README.md"
+description = "A CLI for PsiStega3."
+license = "LGPL 2.1"
+repository = "https://github.com/sciguyryan/PsiStega3"
+homepage = "https://github.com/sciguyryan/PsiStega3"
+build = "../build.rs"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+log = "0.4.14"
+simple_logger = "1.13.0"
+psistega3-core = { path = "../psistega3-core" }
+
+[target.'cfg(windows)'.build-dependencies]
+winres = "0.1.12"

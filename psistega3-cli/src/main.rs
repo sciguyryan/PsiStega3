@@ -1,9 +1,7 @@
-mod codecs;
-mod error;
-mod hashers;
-mod image_wrapper;
-mod utils;
-mod version;
+#![crate_name = "psistega3_cli"]
+
+use psistega3_core::codecs;
+use psistega3_core::error;
 
 use crate::codecs::v1::StegaV1;
 
@@ -18,7 +16,7 @@ fn main() {
 
     // These strings are obviously just for testing.
     let input = String::from("This is a test.");
-    let password = String::from("banana123");
+    let password = String::from("banana1234");
 
     let input_img_path = "D:\\GitHub\\PsiStega3\\test-images\\b.png";
     let output_img_path = "D:\\GitHub\\PsiStega3\\test-images\\b2.png";
