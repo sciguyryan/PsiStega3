@@ -1,9 +1,7 @@
-mod codecs;
-mod error;
-mod hashers;
-mod image_wrapper;
-mod utils;
-mod version;
+#![crate_name = "psistega3_cli"]
+
+use psistega3_core::codecs;
+use psistega3_core::error;
 
 use crate::codecs::v1::StegaV1;
 
