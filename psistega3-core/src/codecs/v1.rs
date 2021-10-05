@@ -8,6 +8,7 @@ use aes_gcm::{
     aead::{Aead, NewAead},
     Aes256Gcm, Key, Nonce,
 };
+use image::ImageFormat;
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
 use std::collections::{HashMap, VecDeque};
@@ -24,12 +25,10 @@ const P_COST: u32 = 8;
 const M_COST: u32 = 65536;
 /// The version of the Argon2 hashing algorithm to use.
 const ARGON_VER: argon2::Version = argon2::Version::V0x13;
-/// The maximum number of cells that an image may contain.
-const MAX_CELLS: u64 = 50_000_000;
-/// The minimum number of cells that an image may contain.
-const MIN_CELLS: u64 = 312;
 /// The version of this codec.
 const VERSION: u8 = 1;
+/// A list of formats that can be used with the v1 algorithm.
+const SUPPORTED_FORMATS: [ImageFormat; 3] = [ImageFormat::Png, ImageFormat::Gif, ImageFormat::Bmp];
 
 #[derive(Debug)]
 pub struct StegaV1 {
@@ -148,7 +147,6 @@ impl StegaV1 {
     /// Otherwise an error will be returned.
     ///
     fn load_image(file_path: &str, read_only: bool) -> Result<ImageWrapper> {
-        // See: https://github.com/image-rs/image
         let img = ImageWrapper::load_from_file(file_path, read_only)?;
 
         // Validate if the image file can be used.
@@ -252,8 +250,6 @@ impl StegaV1 {
     /// * `img` - A reference to the [`ImageWrapper`] that holds the image.
     ///
     fn validate_image(img: &ImageWrapper) -> Result<()> {
-        use image::ImageFormat::*;
-
         let fmt = img.get_image_format();
         log::debug!("Image format: {:?}", fmt);
 
@@ -263,11 +259,8 @@ impl StegaV1 {
         // TODO: are suitable for use here.
         // TODO: webp encoding is viable if a dependency on the
         // TODO: webp crate is added.
-        match fmt {
-            Png | Gif | Bmp => {}
-            _ => {
-                return Err(Error::ImageTypeInvalid);
-            }
+        if !SUPPORTED_FORMATS.contains(&fmt) {
+            return Err(Error::ImageTypeInvalid);
         }
 
         let (w, h) = img.dimensions();
@@ -279,27 +272,6 @@ impl StegaV1 {
         let channels = img.get_total_channels();
         if channels % 8 != 0 {
             return Err(Error::ImageDimensionsInvalid);
-        }
-
-        let total_cells = StegaV1::get_total_cells(img);
-        log::debug!("Total available cells: {}", &total_cells);
-
-        /*
-          We need to ensure that the total number of cells within the reference
-          image is not too large.
-          This is equal to the number of cells in a 10,000 by 10,000 pixel image.
-        */
-        if total_cells > MAX_CELLS {
-            return Err(Error::ImageTooLarge);
-        }
-
-        /*
-          We need to ensure that the total number of cells within the reference
-          image is not too small.
-          This is equal to the number of cells in a 30 by 30 pixel image.
-        */
-        if total_cells < MIN_CELLS {
-            return Err(Error::ImageTooSmall);
         }
 
         Ok(())
@@ -819,6 +791,97 @@ impl DataEncoder {
     pub fn push_u32(&mut self, value: u32) {
         let bytes = value.to_le_bytes();
         self.push_u8_slice(&bytes);
+    }
+}
+
+#[cfg(test)]
+mod tests_encryption_decryption {
+    use crate::error::{Error, Result};
+    use crate::image_wrapper::ImageWrapper;
+
+    use super::StegaV1;
+
+    struct TestEntry<'a> {
+        pub file: &'a str,
+        pub expected_result: Result<()>,
+        pub fail_message: &'a str,
+    }
+
+    impl<'a> TestEntry<'a> {
+        fn new(file: &'a str, expected_result: Result<()>, fail_message: &'a str) -> Self {
+            Self {
+                file,
+                expected_result,
+                fail_message,
+            }
+        }
+
+        fn fail_message(&self) -> String {
+            let expected_str = match self.expected_result {
+                Ok(_) => "pass".to_string(),
+                Err(e) => "error = ".to_string() + &e.to_string(),
+            };
+
+            format!(
+                "File: {} expected {}. Message = {}",
+                self.file, expected_str, self.fail_message
+            )
+        }
+    }
+
+    #[test]
+    fn image_loading_and_validation() {
+        let tests = [
+            TestEntry::new(
+                "10x10.jpg",
+                Err(Error::ImageTypeInvalid),
+                "file type is invalid",
+            ),
+            TestEntry::new(
+                "10x10-rbg.png",
+                Err(Error::ImageDimensionsInvalid),
+                "file type is valid, channels % 8 != 0",
+            ),
+            TestEntry::new(
+                "10x10-rbga.png",
+                Ok(()),
+                "file type is valid, channels % 8 == 0",
+            ),
+            TestEntry::new(
+                "10x10-rbga.gif",
+                Ok(()),
+                "file type is valid, channels % 8 == 0",
+            ),
+            TestEntry::new(
+                "10x10-rbg.bmp",
+                Err(Error::ImageDimensionsInvalid),
+                "file type is valid, channels % 8 != 0",
+            ),
+            TestEntry::new(
+                "missing-file.png",
+                Err(Error::ImageOpening),
+                "file is missing and therefore cannot be loaded",
+            ),
+        ];
+
+        let mut path = std::env::current_dir().unwrap();
+        path.push("..\\tests\\assets\\loading_and_validation");
+        if !path.exists() {
+            panic!("unable to find test file path!");
+        }
+
+        for test in tests {
+            let mut full_path = path.clone();
+            full_path.push(test.file);
+
+            let path_str = full_path.as_path().to_str().unwrap();
+            let result = match StegaV1::load_image(path_str, true) {
+                Ok(_) => Ok(()),
+                Err(e) => Err(e),
+            };
+
+            assert_eq!(result, test.expected_result, "{}", test.fail_message());
+        }
     }
 }
 

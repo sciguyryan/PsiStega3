@@ -15,7 +15,7 @@ pub(crate) fn is_little_endian() -> bool {
 pub(crate) const U8_BIT_MASKS: [u8; 8] = [1, 2, 4, 8, 16, 32, 64, 128];
 
 /// A list of the bitmasks that can be used to set the state of a bit in a u8 value.
-const U8_UNSET_BIT_MASK: [u8; 8] = [
+pub(crate) const U8_UNSET_BIT_MASK: [u8; 8] = [
     255 - 1,
     255 - 2,
     255 - 4,
