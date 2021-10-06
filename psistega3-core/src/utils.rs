@@ -1,10 +1,13 @@
 use core::fmt::Write;
 use rand::Rng;
 use rand_core::{OsRng, RngCore};
+use std::{fs::File, path::Path};
+
+use crate::error::{Error, Result};
 
 /// Check if the current platform is little Endian.
 #[allow(dead_code)]
-pub(crate) fn is_little_endian() -> bool {
+pub fn is_little_endian() -> bool {
     let val: u32 = 0x1234;
     let val2 = val.to_le();
 
@@ -12,10 +15,10 @@ pub(crate) fn is_little_endian() -> bool {
 }
 
 /// A list of the bitmasks that can check if a given but is set in a u8 value.
-pub(crate) const U8_BIT_MASKS: [u8; 8] = [1, 2, 4, 8, 16, 32, 64, 128];
+pub const U8_BIT_MASKS: [u8; 8] = [1, 2, 4, 8, 16, 32, 64, 128];
 
 /// A list of the bitmasks that can be used to set the state of a bit in a u8 value.
-pub(crate) const U8_UNSET_BIT_MASK: [u8; 8] = [
+pub const U8_UNSET_BIT_MASK: [u8; 8] = [
     255 - 1,
     255 - 2,
     255 - 4,
@@ -34,7 +37,7 @@ pub(crate) const U8_UNSET_BIT_MASK: [u8; 8] = [
 /// * `index` - The bit index to be modified.
 ///
 #[inline]
-pub(crate) fn is_bit_set(value: &u8, index: usize) -> bool {
+pub fn is_bit_set(value: &u8, index: usize) -> bool {
     (value & U8_BIT_MASKS[index]) != 0
 }
 
@@ -47,7 +50,7 @@ pub(crate) fn is_bit_set(value: &u8, index: usize) -> bool {
 /// * `state` - The final state of the bit.
 ///
 #[inline]
-pub(crate) fn set_bit_state(value: &mut u8, index: usize, state: bool) {
+pub fn set_bit_state(value: &mut u8, index: usize, state: bool) {
     if state {
         *value |= U8_BIT_MASKS[index];
     } else {
@@ -155,4 +158,70 @@ where
 
     in_vec.append(&mut vec1);
     in_vec.append(&mut vec2);
+}
+
+/// Read the contents of a file into a base64 string.
+///
+/// * `in_path` - The input file path.
+///
+/// `Returns:` a [`Result`] containing a base64-encoded [`String`] if the operation was successful, otherwise an [`Error`] will be returned.
+///
+pub fn file_to_base64_string(in_path: &str) -> Result<String> {
+    use std::io::Read;
+
+    if !Path::new(in_path).exists() {
+        return Err(Error::PathInvalid);
+    }
+
+    let mut file = match File::open(&in_path) {
+        Ok(f) => f,
+        Err(_) => return Err(Error::File),
+    };
+
+    let mut buffer = Vec::new();
+    match file.read_to_end(&mut buffer) {
+        Ok(_) => {}
+        Err(_) => return Err(Error::FileRead),
+    }
+
+    let mut buf = String::new();
+    base64::encode_config_buf(buffer, base64::STANDARD, &mut buf);
+
+    Ok(buf)
+}
+
+/// Reads a base64 string and writes the decoded contents to a specified path.
+///
+/// * `b64_str` - The base64 encoded string.
+/// * `out_file` - The path to which the decoded data should be written.
+///
+/// `Returns:` a [`Result`] indicating whether the operation was successful or not.
+///
+pub fn base64_string_to_file(b64_str: &str, out_file: &str) -> Result<()> {
+    use std::io::Write;
+
+    if !Path::new(out_file).exists() {
+        return Err(Error::PathInvalid);
+    }
+
+    let mut buf = Vec::<u8>::new();
+    match base64::decode_config_buf(b64_str, base64::STANDARD, &mut buf) {
+        Ok(_) => {}
+        Err(_) => return Err(Error::Base64Decoding),
+    };
+
+    // We have decoded a valid base64 string.
+    // Next we need to write the data to the file.
+    let mut file = match File::create(out_file) {
+        Ok(f) => f,
+        Err(_) => return Err(Error::FileCreate),
+    };
+
+    // Write the resulting bytes directly into the output file.
+    match file.write_all(&buf) {
+        Ok(_) => {}
+        Err(_) => return Err(Error::FileWrite),
+    }
+
+    Ok(())
 }

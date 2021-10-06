@@ -4,10 +4,10 @@ use core::convert::TryFrom;
 
 /// Version of the algorithm.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
-#[repr(u32)]
+#[repr(u8)]
 pub enum Version {
     /// Version 1 (0x01 in hex)
-    V0x01 = 0x01,
+    V0x01,
 }
 
 impl Default for Version {
@@ -16,11 +16,11 @@ impl Default for Version {
     }
 }
 
-impl TryFrom<u32> for Version {
+impl TryFrom<u8> for Version {
     type Error = Error;
 
-    fn try_from(version_id: u32) -> Result<Version> {
-        match version_id {
+    fn try_from(version: u8) -> Result<Version> {
+        match version {
             0x01 => Ok(Version::V0x01),
             _ => Err(Error::VersionInvalid),
         }

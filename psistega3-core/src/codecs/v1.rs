@@ -13,6 +13,7 @@ use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
 use std::collections::{HashMap, VecDeque};
 use std::convert::{TryFrom, TryInto};
+use std::path::Path;
 
 // TODO - should should use AES-GCM or AES-GCM-SIV? Slightly decreased performance, increased resistance to certain types of attack.
 // TODO - this might be something that is used in a v2 algorithm, if not implemented here.
@@ -341,16 +342,16 @@ impl StegaV1 {
 impl Codec for StegaV1 {
     fn encode(
         &mut self,
-        original_path: &str,
+        original_img_path: &str,
         key: String,
         plaintext: &str,
-        encoded_path: &str,
+        encoded_img_path: &str,
     ) -> Result<()> {
-        log::debug!("Loading image file @ {}", &original_path);
+        log::debug!("Loading image file @ {}", &original_img_path);
         // We don't need to hold a separate reference image instance here.
-        let mut img = StegaV1::load_image(original_path, false)?;
+        let mut img = StegaV1::load_image(original_img_path, false)?;
 
-        let file_hash_bytes = Hashers::sha3_512_file(original_path);
+        let file_hash_bytes = Hashers::sha3_512_file(original_img_path);
         let file_hash_string = utils::u8_array_to_hex(&file_hash_bytes);
 
         /*
@@ -395,13 +396,11 @@ impl Codec for StegaV1 {
         let pt_bytes = plaintext.as_bytes();
         let ct_bytes = match cipher.encrypt(nonce, pt_bytes.as_ref()) {
             Ok(v) => v,
-            Err(_) => {
-                return Err(Error::EncryptionFailed);
-            }
+            Err(_) => return Err(Error::EncryptionFailed),
         };
 
         /*
-          1 cell for the version,
+          2 cells for the version,
           4 cells for the total number of stored cipher-text cells,
           the salt, the nonce and the cipher-text itself.
 
@@ -455,10 +454,6 @@ impl Codec for StegaV1 {
 
         // Fill all of the unused cells with junk random data.
         // Yes, I know... I'm evil.
-        // TODO: it might not be necessary to fill every unused pixel
-        // TODO: with random data. It might be safe to just write the
-        // TODO: cells that we are interested in here.
-        // TODO: that would dramatically improve performance.
         if self.noise_layer {
             data.fill_empty_bytes();
         }
@@ -475,7 +470,7 @@ impl Codec for StegaV1 {
         });
 
         // Save the modified image.
-        if let Err(e) = img.save(encoded_path) {
+        if let Err(e) = img.save(encoded_img_path) {
             // TODO: Add more granularity here.
             return Err(Error::ImageSaving);
         }
@@ -483,19 +478,44 @@ impl Codec for StegaV1 {
         Ok(())
     }
 
-    fn decode(&mut self, original_path: &str, key: String, encoded_path: &str) -> Result<String> {
-        log::debug!("Loading (reference) image file @ {}", &original_path);
-        let ref_image = StegaV1::load_image(original_path, true)?;
+    fn encode_file(
+        &mut self,
+        original_img_path: &str,
+        key: String,
+        encoded_img_path: &str,
+        input_file_path: &str,
+    ) -> Result<()> {
+        if !Path::new(input_file_path).exists() {
+            return Err(Error::PathInvalid);
+        }
 
-        log::debug!("Loading (encoded) image file @ {}", &encoded_path);
-        let enc_image = StegaV1::load_image(encoded_path, true)?;
+        // We can cheat a bit here.
+        // We simply encode the file into a base64 string and then
+        // pass that to the encode function.
+        let b64_str = utils::file_to_base64_string(input_file_path)?;
+        self.encode(original_img_path, key, &b64_str, encoded_img_path)?;
+
+        Ok(())
+    }
+
+    fn decode(
+        &mut self,
+        original_img_path: &str,
+        key: String,
+        encoded_img_path: &str,
+    ) -> Result<String> {
+        log::debug!("Loading (reference) image file @ {}", &original_img_path);
+        let ref_image = StegaV1::load_image(original_img_path, true)?;
+
+        log::debug!("Loading (encoded) image file @ {}", &encoded_img_path);
+        let enc_image = StegaV1::load_image(encoded_img_path, true)?;
 
         // The reference and encoded images must have the same dimensions.
         if enc_image.dimensions() != ref_image.dimensions() {
             return Err(Error::ImageDimensionsMismatch);
         }
 
-        let file_hash_bytes = Hashers::sha3_512_file(original_path);
+        let file_hash_bytes = Hashers::sha3_512_file(original_img_path);
         let file_hash_string = utils::u8_array_to_hex(&file_hash_bytes);
 
         // The key for the encryption is the SHA3-512 hash of the input image file
@@ -521,7 +541,7 @@ impl Codec for StegaV1 {
         // Decode the XOR-encoded values back into the original values.
         data.decode();
 
-        // The first byte should be the version indicator.
+        // The first 2 bytes should be the version indicator.
         if data.pop_u8() == VERSION {
             log::debug!("We found a valid version indicator! 🙂");
         } else {
@@ -590,12 +610,29 @@ impl Codec for StegaV1 {
         */
         let pt_bytes = match cipher.decrypt(nonce, ct_bytes.as_ref()) {
             Ok(v) => v,
-            Err(_) => {
-                return Err(Error::DecryptionFailed);
-            }
+            Err(_) => return Err(Error::DecryptionFailed),
         };
 
+        // We will convert any invalid UTF-8 sequences to a safe
+        // character here.
         Ok(String::from_utf8_lossy(&pt_bytes).to_string())
+    }
+
+    fn decode_file(
+        &mut self,
+        original_img_path: &str,
+        key: String,
+        encoded_img_path: &str,
+        output_file_path: &str,
+    ) -> Result<()> {
+        // First, we need to extract the information from the target image.
+        let b64_str = self.decode(original_img_path, key, encoded_img_path)?;
+
+        // Now we can decode the string and write the results
+        // to the output file.
+        utils::base64_string_to_file(&b64_str, output_file_path)?;
+
+        Ok(())
     }
 }
 
@@ -797,7 +834,6 @@ impl DataEncoder {
 #[cfg(test)]
 mod tests_encryption_decryption {
     use crate::error::{Error, Result};
-    use crate::image_wrapper::ImageWrapper;
 
     use super::StegaV1;
 

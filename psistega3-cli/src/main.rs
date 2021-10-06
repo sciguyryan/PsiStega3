@@ -1,9 +1,7 @@
 #![crate_name = "psistega3_cli"]
 
-use psistega3_core::codecs;
-use psistega3_core::error;
-
 use crate::codecs::v1::StegaV1;
+use psistega3_core::codecs;
 
 use codecs::codec::Codec;
 use simple_logger::SimpleLogger;
