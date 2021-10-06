@@ -160,13 +160,39 @@ where
     in_vec.append(&mut vec2);
 }
 
-/// Read the contents of a file into a base64 string.
-///
-/// * `in_path` - The input file path.
-///
-/// `Returns:` a [`Result`] containing a base64-encoded [`String`] if the operation was successful, otherwise an [`Error`] will be returned.
-///
-pub fn file_to_base64_string(in_path: &str) -> Result<String> {
+pub fn write_u8_slice_to_file(out_file: &str, bytes: &[u8]) -> Result<()> {
+    use std::io::Write;
+
+    // We have decoded a valid base64 string.
+    // Next we need to write the data to the file.
+    let mut file = match File::create(out_file) {
+        Ok(f) => f,
+        Err(_) => return Err(Error::FileCreate),
+    };
+
+    // Write the resulting bytes directly into the output file.
+    match file.write_all(bytes) {
+        Ok(_) => Ok(()),
+        Err(_) => Err(Error::FileWrite),
+    }
+}
+
+pub fn u8_slice_to_base64_string(bytes: &[u8]) -> String {
+    let mut buf = String::new();
+    base64::encode_config_buf(bytes, base64::STANDARD, &mut buf);
+
+    buf
+}
+
+pub fn base64_string_to_vector(string: &str) -> Result<Vec<u8>> {
+    let mut buf = Vec::<u8>::new();
+    match base64::decode_config_buf(&string, base64::STANDARD, &mut buf) {
+        Ok(_) => Ok(buf),
+        Err(_) => Err(Error::Base64Decoding),
+    }
+}
+
+pub fn read_file_to_u8_vector(in_path: &str) -> Result<Vec<u8>> {
     use std::io::Read;
 
     if !Path::new(in_path).exists() {
@@ -180,48 +206,7 @@ pub fn file_to_base64_string(in_path: &str) -> Result<String> {
 
     let mut buffer = Vec::new();
     match file.read_to_end(&mut buffer) {
-        Ok(_) => {}
-        Err(_) => return Err(Error::FileRead),
+        Ok(_) => Ok(buffer),
+        Err(_) => Err(Error::FileRead),
     }
-
-    let mut buf = String::new();
-    base64::encode_config_buf(buffer, base64::STANDARD, &mut buf);
-
-    Ok(buf)
-}
-
-/// Reads a base64 string and writes the decoded contents to a specified path.
-///
-/// * `b64_str` - The base64 encoded string.
-/// * `out_file` - The path to which the decoded data should be written.
-///
-/// `Returns:` a [`Result`] indicating whether the operation was successful or not.
-///
-pub fn base64_string_to_file(b64_str: &str, out_file: &str) -> Result<()> {
-    use std::io::Write;
-
-    if !Path::new(out_file).exists() {
-        return Err(Error::PathInvalid);
-    }
-
-    let mut buf = Vec::<u8>::new();
-    match base64::decode_config_buf(b64_str, base64::STANDARD, &mut buf) {
-        Ok(_) => {}
-        Err(_) => return Err(Error::Base64Decoding),
-    };
-
-    // We have decoded a valid base64 string.
-    // Next we need to write the data to the file.
-    let mut file = match File::create(out_file) {
-        Ok(f) => f,
-        Err(_) => return Err(Error::FileCreate),
-    };
-
-    // Write the resulting bytes directly into the output file.
-    match file.write_all(&buf) {
-        Ok(_) => {}
-        Err(_) => return Err(Error::FileWrite),
-    }
-
-    Ok(())
 }

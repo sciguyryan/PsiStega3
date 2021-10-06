@@ -5,10 +5,10 @@ pub trait Codec {
     ///
     /// # Arguments
     ///
-    /// * `original_img_path` - the path to the reference image.
-    /// * `key` - the key to be used when encrypting the information.
-    /// * `plaintext` - the data to be encrypted and encoded within the reference image.
-    /// * `encoded_img_path` - the path that will be used to store the encoded image.
+    /// * `original_img_path` - The path to the reference image.
+    /// * `key` - The key to be used when encrypting the information.
+    /// * `plaintext` - The data to be encrypted and encoded within the reference image.
+    /// * `encoded_img_path` - The path that will be used to store the encoded image.
     ///
     fn encode(
         &mut self,
@@ -22,10 +22,10 @@ pub trait Codec {
     ///
     /// # Arguments
     ///
-    /// * `original_path` - the path to the reference image.
-    /// * `key` - the key to be used when encrypting the information.
-    /// * `encoded_path` - the path that will be used to store the encoded image.
-    /// * `input_file_path` - the path to the file to be encoded image.
+    /// * `original_path` - The path to the reference image.
+    /// * `key` - The key to be used when encrypting the information.
+    /// * `encoded_path` - The path that will be used to store the encoded image.
+    /// * `input_file_path` - The path to the file to be encoded image.
     ///
     fn encode_file(
         &mut self,
@@ -37,9 +37,9 @@ pub trait Codec {
 
     /// Decrypt and decode the information from an image.
     ///
-    /// * `original_img_path` - the path to the reference image.
-    /// * `key` - the key to be used when decrypting the information.
-    /// * `encoded_img_path` - the path to the modified image.
+    /// * `original_img_path` - The path to the reference image.
+    /// * `key` - The key to be used when decrypting the information.
+    /// * `encoded_img_path` - The path to the modified image.
     ///
     fn decode(
         &mut self,
@@ -50,10 +50,10 @@ pub trait Codec {
 
     /// Decrypt and decode the an encoded file an image.
     ///
-    /// * `original_img_path` - the path to the reference image.
-    /// * `key` - the key to be used when decrypting the information.
-    /// * `encoded_img_path` - the path to the modified image.
-    /// * `output_file_path` - the path to the file to be encoded image.
+    /// * `original_img_path` - The path to the reference image.
+    /// * `key` - The key to be used when decrypting the information.
+    /// * `encoded_img_path` - The path to the modified image.
+    /// * `output_file_path` - The path to the file to be encoded image.
     ///
     fn decode_file(
         &mut self,

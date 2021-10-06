@@ -51,6 +51,286 @@ impl StegaV1 {
         }
     }
 
+    /// The internal implementation of the decoding algorithm.
+    ///
+    /// * `original_img_path` - The path to the reference image.
+    /// * `key` - The key to be used when decrypting the information.
+    /// * `encoded_img_path` - The path to the modified image.
+    ///
+    fn decode_internal(
+        &mut self,
+        original_img_path: &str,
+        key: String,
+        encoded_img_path: &str,
+    ) -> Result<String> {
+        log::debug!("Loading (reference) image file @ {}", &original_img_path);
+        let ref_image = StegaV1::load_image(original_img_path, true)?;
+
+        log::debug!("Loading (encoded) image file @ {}", &encoded_img_path);
+        let enc_image = StegaV1::load_image(encoded_img_path, true)?;
+
+        // The reference and encoded images must have the same dimensions.
+        if enc_image.dimensions() != ref_image.dimensions() {
+            return Err(Error::ImageDimensionsMismatch);
+        }
+
+        let file_hash_bytes = Hashers::sha3_512_file(original_img_path);
+        let file_hash_string = utils::u8_array_to_hex(&file_hash_bytes);
+
+        // The key for the encryption is the SHA3-512 hash of the input image file
+        // combined with the plaintext key.
+        // It intentional that we take ownership of the key as it will be
+        // cleared from memory when this function exits.
+        let mut composite_key = key;
+        composite_key.push_str(&file_hash_string);
+
+        // Build the data index to positional cell index map.
+        self.build_data_to_cell_index_map(&enc_image, &composite_key);
+
+        // This will hold all of the decoded data.
+        let total_cells = StegaV1::get_total_cells(&enc_image) as usize;
+        let mut data = DataDecoder::new(total_cells);
+
+        // Read every byte of data from the images.
+        (0..total_cells).for_each(|i| {
+            let val = self.read_u8_by_index(&ref_image, &enc_image, i);
+            data.push_u8(val);
+        });
+
+        // Decode the XOR-encoded values back into the original values.
+        data.decode();
+
+        // The first 2 bytes should be the version indicator.
+        if data.pop_u8() == VERSION {
+            log::debug!("We found a valid version indicator! 🙂");
+        } else {
+            log::debug!("We did not find a version indicator! 😢");
+            return Err(Error::VersionInvalid);
+        }
+
+        // The next set of bytes should be the total number of cipher-text bytes
+        // cells that have been encoded.
+        let total_ct_cells = data.pop_u32();
+
+        let total_cells_needed = (1 /* version (u8) */
+            + 4 /* the total number of stored cipher-text cells (u32) */
+            + 12 /* the length of the Argon2 salt (u8) */
+            + 12 /* the length of the AES-256 nonce (u8) */
+            + total_ct_cells as u64)
+            * 2; /* 2 subcells per cell */
+
+        // In total we can never store more than 0xffffffff bytes of data to ensure that the values
+        // of usize never exceeds the maximum value of the u32 type.
+        if total_cells_needed > 0xffffffff {
+            return Err(Error::DataTooLarge);
+        }
+
+        // Do we have enough space within the image to decode the data?
+        let total_cells = StegaV1::get_total_cells(&enc_image);
+        if total_cells_needed > total_cells {
+            return Err(Error::ImageInsufficientSpace);
+        }
+
+        // Note: we can unwrap these values as we will assert if the
+        //   length of the vector is not equal to the length we requested.
+        // Next, we get the Argon2 salt bytes.
+        let salt_bytes: [u8; 12] = data.pop_vec(12).try_into().unwrap();
+
+        // Next, we get the AES nonce bytes.
+        let nonce_bytes: [u8; 12] = data.pop_vec(12).try_into().unwrap();
+
+        // Add the cipher-text bytes.
+        let ct_bytes = data.pop_vec(total_ct_cells as usize);
+
+        // Now we can compute the Argon2 hash.
+        let key_bytes_full = Hashers::argon2_string(
+            &composite_key,
+            salt_bytes,
+            M_COST,
+            P_COST,
+            T_COST,
+            ARGON_VER,
+        )?;
+
+        // The AES-256 key is 256-bits (32 bytes) in length.
+        let key_bytes = &key_bytes_full[..32];
+
+        let key = Key::from_slice(key_bytes);
+        let cipher = Aes256Gcm::new(key);
+        let nonce = Nonce::from_slice(&nonce_bytes);
+
+        /*
+          Attempt to decrypt the cipher-text bytes with
+          the extracted information.
+
+          This will fail if the information is invalid, which could occurring
+          because of changes to either of the image files, or simply because
+          no encrypted information was held inside the images.
+        */
+        let pt_bytes = match cipher.decrypt(nonce, ct_bytes.as_ref()) {
+            Ok(v) => v,
+            Err(_) => return Err(Error::DecryptionFailed),
+        };
+
+        // We will convert any invalid UTF-8 sequences to a safe
+        // character here.
+        let str: String;
+        unsafe {
+            // This is safe as we are working with internal code, and the
+            // internal code should not generate any invalid UTF-8 sequences.
+            str = String::from_utf8_unchecked(pt_bytes);
+        }
+
+        Ok(str)
+    }
+
+    // TODO: since everything is base 64, we only need 64 characters.
+    // TODO: this means we might be able to encode things more efficiently than
+    // TODO: by attempting to encode an entire byte.
+    // TODO: maybe we could use the bottom 6 bits of a byte and randomised
+    // TODO: the remaining 2 bits?
+
+    /// The internal implementation of the encoding algorithm.
+    ///
+    /// # Arguments
+    ///
+    /// * `original_img_path` - The path to the reference image.
+    /// * `key` - The key to be used when encrypting the information.
+    /// * `data` - The data to be encrypted and encoded within the reference image.
+    /// * `encoded_img_path` - The path that will be used to store the encoded image.
+    ///
+    fn encode_internal(
+        &mut self,
+        original_img_path: &str,
+        key: String,
+        data: &[u8],
+        encoded_img_path: &str,
+    ) -> Result<()> {
+        log::debug!("Loading image file @ {}", &original_img_path);
+        // We don't need to hold a separate reference image instance here.
+        let mut img = StegaV1::load_image(original_img_path, false)?;
+
+        let file_hash_bytes = Hashers::sha3_512_file(original_img_path);
+        let file_hash_string = utils::u8_array_to_hex(&file_hash_bytes);
+
+        /*
+          The key for the encryption is the SHA3-512 hash of the input image file
+          combined with the plaintext key.
+
+          It intentional that we take ownership of the key as it will be
+          cleared from memory when this function exits.
+        */
+        let mut composite_key = key;
+        composite_key.push_str(&file_hash_string);
+
+        // Generate a random salt for the Argon2 hashing function.
+        let salt_bytes: [u8; 12] = utils::secure_random_bytes();
+        let key_bytes_full = Hashers::argon2_string(
+            &composite_key,
+            salt_bytes,
+            M_COST,
+            P_COST,
+            T_COST,
+            ARGON_VER,
+        )?;
+
+        // The AES-256 key is 256-bits (32 bytes) in length.
+        let key_bytes = &key_bytes_full[..32];
+
+        let key = Key::from_slice(key_bytes);
+        let cipher = Aes256Gcm::new(key);
+
+        // Generate a unique random 96-bit (12 byte) nonce (IV).
+        let nonce_bytes: [u8; 12] = utils::secure_random_bytes();
+        let nonce = Nonce::from_slice(&nonce_bytes);
+
+        // We will convert the input data byte vector into a base64 string.
+        let plaintext = utils::u8_slice_to_base64_string(data);
+        let pt_bytes = plaintext.as_bytes();
+        let ct_bytes = match cipher.encrypt(nonce, pt_bytes.as_ref()) {
+            Ok(v) => v,
+            Err(_) => return Err(Error::EncryptionFailed),
+        };
+
+        /*
+          2 cells for the version,
+          4 cells for the total number of stored cipher-text cells,
+          the salt, the nonce and the cipher-text itself.
+
+          This value must be doubled as we need 2 cells per byte:
+            one for the XOR encoded byte and one for the XOR byte.
+
+          This value must be held within a 64-bit value to prevent integer overflow
+            from occurring in the when running this on a 32-bit architecture.
+
+          Note: a cell represents the space in which a byte of data can be encoded.
+        */
+        let total_ct_cells = ct_bytes.len();
+        let total_cells_needed = (1 /* version (u8) */
+            + 4 /* the total number of stored cipher-text cells (u32) */
+            + 12 /* the length of the Argon2 salt (u8) */
+            + 12 /* the length of the AES-256 nonce (u8) */
+            + ct_bytes.len() as u64)
+            * 2; /* 2 subcells per cell */
+        log::debug!("total_cells_needed: {}", total_cells_needed);
+
+        // In total we can never store more than 0xffffffff bytes of data to
+        // ensure that the values of usize never exceeds the maximum value
+        // of the u32 type.
+        if total_cells_needed > 0xffffffff {
+            return Err(Error::DataTooLarge);
+        }
+
+        // Do we have enough space within the image to encode the data?
+        let total_cells = StegaV1::get_total_cells(&img);
+        if total_cells_needed > total_cells {
+            return Err(Error::ImageInsufficientSpace);
+        }
+
+        // This will hold all of the data to be encoded.
+        let mut data = DataEncoder::new(total_cells as usize);
+
+        // Add the version indicator.
+        data.push_u8(VERSION);
+
+        // Add the total number of cipher-text cells needed.
+        data.push_u32(total_ct_cells as u32);
+
+        // Add the Argon2 salt bytes.
+        data.push_u8_slice(&salt_bytes);
+
+        // Add the AES nonce bytes.
+        data.push_u8_slice(&nonce_bytes);
+
+        // Add the cipher-text bytes.
+        data.push_u8_slice(&ct_bytes);
+
+        // Fill all of the unused cells with junk random data.
+        // Yes, I know... I'm evil.
+        if self.noise_layer {
+            data.fill_empty_bytes();
+        }
+
+        // Build the data index to positional cell index map.
+        self.build_data_to_cell_index_map(&img, &composite_key);
+
+        // Clear the key since it is no longer needed.
+        composite_key.clear();
+
+        // Iterate over each byte of data to be encoded.
+        data.bytes.iter().enumerate().for_each(|(i, byte)| {
+            self.write_u8_by_data_index(&mut img, byte, i);
+        });
+
+        // Save the modified image.
+        if let Err(e) = img.save(encoded_img_path) {
+            // TODO: Add more granularity here.
+            return Err(Error::ImageSaving);
+        }
+
+        Ok(())
+    }
+
     /// Builds a map of data indices to cell indices.
     ///
     /// # Arguments
@@ -347,135 +627,12 @@ impl Codec for StegaV1 {
         plaintext: &str,
         encoded_img_path: &str,
     ) -> Result<()> {
-        log::debug!("Loading image file @ {}", &original_img_path);
-        // We don't need to hold a separate reference image instance here.
-        let mut img = StegaV1::load_image(original_img_path, false)?;
-
-        let file_hash_bytes = Hashers::sha3_512_file(original_img_path);
-        let file_hash_string = utils::u8_array_to_hex(&file_hash_bytes);
-
-        /*
-          The key for the encryption is the SHA3-512 hash of the input image file
-          combined with the plaintext key.
-
-          It intentional that we take ownership of the key as it will be
-          cleared from memory when this function exits.
-        */
-        let mut composite_key = key;
-        composite_key.push_str(&file_hash_string);
-
-        // Generate a random salt for the Argon2 hashing function.
-        let salt_bytes: [u8; 12] = utils::secure_random_bytes();
-        let key_bytes_full = Hashers::argon2_string(
-            &composite_key,
-            salt_bytes,
-            M_COST,
-            P_COST,
-            T_COST,
-            ARGON_VER,
-        )?;
-
-        // The AES-256 key is 256-bits (32 bytes) in length.
-        let key_bytes = &key_bytes_full[..32];
-
-        let key = Key::from_slice(key_bytes);
-        let cipher = Aes256Gcm::new(key);
-
-        // Generate a unique random 96-bit (12 byte) nonce (IV).
-        let nonce_bytes: [u8; 12] = utils::secure_random_bytes();
-        let nonce = Nonce::from_slice(&nonce_bytes);
-
-        /*
-          Attempt to decrypt the cipher-text bytes with
-          the extracted information.
-
-          This will fail if the information is invalid, which could occurring
-          because of changes to either of the image files, or simply because
-          no encrypted information was held inside the images.
-        */
-        let pt_bytes = plaintext.as_bytes();
-        let ct_bytes = match cipher.encrypt(nonce, pt_bytes.as_ref()) {
-            Ok(v) => v,
-            Err(_) => return Err(Error::EncryptionFailed),
-        };
-
-        /*
-          2 cells for the version,
-          4 cells for the total number of stored cipher-text cells,
-          the salt, the nonce and the cipher-text itself.
-
-          This value must be doubled as we need 2 cells per byte:
-            one for the XOR encoded byte and one for the XOR byte.
-
-          This value must be held within a 64-bit value to prevent integer overflow
-            from occurring in the when running this on a 32-bit architecture.
-
-          Note: a cell represents the space in which a byte of data can be encoded.
-        */
-        let total_ct_cells = ct_bytes.len();
-        let total_cells_needed = (1 /* version (u8) */
-            + 4 /* the total number of stored cipher-text cells (u32) */
-            + 12 /* the length of the Argon2 salt (u8) */
-            + 12 /* the length of the AES-256 nonce (u8) */
-            + ct_bytes.len() as u64)
-            * 2; /* 2 subcells per cell */
-        log::debug!("total_cells_needed: {}", total_cells_needed);
-
-        // In total we can never store more than 0xffffffff bytes of data to
-        // ensure that the values of usize never exceeds the maximum value
-        // of the u32 type.
-        if total_cells_needed > 0xffffffff {
-            return Err(Error::DataTooLarge);
-        }
-
-        // Do we have enough space within the image to encode the data?
-        let total_cells = StegaV1::get_total_cells(&img);
-        if total_cells_needed > total_cells {
-            return Err(Error::ImageInsufficientSpace);
-        }
-
-        // This will hold all of the data to be encoded.
-        let mut data = DataEncoder::new(total_cells as usize);
-
-        // Add the version indicator.
-        data.push_u8(VERSION);
-
-        // Add the total number of cipher-text cells needed.
-        data.push_u32(total_ct_cells as u32);
-
-        // Add the Argon2 salt bytes.
-        data.push_u8_slice(&salt_bytes);
-
-        // Add the AES nonce bytes.
-        data.push_u8_slice(&nonce_bytes);
-
-        // Add the cipher-text bytes.
-        data.push_u8_slice(&ct_bytes);
-
-        // Fill all of the unused cells with junk random data.
-        // Yes, I know... I'm evil.
-        if self.noise_layer {
-            data.fill_empty_bytes();
-        }
-
-        // Build the data index to positional cell index map.
-        self.build_data_to_cell_index_map(&img, &composite_key);
-
-        // Clear the key since it is no longer needed.
-        composite_key.clear();
-
-        // Iterate over each byte of data to be encoded.
-        data.bytes.iter().enumerate().for_each(|(i, byte)| {
-            self.write_u8_by_data_index(&mut img, byte, i);
-        });
-
-        // Save the modified image.
-        if let Err(e) = img.save(encoded_img_path) {
-            // TODO: Add more granularity here.
-            return Err(Error::ImageSaving);
-        }
-
-        Ok(())
+        self.encode_internal(
+            original_img_path,
+            key,
+            plaintext.as_bytes(),
+            encoded_img_path,
+        )
     }
 
     fn encode_file(
@@ -489,13 +646,11 @@ impl Codec for StegaV1 {
             return Err(Error::PathInvalid);
         }
 
-        // We can cheat a bit here.
-        // We simply encode the file into a base64 string and then
-        // pass that to the encode function.
-        let b64_str = utils::file_to_base64_string(input_file_path)?;
-        self.encode(original_img_path, key, &b64_str, encoded_img_path)?;
+        // Convert the file into a byte vector.
+        let bytes = utils::read_file_to_u8_vector(input_file_path)?;
 
-        Ok(())
+        // Encode the information into the target image.
+        self.encode_internal(original_img_path, key, &bytes, encoded_img_path)
     }
 
     fn decode(
@@ -504,118 +659,15 @@ impl Codec for StegaV1 {
         key: String,
         encoded_img_path: &str,
     ) -> Result<String> {
-        log::debug!("Loading (reference) image file @ {}", &original_img_path);
-        let ref_image = StegaV1::load_image(original_img_path, true)?;
+        // Decode the base64 string.
+        let b64_str = self.decode_internal(original_img_path, key, encoded_img_path)?;
 
-        log::debug!("Loading (encoded) image file @ {}", &encoded_img_path);
-        let enc_image = StegaV1::load_image(encoded_img_path, true)?;
+        // Decode the base64 string into the raw bytes.
+        let bytes = utils::base64_string_to_vector(&b64_str)?;
 
-        // The reference and encoded images must have the same dimensions.
-        if enc_image.dimensions() != ref_image.dimensions() {
-            return Err(Error::ImageDimensionsMismatch);
-        }
-
-        let file_hash_bytes = Hashers::sha3_512_file(original_img_path);
-        let file_hash_string = utils::u8_array_to_hex(&file_hash_bytes);
-
-        // The key for the encryption is the SHA3-512 hash of the input image file
-        // combined with the plaintext key.
-        // It intentional that we take ownership of the key as it will be
-        // cleared from memory when this function exits.
-        let mut composite_key = key;
-        composite_key.push_str(&file_hash_string);
-
-        // Build the data index to positional cell index map.
-        self.build_data_to_cell_index_map(&enc_image, &composite_key);
-
-        // This will hold all of the decoded data.
-        let total_cells = StegaV1::get_total_cells(&enc_image) as usize;
-        let mut data = DataDecoder::new(total_cells);
-
-        // Read every byte of data from the images.
-        (0..total_cells).for_each(|i| {
-            let val = self.read_u8_by_index(&ref_image, &enc_image, i);
-            data.push_u8(val);
-        });
-
-        // Decode the XOR-encoded values back into the original values.
-        data.decode();
-
-        // The first 2 bytes should be the version indicator.
-        if data.pop_u8() == VERSION {
-            log::debug!("We found a valid version indicator! 🙂");
-        } else {
-            log::debug!("We did not find a version indicator! 😢");
-            return Err(Error::VersionInvalid);
-        }
-
-        // The next set of bytes should be the total number of cipher-text bytes
-        // cells that have been encoded.
-        let total_ct_cells = data.pop_u32();
-
-        let total_cells_needed = (1 /* version (u8) */
-            + 4 /* the total number of stored cipher-text cells (u32) */
-            + 12 /* the length of the Argon2 salt (u8) */
-            + 12 /* the length of the AES-256 nonce (u8) */
-            + total_ct_cells as u64)
-            * 2; /* 2 subcells per cell */
-
-        // In total we can never store more than 0xffffffff bytes of data to ensure that the values
-        // of usize never exceeds the maximum value of the u32 type.
-        if total_cells_needed > 0xffffffff {
-            return Err(Error::DataTooLarge);
-        }
-
-        // Do we have enough space within the image to decode the data?
-        let total_cells = StegaV1::get_total_cells(&enc_image);
-        if total_cells_needed > total_cells {
-            return Err(Error::ImageInsufficientSpace);
-        }
-
-        // Note: we can unwrap these values as we will assert if the
-        //   length of the vector is not equal to the length we requested.
-        // Next, we get the Argon2 salt bytes.
-        let salt_bytes: [u8; 12] = data.pop_vec(12).try_into().unwrap();
-
-        // Next, we get the AES nonce bytes.
-        let nonce_bytes: [u8; 12] = data.pop_vec(12).try_into().unwrap();
-
-        // Add the cipher-text bytes.
-        let ct_bytes = data.pop_vec(total_ct_cells as usize);
-
-        // Now we can compute the Argon2 hash.
-        let key_bytes_full = Hashers::argon2_string(
-            &composite_key,
-            salt_bytes,
-            M_COST,
-            P_COST,
-            T_COST,
-            ARGON_VER,
-        )?;
-
-        // The AES-256 key is 256-bits (32 bytes) in length.
-        let key_bytes = &key_bytes_full[..32];
-
-        let key = Key::from_slice(key_bytes);
-        let cipher = Aes256Gcm::new(key);
-        let nonce = Nonce::from_slice(&nonce_bytes);
-
-        /*
-          Attempt to decrypt the cipher-text bytes with
-          the extracted information.
-
-          This will fail if the information is invalid, which could occurring
-          because of changes to either of the image files, or simply because
-          no encrypted information was held inside the images.
-        */
-        let pt_bytes = match cipher.decrypt(nonce, ct_bytes.as_ref()) {
-            Ok(v) => v,
-            Err(_) => return Err(Error::DecryptionFailed),
-        };
-
-        // We will convert any invalid UTF-8 sequences to a safe
-        // character here.
-        Ok(String::from_utf8_lossy(&pt_bytes).to_string())
+        // Convert the raw bytes back into a string. This is done lossy
+        // to ensure that any invalid sequences are handled.
+        Ok(String::from_utf8_lossy(&bytes).to_string())
     }
 
     fn decode_file(
@@ -626,13 +678,13 @@ impl Codec for StegaV1 {
         output_file_path: &str,
     ) -> Result<()> {
         // First, we need to extract the information from the target image.
-        let b64_str = self.decode(original_img_path, key, encoded_img_path)?;
+        let b64_str = self.decode_internal(original_img_path, key, encoded_img_path)?;
 
-        // Now we can decode the string and write the results
-        // to the output file.
-        utils::base64_string_to_file(&b64_str, output_file_path)?;
+        // Decode the base64 string into the raw bytes.
+        let bytes = utils::base64_string_to_vector(&b64_str)?;
 
-        Ok(())
+        // Write the raw bytes directly to the output file.
+        utils::write_u8_slice_to_file(output_file_path, &bytes)
     }
 }
 
