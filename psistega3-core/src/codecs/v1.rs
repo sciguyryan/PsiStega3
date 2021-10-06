@@ -63,10 +63,7 @@ impl StegaV1 {
         key: String,
         encoded_img_path: &str,
     ) -> Result<String> {
-        log::debug!("Loading (reference) image file @ {}", &original_img_path);
         let ref_image = StegaV1::load_image(original_img_path, true)?;
-
-        log::debug!("Loading (encoded) image file @ {}", &encoded_img_path);
         let enc_image = StegaV1::load_image(encoded_img_path, true)?;
 
         // The reference and encoded images must have the same dimensions.
@@ -102,9 +99,7 @@ impl StegaV1 {
 
         // The first 2 bytes should be the version indicator.
         if data.pop_u8() == VERSION {
-            log::debug!("We found a valid version indicator! 🙂");
         } else {
-            log::debug!("We did not find a version indicator! 😢");
             return Err(Error::VersionInvalid);
         }
 
@@ -200,7 +195,6 @@ impl StegaV1 {
         encoded_img_path: &str,
     ) -> Result<()> {
         // We don't need to hold a separate reference image instance here.
-        log::debug!("Loading image file @ {}", &original_img_path);
         let mut img = StegaV1::load_image(original_img_path, false)?;
 
         let file_hash_bytes = Hashers::sha3_512_file(original_img_path);
@@ -267,7 +261,6 @@ impl StegaV1 {
             + 12 /* the length of the AES-256 nonce (u8) */
             + ct_bytes.len() as u64)
             * 2; /* 2 subcells per cell */
-        log::debug!("total_cells_needed: {}", total_cells_needed);
 
         // In total we can never store more than 0xffffffff bytes of data to
         // ensure that the values of usize never exceeds the maximum value
@@ -527,7 +520,6 @@ impl StegaV1 {
     ///
     fn validate_image(img: &ImageWrapper) -> Result<()> {
         let fmt = img.get_image_format();
-        log::debug!("Image format: {:?}", fmt);
 
         // We currently only support for the following formats for
         // encoding: PNG, GIF and bitmap images.
@@ -539,8 +531,8 @@ impl StegaV1 {
             return Err(Error::ImageTypeInvalid);
         }
 
-        let (w, h) = img.dimensions();
-        log::debug!("Image dimensions: ({},{})", w, h);
+        // This statement is kept around for debugging purposes.
+        let (_w, _h) = img.dimensions();
 
         // The total number of channels must be divisible by 8.
         // This will ensure that we can always encode a given byte
@@ -829,6 +821,8 @@ impl DataEncoder {
     ///
     /// * `value` - The byte to be stored.
     ///
+    /// `Note:` This method cannot be called outside of the [`DataEncoder`]
+    /// class to avoid confusion as it does not XOR encode the byte.
     fn push_u8_direct(&mut self, value: u8) {
         self.bytes.push(value);
     }

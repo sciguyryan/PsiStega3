@@ -1,9 +1,9 @@
+use crate::error::{Error, Result};
+
 use core::fmt::Write;
 use rand::Rng;
 use rand_core::{OsRng, RngCore};
 use std::{fs::File, path::Path};
-
-use crate::error::{Error, Result};
 
 /// A list of the bitmasks that can check if a given but is set in a u8 value.
 pub(crate) const U8_BIT_MASKS: [u8; 8] = [1, 2, 4, 8, 16, 32, 64, 128];
@@ -20,13 +20,16 @@ pub(crate) const U8_UNSET_BIT_MASK: [u8; 8] = [
     255 - 128,
 ];
 
-/// Check if the current platform is little Endian.
-#[allow(dead_code)]
-pub(crate) fn is_little_endian() -> bool {
-    let val: u32 = 0x1234;
-    let val2 = val.to_le();
-
-    val == val2
+/// Decode a base64 string and convert it to raw vector of bytes.
+///
+/// * `string` - The base64 string to be decoded.
+///
+pub(crate) fn base64_string_to_vector(b64_str: &str) -> Result<Vec<u8>> {
+    let mut buf = Vec::<u8>::new();
+    match base64::decode_config_buf(&b64_str, base64::STANDARD, &mut buf) {
+        Ok(_) => Ok(buf),
+        Err(_) => Err(Error::Base64Decoding),
+    }
 }
 
 /// Check if a bitmask is set for a given u8 value.
@@ -39,6 +42,85 @@ pub(crate) fn is_little_endian() -> bool {
 #[inline]
 pub(crate) fn is_bit_set(value: &u8, index: usize) -> bool {
     (value & U8_BIT_MASKS[index]) != 0
+}
+
+/// Check if the current platform is little Endian.
+#[allow(dead_code)]
+pub(crate) fn is_little_endian() -> bool {
+    let val: u32 = 0x1234;
+    let val2 = val.to_le();
+
+    val == val2
+}
+
+/// Fill a u8 vector with randomly generated values.
+///
+/// * `in_vec` - The vector to be filled with u8 values.
+/// * `rng` - The random number generator that will be used to generate the values.
+///
+/// Note: this method is intended to be called on vectors that have a predefined
+/// capacity.
+///
+#[inline]
+pub(crate) fn fast_fill_vec_random<T>(in_vec: &mut Vec<u8>, rng: &mut T)
+where
+    T: RngCore,
+{
+    const ARRAY_SIZE: usize = 64;
+    let total_needed = in_vec.capacity() - in_vec.len();
+    let iterations = total_needed / ARRAY_SIZE;
+    let remainder = total_needed - (iterations * ARRAY_SIZE);
+
+    let mut vec1: Vec<u8> = Vec::with_capacity(total_needed);
+    (0..iterations).for_each(|_| {
+        let mut rand_bytes: [u8; ARRAY_SIZE] = [0; ARRAY_SIZE];
+        rng.fill(&mut rand_bytes);
+        vec1.extend_from_slice(&rand_bytes);
+    });
+
+    let mut vec2: Vec<u8> = (0..remainder).map(|_| rng.gen()).collect();
+
+    in_vec.append(&mut vec1);
+    in_vec.append(&mut vec2);
+}
+
+/// Fills a vector with sequential values.
+///
+/// # Arguments
+///
+/// * `vec` - The vector to be filled with values.
+///
+/// Note: this method will only operate as expected if an explicit
+/// capacity has been specified.
+///
+#[inline]
+pub(crate) fn fill_vector_sequential(vec: &mut Vec<usize>) {
+    (0..vec.capacity()).for_each(|i| {
+        vec.insert(i, i);
+    });
+}
+
+/// Read a file into a u8 vector.
+///
+/// * `path` - The path to the file.
+///
+pub(crate) fn read_file_to_u8_vector(path: &str) -> Result<Vec<u8>> {
+    use std::io::Read;
+
+    if !Path::new(path).exists() {
+        return Err(Error::PathInvalid);
+    }
+
+    let mut file = match File::open(&path) {
+        Ok(f) => f,
+        Err(_) => return Err(Error::File),
+    };
+
+    let mut buffer = Vec::new();
+    match file.read_to_end(&mut buffer) {
+        Ok(_) => Ok(buffer),
+        Err(_) => Err(Error::FileRead),
+    }
 }
 
 /// Set the state of a bit in a u8 value.
@@ -76,6 +158,17 @@ pub(crate) fn u8_array_to_hex(arr: &[u8]) -> String {
     str
 }
 
+/// Convert a u8 slice to a base64 string.
+///
+/// * `bytes` - The slice of u8 values to be encoded.
+///
+pub(crate) fn u8_slice_to_base64_string(bytes: &[u8]) -> String {
+    let mut buf = String::new();
+    base64::encode_config_buf(bytes, base64::STANDARD, &mut buf);
+
+    buf
+}
+
 /// Convert a u8 value into its binary representation.
 ///
 /// # Arguments
@@ -100,66 +193,6 @@ pub(crate) fn secure_random_bytes<const N: usize>() -> [u8; N] {
     arr
 }
 
-/// Reverse the characters in a string.
-///
-/// # Arguments
-///
-/// * `str` - The string to be reversed.
-///
-/// Note: this is a very basic implementation that is intended for debugging with a
-/// limited character set. Do not use for an untested string.
-///
-#[allow(dead_code)]
-pub(crate) fn reverse_string(str: &str) -> String {
-    str.chars().rev().collect::<String>()
-}
-
-/// Fills a vector with sequential values.
-///
-/// # Arguments
-///
-/// * `vec` - The vector to be filled with values.
-///
-/// Note: this method will only operate as expected if an explicit
-/// capacity has been specified.
-///
-pub(crate) fn fill_vector_sequential(vec: &mut Vec<usize>) {
-    for i in 0..vec.capacity() {
-        vec.insert(i, i);
-    }
-}
-
-/// Fill a u8 vector with randomly generated values.
-///
-/// * `in_vec` - The vector to be filled with u8 values.
-/// * `rng` - The random number generator that will be used to generate the values.
-///
-/// Note: this method is intended to be called on vectors that have a predefined
-/// capacity.
-///
-#[inline]
-pub(crate) fn fast_fill_vec_random<T>(in_vec: &mut Vec<u8>, rng: &mut T)
-where
-    T: RngCore,
-{
-    const ARRAY_SIZE: usize = 64;
-    let total_needed = in_vec.capacity() - in_vec.len();
-    let iterations = total_needed / ARRAY_SIZE;
-    let remainder = total_needed - (iterations * ARRAY_SIZE);
-
-    let mut vec1: Vec<u8> = Vec::with_capacity(total_needed);
-    (0..iterations).for_each(|_| {
-        let mut rand_bytes: [u8; ARRAY_SIZE] = [0; ARRAY_SIZE];
-        rng.fill(&mut rand_bytes);
-        vec1.extend_from_slice(&rand_bytes);
-    });
-
-    let mut vec2: Vec<u8> = (0..remainder).map(|_| rng.gen()).collect();
-
-    in_vec.append(&mut vec1);
-    in_vec.append(&mut vec2);
-}
-
 /// Write a u8 slice to an output file.
 ///
 /// * `out_file` - The path to the file.
@@ -179,51 +212,5 @@ pub(crate) fn write_u8_slice_to_file(out_file: &str, bytes: &[u8]) -> Result<()>
     match file.write_all(bytes) {
         Ok(_) => Ok(()),
         Err(_) => Err(Error::FileWrite),
-    }
-}
-
-/// Convert a u8 slice to a base64 string.
-///
-/// * `bytes` - The slice of u8 values to be encoded.
-///
-pub(crate) fn u8_slice_to_base64_string(bytes: &[u8]) -> String {
-    let mut buf = String::new();
-    base64::encode_config_buf(bytes, base64::STANDARD, &mut buf);
-
-    buf
-}
-
-/// Decode a base64 string and convert it to raw vector of bytes.
-///
-/// * `string` - The base64 string to be decoded.
-///
-pub(crate) fn base64_string_to_vector(b64_str: &str) -> Result<Vec<u8>> {
-    let mut buf = Vec::<u8>::new();
-    match base64::decode_config_buf(&b64_str, base64::STANDARD, &mut buf) {
-        Ok(_) => Ok(buf),
-        Err(_) => Err(Error::Base64Decoding),
-    }
-}
-
-/// Read a file file into a u8 vector.
-///
-/// * `path` - The path to the file.
-///
-pub(crate) fn read_file_to_u8_vector(path: &str) -> Result<Vec<u8>> {
-    use std::io::Read;
-
-    if !Path::new(path).exists() {
-        return Err(Error::PathInvalid);
-    }
-
-    let mut file = match File::open(&path) {
-        Ok(f) => f,
-        Err(_) => return Err(Error::File),
-    };
-
-    let mut buffer = Vec::new();
-    match file.read_to_end(&mut buffer) {
-        Ok(_) => Ok(buffer),
-        Err(_) => Err(Error::FileRead),
     }
 }

@@ -1,9 +1,8 @@
 #![crate_name = "psistega3_cli"]
 
-use crate::codecs::v1::StegaV1;
-use psistega3_core::codecs;
+use psistega3_core::codecs::codec::Codec;
+use psistega3_core::codecs::v1::StegaV1;
 
-use codecs::codec::Codec;
 use simple_logger::SimpleLogger;
 use std::io::stdin;
 
@@ -20,6 +19,21 @@ fn main() {
     let output_img_path = "D:\\GitHub\\PsiStega3\\test-images\\b2.png";
 
     let mut stega = StegaV1::new(true);
+
+    /*let iterations = 10;
+    let start_0a = std::time::Instant::now();
+    for _ in 0..=iterations {
+        // Do stuff here.
+    }
+    let elapsed_0a = start_0a.elapsed();
+    let per_item_0a = elapsed_0a / iterations as u32;
+    println!(
+        "vector fill direct: {:.2?} in total, or {:.2?} per item.",
+        elapsed_0a, per_item_0a
+    );
+    println!("{}", "-".repeat(32));
+
+    return;*/
 
     log::debug!("{}", "-".repeat(32));
     log::debug!("Starting encoding...");
