@@ -15,9 +15,6 @@ use std::collections::{HashMap, VecDeque};
 use std::convert::{TryFrom, TryInto};
 use std::path::Path;
 
-// TODO - should should use AES-GCM or AES-GCM-SIV? Slightly decreased performance, increased resistance to certain types of attack.
-// TODO - this might be something that is used in a v2 algorithm, if not implemented here.
-
 /// The time cost (iterations) for use with the Argon2 hashing algorithm.
 const T_COST: u32 = 8;
 /// The parallel cost (threads) for use with the Argon2 hashing algorithm.
