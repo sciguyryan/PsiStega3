@@ -901,7 +901,7 @@ mod tests_encryption_decryption {
         ];
 
         let mut path = std::env::current_dir().unwrap();
-        path.push("..\\tests\\assets\\loading_and_validation");
+        path.push("../tests/assets/loading_and_validation");
         if !path.exists() {
             panic!("unable to find test file path!");
         }
