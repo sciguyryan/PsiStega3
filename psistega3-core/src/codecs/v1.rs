@@ -172,23 +172,16 @@ impl StegaV1 {
             Err(_) => return Err(Error::DecryptionFailed),
         };
 
-        // We will convert any invalid UTF-8 sequences to a safe
-        // character here.
         let str: String;
         unsafe {
-            // This is safe as we are working with internal code, and the
-            // internal code should not generate any invalid UTF-8 sequences.
+            // The following code is safe.
+            // We are working with internal code and it can't
+            // generate any invalid UTF-8 sequences.
             str = String::from_utf8_unchecked(pt_bytes);
         }
 
         Ok(str)
     }
-
-    // TODO: since everything is base 64, we only need 64 characters.
-    // TODO: this means we might be able to encode things more efficiently than
-    // TODO: by attempting to encode an entire byte.
-    // TODO: maybe we could use the bottom 6 bits of a byte and randomised
-    // TODO: the remaining 2 bits?
 
     /// The internal implementation of the encoding algorithm.
     ///
@@ -206,8 +199,8 @@ impl StegaV1 {
         data: &[u8],
         encoded_img_path: &str,
     ) -> Result<()> {
-        log::debug!("Loading image file @ {}", &original_img_path);
         // We don't need to hold a separate reference image instance here.
+        log::debug!("Loading image file @ {}", &original_img_path);
         let mut img = StegaV1::load_image(original_img_path, false)?;
 
         let file_hash_bytes = Hashers::sha3_512_file(original_img_path);
@@ -253,17 +246,19 @@ impl StegaV1 {
         };
 
         /*
-          2 cells for the version,
+          1 cell for the version,
           4 cells for the total number of stored cipher-text cells,
           the salt, the nonce and the cipher-text itself.
 
           This value must be doubled as we need 2 cells per byte:
             one for the XOR encoded byte and one for the XOR byte.
 
-          This value must be held within a 64-bit value to prevent integer overflow
-            from occurring in the when running this on a 32-bit architecture.
+          This value must be held within a 64-bit value to prevent integer
+            overflow from occurring in the when running this on a
+            32-bit architecture.
 
-          Note: a cell represents the space in which a byte of data can be encoded.
+          Note: a cell represents the space in which a byte of data
+            can be encoded.
         */
         let total_ct_cells = ct_bytes.len();
         let total_cells_needed = (1 /* version (u8) */
