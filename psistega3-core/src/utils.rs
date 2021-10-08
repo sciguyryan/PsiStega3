@@ -72,11 +72,11 @@ where
     let remainder = total_needed - (iterations * ARRAY_SIZE);
 
     let mut vec1: Vec<u8> = Vec::with_capacity(total_needed);
-    (0..iterations).for_each(|_| {
+    for _ in 0..iterations {
         let mut rand_bytes: [u8; ARRAY_SIZE] = [0; ARRAY_SIZE];
         rng.fill(&mut rand_bytes);
         vec1.extend_from_slice(&rand_bytes);
-    });
+    }
 
     let mut vec2: Vec<u8> = (0..remainder).map(|_| rng.gen()).collect();
 

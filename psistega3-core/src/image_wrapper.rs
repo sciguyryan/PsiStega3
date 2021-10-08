@@ -106,7 +106,6 @@ impl ImageWrapper {
     /// * `file_path` - The path to the image file.
     ///
     pub fn load_from_file(file_path: &str, read_only: bool) -> Result<ImageWrapper> {
-        // Just to make the lines a little shorter.
         use DynamicImage::*;
 
         let image = match image::open(file_path) {

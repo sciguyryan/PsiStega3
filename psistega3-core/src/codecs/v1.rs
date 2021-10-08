@@ -13,7 +13,6 @@ use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
 use std::collections::{HashMap, VecDeque};
 use std::convert::{TryFrom, TryInto};
-use std::path::Path;
 
 /// The time cost (iterations) for use with the Argon2 hashing algorithm.
 const T_COST: u32 = 8;
@@ -23,8 +22,6 @@ const P_COST: u32 = 8;
 const M_COST: u32 = 65536;
 /// The version of the Argon2 hashing algorithm to use.
 const ARGON_VER: argon2::Version = argon2::Version::V0x13;
-/// The version of this codec.
-const VERSION: u8 = 1;
 /// A list of formats that can be used with the v1 algorithm.
 const SUPPORTED_FORMATS: [ImageFormat; 3] = [ImageFormat::Png, ImageFormat::Gif, ImageFormat::Bmp];
 
@@ -94,18 +91,11 @@ impl StegaV1 {
         // Decode the XOR-encoded values back into the original values.
         data.decode();
 
-        // The first 2 bytes should be the version indicator.
-        if data.pop_u8() == VERSION {
-        } else {
-            return Err(Error::VersionInvalid);
-        }
-
         // The next set of bytes should be the total number of cipher-text bytes
         // cells that have been encoded.
         let total_ct_cells = data.pop_u32();
 
-        let total_cells_needed = (1 /* version (u8) */
-            + 4 /* the total number of stored cipher-text cells (u32) */
+        let total_cells_needed = (4 /* number of cipher-text cells (u32) */
             + 12 /* the length of the Argon2 salt (u8) */
             + 12 /* the length of the AES-256 nonce (u8) */
             + total_ct_cells as u64)
@@ -252,8 +242,7 @@ impl StegaV1 {
             can be encoded.
         */
         let total_ct_cells = ct_bytes.len();
-        let total_cells_needed = (1 /* version (u8) */
-            + 4 /* the total number of stored cipher-text cells (u32) */
+        let total_cells_needed = (4 /* number of cipher-text cells (u32) */
             + 12 /* the length of the Argon2 salt (u8) */
             + 12 /* the length of the AES-256 nonce (u8) */
             + ct_bytes.len() as u64)
@@ -274,9 +263,6 @@ impl StegaV1 {
 
         // This will hold all of the data to be encoded.
         let mut data = DataEncoder::new(total_cells as usize);
-
-        // Add the version indicator.
-        data.push_u8(VERSION);
 
         // Add the total number of cipher-text cells needed.
         data.push_u32(total_ct_cells as u32);
@@ -302,6 +288,9 @@ impl StegaV1 {
         // Clear the key since it is no longer needed.
         composite_key.clear();
 
+        // TODO: this could potentially be sped up by using threading, but I'm
+        // TODO: not actually sure whether complicating the code will be worth
+        // TODO: the investment. Added this note for future consideration.
         // Iterate over each byte of data to be encoded.
         data.bytes.iter().enumerate().for_each(|(i, byte)| {
             self.write_u8_by_data_index(&mut img, byte, i);
@@ -626,7 +615,7 @@ impl Codec for StegaV1 {
         encoded_img_path: &str,
         input_file_path: &str,
     ) -> Result<()> {
-        if !Path::new(input_file_path).exists() {
+        if !std::path::Path::new(input_file_path).exists() {
             return Err(Error::PathInvalid);
         }
 
@@ -698,7 +687,7 @@ impl DataDecoder {
     /// Iterates through each XOR'ed byte and XOR pair, adds the value produced by applying the XOR operation on them to the internal list.
     pub fn decode(&mut self) {
         let len = self.xor_bytes.len() / 2;
-        (0..len).for_each(|_| {
+        for _ in 0..len {
             let xor_value = self.xor_bytes.pop_front().unwrap();
             let xor = self.xor_bytes.pop_front();
 
@@ -713,7 +702,7 @@ impl DataDecoder {
             } else {
                 self.bytes.push_back(xor_value);
             }
-        });
+        }
 
         self.xor_bytes.shrink_to_fit();
     }
@@ -753,9 +742,9 @@ impl DataDecoder {
         assert!(self.bytes.len() >= count, "insufficient values available");
 
         let mut bytes = Vec::with_capacity(count);
-        (0..count).for_each(|_| {
+        for _ in 0..count {
             bytes.push(self.pop_u8());
-        });
+        }
 
         bytes
     }
