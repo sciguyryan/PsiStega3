@@ -33,7 +33,15 @@ pub struct StegaV1 {
     /// A RNG that will be used to handle data adjustments.
     data_rng: ThreadRng,
     /// If the noise layer should be applied to the output image.
-    noise_layer: bool,
+    pub noise_layer: bool,
+    /// If the resulting image file should be saved when encoding.
+    /// This is mainly for testing and debugging.
+    pub save_output_file: bool,
+    /// If the faster method of setting the bit variance should be
+    /// used.
+    /// This method will not use randomness to determine the bit variance,
+    /// instead it will simply +1 first, then -1, then +1, etc.
+    pub fast_bit_variance: bool,
 }
 
 impl StegaV1 {
@@ -42,6 +50,8 @@ impl StegaV1 {
             data_cell_map: HashMap::with_capacity(1),
             data_rng: thread_rng(),
             noise_layer,
+            save_output_file: true,
+            fast_bit_variance: false,
         }
     }
 
@@ -79,11 +89,11 @@ impl StegaV1 {
         self.build_data_to_cell_index_map(&enc_image, &composite_key);
 
         // This will hold all of the decoded data.
-        let total_cells = StegaV1::get_total_cells(&enc_image) as usize;
-        let mut data = DataDecoder::new(total_cells);
+        let mut data = DataDecoder::new(8);
 
-        // Read every byte of data from the images.
-        (0..total_cells).for_each(|i| {
+        // Read the first 4 XOR encoded bytes from the image.
+        // This is done manually to avoid decoding the entire image.
+        (0..8).for_each(|i| {
             let val = self.read_u8_by_index(&ref_image, &enc_image, i);
             data.push_u8(val);
         });
@@ -95,15 +105,19 @@ impl StegaV1 {
         // cells that have been encoded.
         let total_ct_cells = data.pop_u32();
 
+        // Now we can calculate how many XOR-encoded bytes we need to read in total.
         let total_cells_needed = (4 /* number of cipher-text cells (u32) */
             + 12 /* the length of the Argon2 salt (u8) */
             + 12 /* the length of the AES-256 nonce (u8) */
             + total_ct_cells as u64)
             * 2; /* 2 subcells per cell */
 
-        // In total we can never store more than 0xffffffff bytes of data to ensure that the values
-        // of usize never exceeds the maximum value of the u32 type.
-        if total_cells_needed > 0xffffffff {
+        /*
+          In total we can never store more than 0xffffffff bytes of data.
+          This is done to keep the total number of cells below the maximum
+            possible value for an unsigned 32-bit integer.
+        */
+        if total_cells_needed > u32::MAX as u64 {
             return Err(Error::DataTooLarge);
         }
 
@@ -112,6 +126,19 @@ impl StegaV1 {
         if total_cells_needed > total_cells {
             return Err(Error::ImageInsufficientSpace);
         }
+
+        // Read all of the XOR-encoded bytes that are relevant for our decode.
+        let mut data = DataDecoder::new(total_cells_needed as usize);
+        (0..total_cells_needed).for_each(|i| {
+            let val = self.read_u8_by_index(&ref_image, &enc_image, i as usize);
+            data.push_u8(val);
+        });
+
+        // Decode the XOR-encoded values.
+        data.decode();
+
+        // We do not care about this value.
+        data.pop_u32();
 
         // Note: we can unwrap these values as we will assert if the
         //   length of the vector is not equal to the length we requested.
@@ -143,11 +170,11 @@ impl StegaV1 {
 
         /*
           Attempt to decrypt the cipher-text bytes with
-          the extracted information.
+            the extracted information.
 
           This will fail if the information is invalid, which could occurring
-          because of changes to either of the image files, or simply because
-          no encrypted information was held inside the images.
+            because of changes to either of the image files, or simply because
+            no encrypted information was held inside the images.
         */
         let pt_bytes = match cipher.decrypt(nonce, ct_bytes.as_ref()) {
             Ok(v) => v,
@@ -227,7 +254,6 @@ impl StegaV1 {
         };
 
         /*
-          1 cell for the version,
           4 cells for the total number of stored cipher-text cells,
           the salt, the nonce and the cipher-text itself.
 
@@ -288,18 +314,17 @@ impl StegaV1 {
         // Clear the key since it is no longer needed.
         composite_key.clear();
 
-        // TODO: this could potentially be sped up by using threading, but I'm
-        // TODO: not actually sure whether complicating the code will be worth
-        // TODO: the investment. Added this note for future consideration.
         // Iterate over each byte of data to be encoded.
         data.bytes.iter().enumerate().for_each(|(i, byte)| {
             self.write_u8_by_data_index(&mut img, byte, i);
         });
 
         // Save the modified image.
-        if let Err(e) = img.save(encoded_img_path) {
-            // TODO: Add more granularity here.
-            return Err(Error::ImageSaving);
+        if self.save_output_file {
+            if let Err(e) = img.save(encoded_img_path) {
+                // TODO: Add more granularity here.
+                return Err(Error::ImageSaving);
+            }
         }
 
         Ok(())
@@ -352,27 +377,10 @@ impl StegaV1 {
     /// In practice this should never occur.
     ///
     fn get_data_cell_index(&self, data_index: &usize) -> usize {
-        match self.data_cell_map.get(data_index) {
-            Some(index) => *index,
-            None => {
-                panic!(
-                    "The data index {} was not found in the cell map. This should never happen.",
-                    data_index
-                );
-            }
-        }
-    }
-
-    /// Calculate the start index from which the specified cell originates.
-    ///
-    /// # Arguments
-    ///
-    /// * `cell_index` - The cell data index, for which the start index should be calculated.
-    ///
-    #[inline]
-    fn get_start_by_cell_index(&self, cell_index: usize) -> usize {
-        // Each cell is 2 subcells (16 channels) in length.
-        cell_index * 2
+        *self
+            .data_cell_map
+            .get(data_index)
+            .expect("The data index was not found in the cell map")
     }
 
     /// Calculate the total number of cells available in a given image.
@@ -476,7 +484,7 @@ impl StegaV1 {
         let cell_index = self.get_data_cell_index(&data_index);
 
         // Now we will look up the start position for the cell.
-        let cell_start_index = self.get_start_by_cell_index(cell_index);
+        let cell_start_index = cell_index * 2;
 
         // Finally we can decode and read a byte of data from the cell.
         self.read_u8(ref_img, enc_img, cell_start_index)
@@ -547,26 +555,35 @@ impl StegaV1 {
         */
         let data = data.to_le();
         let bytes = img.get_subcells_from_index_mut(cell_start, 2);
+        let mut add = true;
 
         for (i, b) in bytes.iter_mut().enumerate() {
             if !utils::is_bit_set(&data, i) {
                 continue;
             }
 
+            let sign = if self.fast_bit_variance {
+                add
+            } else {
+                self.data_rng.gen_bool(0.5)
+            };
+
             // If the value is 0 then the new value will always be 1.
             // If the value is 255 then the new value will always be 254.
-            // Otherwise the value will be randomly assigned to be ±1.
+            // Otherwise the value will be assigned to be ±1.
             *b = match *b {
                 0 => 1,
                 1..=254 => {
-                    if self.data_rng.gen_bool(0.5) {
-                        *b - 1
-                    } else {
+                    if sign {
                         *b + 1
+                    } else {
+                        *b - 1
                     }
                 }
                 255 => 254,
             };
+
+            add = !add;
         }
     }
 
@@ -582,13 +599,11 @@ impl StegaV1 {
     fn write_u8_by_data_index(&mut self, img: &mut ImageWrapper, data: &u8, data_index: usize) {
         // First we will look up the cell to which this
         // byte of data will be encoded within the image.
-        let cell_index = self.get_data_cell_index(&data_index);
-
-        // Now we will look up the start position for the cell.
-        let cell_start_index = self.get_start_by_cell_index(cell_index);
+        // Each cell is 2 subcells (16 channels) in length.
+        let start_index = self.get_data_cell_index(&data_index) * 2;
 
         // Finally we can write a byte of data to the cell.
-        self.write_u8(img, data, cell_start_index);
+        self.write_u8(img, data, start_index);
     }
 }
 
@@ -682,6 +697,12 @@ impl DataDecoder {
             xor_bytes: VecDeque::with_capacity(capacity),
             bytes: VecDeque::with_capacity(capacity / 2),
         }
+    }
+
+    #[allow(dead_code)]
+    pub fn clear(&mut self) {
+        self.xor_bytes.clear();
+        self.bytes.clear();
     }
 
     /// Iterates through each XOR'ed byte and XOR pair, adds the value produced by applying the XOR operation on them to the internal list.

@@ -23,12 +23,12 @@ fn main() {
     /*let iterations = 10;
     let start_0a = std::time::Instant::now();
     for _ in 0..=iterations {
-        // Do stuff here.
+        let e = stega.encode(input_img_path, password.clone(), &input, output_img_path);
     }
     let elapsed_0a = start_0a.elapsed();
     let per_item_0a = elapsed_0a / iterations as u32;
     println!(
-        "vector fill direct: {:.2?} in total, or {:.2?} per item.",
+        "threaded: {:.2?} in total, or {:.2?} per item.",
         elapsed_0a, per_item_0a
     );
     println!("{}", "-".repeat(32));
