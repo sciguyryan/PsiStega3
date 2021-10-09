@@ -18,7 +18,7 @@ fn main() {
     let input_img_path = "D:\\GitHub\\PsiStega3\\test-images\\b.png";
     let output_img_path = "D:\\GitHub\\PsiStega3\\test-images\\b2.png";
 
-    let mut stega = StegaV1::new(true);
+    let mut stega = StegaV1::default();
 
     /*let iterations = 10;
     let start_0a = std::time::Instant::now();

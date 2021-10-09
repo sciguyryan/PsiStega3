@@ -33,25 +33,26 @@ pub struct StegaV1 {
     /// A RNG that will be used to handle data adjustments.
     data_rng: ThreadRng,
     /// If the noise layer should be applied to the output image.
-    pub noise_layer: bool,
+    noise_layer: bool,
     /// If the resulting image file should be saved when encoding.
     /// This is mainly for testing and debugging.
-    pub save_output_file: bool,
+    save_output_file: bool,
     /// If the faster method of setting the bit variance should be
     /// used.
+    ///
     /// This method will not use randomness to determine the bit variance,
     /// instead it will simply +1 first, then -1, then +1, etc.
-    pub fast_bit_variance: bool,
+    fast_bit_variance: bool,
 }
 
 impl StegaV1 {
-    pub fn new(noise_layer: bool) -> Self {
+    pub fn new(noise_layer: bool, fast_bit_variance: bool) -> Self {
         Self {
             data_cell_map: HashMap::with_capacity(1),
             data_rng: thread_rng(),
             noise_layer,
             save_output_file: true,
-            fast_bit_variance: false,
+            fast_bit_variance,
         }
     }
 
@@ -551,12 +552,19 @@ impl StegaV1 {
     /// * `cell_start` - The index of the first pixel of the cell into which the data will be encoded.
     ///
     fn write_u8(&mut self, img: &mut ImageWrapper, data: &u8, cell_start: usize) {
+        // If the data is zero then we can fast-path here as we will not
+        // have any set bits to work with.
+        if *data == 0 {
+            return;
+        }
+
         /*
           We convert everything into Little Endian to ensure everything operates
           as expected cross-platform. On a LE platform these will end up being
           no-op calls and so will not impact performance at all.
         */
         let data = data.to_le();
+
         let bytes = img.get_subcells_from_index_mut(cell_start, 2);
         let mut add = true;
 
@@ -681,7 +689,7 @@ impl Codec for StegaV1 {
 
 impl Default for StegaV1 {
     fn default() -> Self {
-        Self::new(true)
+        Self::new(true, false)
     }
 }
 
