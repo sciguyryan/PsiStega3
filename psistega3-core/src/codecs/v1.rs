@@ -105,7 +105,7 @@ impl StegaV1 {
         // cells that have been encoded.
         let total_ct_cells = data.pop_u32();
 
-        // Now we can calculate how many XOR-encoded bytes we need to read in total.
+        // Now we can calculate how many bytes we need to read.
         let total_cells_needed = (4 /* number of cipher-text cells (u32) */
             + 12 /* the length of the Argon2 salt (u8) */
             + 12 /* the length of the AES-256 nonce (u8) */
@@ -113,7 +113,7 @@ impl StegaV1 {
             * 2; /* 2 subcells per cell */
 
         /*
-          In total we can never store more than 0xffffffff bytes of data.
+          In total we will never store more than 0xffffffff bytes of data.
           This is done to keep the total number of cells below the maximum
             possible value for an unsigned 32-bit integer.
         */
@@ -172,9 +172,12 @@ impl StegaV1 {
           Attempt to decrypt the cipher-text bytes with
             the extracted information.
 
-          This will fail if the information is invalid, which could occurring
-            because of changes to either of the image files, or simply because
-            no encrypted information was held inside the images.
+          This will fail if the decryption does not yield valid data.
+
+          This could occur for any number of reasons, including:
+            * There was no information stored.
+            * One or more of the files were modified.
+            * The decrypted key was incorrect.
         */
         let pt_bytes = match cipher.decrypt(nonce, ct_bytes.as_ref()) {
             Ok(v) => v,
@@ -216,10 +219,10 @@ impl StegaV1 {
 
         /*
           The key for the encryption is the SHA3-512 hash of the input image file
-          combined with the plaintext key.
+            combined with the plaintext key.
 
           It intentional that we take ownership of the key as it will be
-          cleared from memory when this function exits.
+            cleared from memory when this function exits.
         */
         let mut composite_key = key;
         composite_key.push_str(&file_hash_string);
