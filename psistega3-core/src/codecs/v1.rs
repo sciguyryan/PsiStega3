@@ -892,6 +892,7 @@ mod tests_encode_decode {
     use std::path::{Path, PathBuf};
 
     use rand::Rng;
+    use relative_path::{RelativePath, RelativePathBuf};
 
     use crate::{codecs::codec::Codec, hashers::Hashers, utils};
 
@@ -934,8 +935,10 @@ mod tests_encode_decode {
         path.push("assets");
         path.push("encoding_decoding");
 
-        assert!(path.exists(), "unable to find test file path!");
-        path
+        let noralised = path.canonicalize().unwrap();
+
+        assert!(noralised.exists(), "unable to find test file path!");
+        noralised
     }
 
     /// Get the full path to a test file.
@@ -943,9 +946,11 @@ mod tests_encode_decode {
         let mut path = test_base_path();
         path.push(file);
 
-        assert!(path.exists(), "unable to find test file path!");
+        let noralised = path.canonicalize().unwrap();
 
-        path.to_str().unwrap().to_string()
+        assert!(noralised.exists(), "unable to find test file path!");
+
+        noralised.to_str().unwrap().to_string()
     }
 
     /// Get the full path to a random output file path, with a given extension.
