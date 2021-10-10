@@ -131,7 +131,7 @@ pub(crate) fn normalise_path(path: &str) -> Result<String> {
         Ok(p) => p,
         Err(e) => {
             // TODO: do we need a better error here?
-            panic!("here 1: {:?}", e);
+            panic!("here 1: {:?} {:?}", path_buf, e);
             return Err(Error::File);
         }
     };
