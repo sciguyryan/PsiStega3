@@ -208,7 +208,7 @@ pub(crate) fn write_u8_slice_to_file(out_file: &str, bytes: &[u8]) -> Result<()>
     // Next we need to write the data to the file.
     let mut file = match File::create(out_file) {
         Ok(f) => f,
-        Err(_) => return Err(Error::FileCreate),
+        Err(e) => /*return Err(Error::FileCreate)*/panic!("{:?}", e),
     };
 
     // Write the resulting bytes directly into the output file.
@@ -218,6 +218,8 @@ pub(crate) fn write_u8_slice_to_file(out_file: &str, bytes: &[u8]) -> Result<()>
     }
 }
 
-pub fn get_current_dir() -> PathBuf {
+/// Get the path to the current execution directory.
+#[allow(dead_code)]
+pub(crate) fn get_current_dir() -> PathBuf {
     std::env::current_dir().unwrap()
 }
