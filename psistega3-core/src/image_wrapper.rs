@@ -30,11 +30,10 @@ impl ImageWrapper {
     ///
     /// `Note:` A subcell is space required to store a nibble of data.
     ///
+    #[inline]
     pub fn get_subcells_from_index(&self, start_index: usize, count: u16) -> &[u8] {
         let start = start_index * 4;
         let end = start + (count * 4) as usize;
-
-        assert!(end <= self.image_bytes.len());
         &self.image_bytes[start..end]
     }
 
@@ -47,11 +46,10 @@ impl ImageWrapper {
     ///
     /// `Note:` A subcell is space required to store a nibble of data.
     ///
+    #[inline]
     pub fn get_subcells_from_index_mut(&mut self, start_index: usize, count: u16) -> &mut [u8] {
         let start = start_index * 4;
         let end = start + (count as usize * 4);
-
-        assert!(end <= self.image_bytes.len());
         &mut self.image_bytes[start..end]
     }
 
@@ -69,11 +67,10 @@ impl ImageWrapper {
     /// `Note:` A subcell is space required to store a nibble of data.
     ///
     #[allow(dead_code)]
+    #[inline]
     pub fn get_subcell(&self, start_index: usize) -> &[u8] {
         let start = start_index * 4;
         let end = start + 4;
-
-        assert!(end <= self.image_bytes.len());
         &self.image_bytes[start..end]
     }
 
@@ -86,11 +83,10 @@ impl ImageWrapper {
     /// `Note:` A subcell is space required to store a nibble of data.
     ///
     #[allow(dead_code)]
+    #[inline]
     pub fn get_subcell_mut(&mut self, start_index: usize) -> &mut [u8] {
         let start = start_index * 4;
         let end = start + 4;
-
-        assert!(end <= self.image_bytes.len());
         &mut self.image_bytes[start..end]
     }
 

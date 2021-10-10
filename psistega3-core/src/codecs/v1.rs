@@ -36,7 +36,7 @@ pub struct StegaV1 {
     noise_layer: bool,
     /// If the resulting image file should be saved when encoding.
     /// This is mainly for testing and debugging.
-    save_output_file: bool,
+    pub save_output_file: bool,
     /// If the faster method of setting the bit variance should be
     /// used.
     ///
