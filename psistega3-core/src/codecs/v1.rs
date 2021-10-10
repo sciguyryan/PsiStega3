@@ -928,17 +928,18 @@ mod tests_encode_decode {
     }
 
     /// Returns a [`PathBuf`] to the path for the test files.
-    /// This path is normalised to avoid creating any issues
+    /// This path is canonicalized to avoid creating any issues
     /// with relative paths.
     fn test_base_path() -> PathBuf {
-        let mut path = PathBuf::new();
+        let mut path = utils::get_current_dir();
         path.push("..");
         path.push("tests");
         path.push("assets");
         path.push("encoding_decoding");
 
-        let rp = RelativePath::new("../tests/assets/encoding_decoding");
-        rp.to_logical_path(utils::get_current_dir())
+        assert!(path.exists(), "testing file directory does not exist.");
+
+        path.canonicalize().unwrap()
     }
 
     /// Get the full path to a test file.
@@ -952,6 +953,7 @@ mod tests_encode_decode {
     }
 
     /// Get the full path to a random output file path, with a given extension.
+    /// These files are created in the operating system temp directory.
     fn get_test_out_file_str(ext: &str) -> String {
         let random: u128 = rand::thread_rng().gen();
 
