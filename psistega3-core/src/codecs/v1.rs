@@ -947,7 +947,7 @@ mod tests_encode_decode {
         let mut path = test_base_path();
         path.push(file);
 
-        assert!(path.exists(), "unable to find test file path!");
+        assert!(path.exists(), "unable to find test file.");
 
         path.to_str().unwrap().to_string()
     }
