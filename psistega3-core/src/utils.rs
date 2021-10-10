@@ -245,14 +245,17 @@ pub(crate) fn secure_random_bytes<const N: usize>() -> [u8; N] {
 /// * `bytes` - The slice of u8 values to be written to the file.
 ///
 pub(crate) fn write_u8_slice_to_file(out_file: &str, bytes: &[u8]) -> Result<()> {
+    use relative_path::RelativePath;
     use std::io::Write;
 
     // We can't directly call canonicalize as it will error
     // if the file or directory does not exist.
-    let normalised_path = match self::normalise_path(out_file) {
+    /*let normalised_path = match self::normalise_path(out_file) {
         Ok(p) => p,
         Err(e) => return Err(e),
-    };
+    };*/
+
+    let normalised_path = RelativePath::new(out_file).normalize().to_string();
 
     // We have decoded a valid base64 string.
     // Next we need to write the data to the file.
