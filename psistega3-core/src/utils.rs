@@ -253,6 +253,8 @@ pub(crate) fn write_u8_slice_to_file(out_file: &str, bytes: &[u8]) -> Result<()>
         Err(e) => return Err(e),
     };
 
+    panic!("{}", normalised_path);
+
     // We have decoded a valid base64 string.
     // Next we need to write the data to the file.
     let mut file = match File::create(&normalised_path) {
