@@ -208,7 +208,7 @@ pub(crate) fn write_u8_slice_to_file(out_file: &str, bytes: &[u8]) -> Result<()>
     // Next we need to write the data to the file.
     let mut file = match File::create(out_file) {
         Ok(f) => f,
-        Err(e) => /*return Err(Error::FileCreate)*/panic!("{:?}", e),
+        Err(e) => /*return Err(Error::FileCreate)*/panic!("{}\t\t{:?}", out_file, e),
     };
 
     // Write the resulting bytes directly into the output file.
