@@ -892,7 +892,7 @@ mod tests_encode_decode {
     use std::path::{Path, PathBuf};
 
     use rand::Rng;
-    use relative_path::{RelativePath, RelativePathBuf};
+    use relative_path::RelativePath;
 
     use crate::{codecs::codec::Codec, hashers::Hashers, utils};
 
@@ -928,6 +928,8 @@ mod tests_encode_decode {
     }
 
     /// Returns a [`PathBuf`] to the path for the test files.
+    /// This path is normalised to avoid creating any issues
+    /// with relative paths.
     fn test_base_path() -> PathBuf {
         let mut path = PathBuf::new();
         path.push("..");
@@ -953,8 +955,7 @@ mod tests_encode_decode {
     fn get_test_out_file_str(ext: &str) -> String {
         let random: u128 = rand::thread_rng().gen();
 
-        let mut path = test_base_path();
-        path.push("outputs");
+        let mut path = std::env::temp_dir();
         path.push(format!("{}.{}", random, ext));
 
         path.to_str().unwrap().to_string()
