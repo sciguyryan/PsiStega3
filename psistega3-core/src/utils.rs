@@ -87,6 +87,12 @@ where
     in_vec.append(&mut vec2);
 }
 
+/// Get the path to the current execution directory.
+#[allow(dead_code)]
+pub(crate) fn get_current_dir() -> PathBuf {
+    std::env::current_dir().unwrap()
+}
+
 /// Fills a vector with sequential values.
 ///
 /// # Arguments
@@ -101,6 +107,42 @@ pub(crate) fn fill_vector_sequential(vec: &mut Vec<usize>) {
     (0..vec.capacity()).for_each(|i| {
         vec.insert(i, i);
     });
+}
+
+/// Normalise a file or directory path, converting it into an absolute path, regardless of whether it exists or not.
+///
+/// # Arguments
+///
+/// * `path` - The path to the file or folder.
+///
+pub(crate) fn normalise_path(path: &str) -> Result<String> {
+    let mut path_buf = PathBuf::from(path);
+
+    // Get the file name, if one exists.
+    let temp = PathBuf::from(path);
+    let file_name = temp.file_name();
+
+    // If we have a file name, remove it from the path.
+    if file_name.is_some() {
+        path_buf.pop();
+    }
+
+    let mut normalised_path_buf = match path_buf.canonicalize() {
+        Ok(p) => p,
+        Err(_) => {
+            // TODO: do we need a better error here?
+            return Err(Error::File);
+        }
+    };
+
+    // Add the file name back into the path, if we were working with a file.
+    if let Some(f) = file_name {
+        normalised_path_buf.push(f.to_string_lossy().to_string());
+    }
+
+    // Get and return out final path string.
+    let final_path = normalised_path_buf.to_string_lossy();
+    Ok(final_path.to_string())
 }
 
 /// Read a file into a u8 vector.
@@ -204,11 +246,18 @@ pub(crate) fn secure_random_bytes<const N: usize>() -> [u8; N] {
 pub(crate) fn write_u8_slice_to_file(out_file: &str, bytes: &[u8]) -> Result<()> {
     use std::io::Write;
 
+    // We can't directly call canonicalize as it will error
+    // if the file or directory does not exist.
+    let normalised_path = match self::normalise_path(out_file) {
+        Ok(p) => p,
+        Err(e) => return Err(e),
+    };
+
     // We have decoded a valid base64 string.
     // Next we need to write the data to the file.
-    let mut file = match File::create(out_file) {
+    let mut file = match File::create(&normalised_path) {
         Ok(f) => f,
-        Err(e) => /*return Err(Error::FileCreate)*/panic!("{}\t\t{:?}", out_file, e),
+        Err(_) => return Err(Error::FileCreate),
     };
 
     // Write the resulting bytes directly into the output file.
@@ -216,10 +265,4 @@ pub(crate) fn write_u8_slice_to_file(out_file: &str, bytes: &[u8]) -> Result<()>
         Ok(_) => Ok(()),
         Err(_) => Err(Error::FileWrite),
     }
-}
-
-/// Get the path to the current execution directory.
-#[allow(dead_code)]
-pub(crate) fn get_current_dir() -> PathBuf {
-    std::env::current_dir().unwrap()
 }

@@ -929,7 +929,10 @@ mod tests_encode_decode {
     /// Returns a [`PathBuf`] to the path for the test files.
     fn test_base_path() -> PathBuf {
         let mut path = utils::get_current_dir();
-        path.push("../tests/assets/encoding_decoding");
+        path.push("..");
+        path.push("tests");
+        path.push("assets");
+        path.push("encoding_decoding");
 
         assert!(path.exists(), "unable to find test file path!");
         path
