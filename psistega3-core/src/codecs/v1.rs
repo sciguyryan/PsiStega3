@@ -892,7 +892,6 @@ mod tests_encode_decode {
     use std::path::{Path, PathBuf};
 
     use rand::Rng;
-    use relative_path::RelativePath;
 
     use crate::{codecs::codec::Codec, hashers::Hashers, utils};
 
@@ -1248,7 +1247,7 @@ mod tests_encryption_decryption {
         pub fail_message: String,
     }
 
-    impl<'a> TestEntry {
+    impl TestEntry {
         fn new(file: &str, expected_result: Result<()>, fail_message: &str) -> Self {
             Self {
                 file: file.to_string(),
