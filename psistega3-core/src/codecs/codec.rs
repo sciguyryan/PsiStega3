@@ -24,15 +24,15 @@ pub trait Codec {
     ///
     /// * `original_path` - The path to the reference image.
     /// * `key` - The key to be used when encrypting the information.
-    /// * `encoded_path` - The path that will be used to store the encoded image.
     /// * `input_file_path` - The path to the file to be encoded image.
+    /// * `encoded_path` - The path that will be used to store the encoded image.
     ///
     fn encode_file(
         &mut self,
         original_img_path: &str,
         key: String,
-        encoded_img_path: &str,
         input_file_path: &str,
+        encoded_img_path: &str,
     ) -> Result<()>;
 
     /// Decrypt and decode the information from an image.

@@ -7,14 +7,20 @@ use crate::error::{Error, Result};
 pub struct Hashers {}
 
 impl Hashers {
-    pub fn sha3_512_file(path: &str) -> Vec<u8> {
+    pub fn sha3_512_file(path: &str) -> Result<Vec<u8>> {
         let mut hasher = Sha3_512::new();
 
         // The file will automatically be closed when it goes out of scope.
-        // TODO: handle the error case here.
-        let mut f = std::fs::File::open(path).unwrap();
+        let mut f = match std::fs::File::open(path) {
+            Ok(file) => file,
+            Err(e) => {
+                // TODO: consider adding more granularity here.
+                return Err(Error::FileHashingError);
+            }
+        };
         let mut buffer = [0u8; 16384];
 
+        // Loop until we have read the entire file (in chunks).
         loop {
             let n = f.read(&mut buffer).unwrap();
             if n == 0 {
@@ -23,7 +29,7 @@ impl Hashers {
             hasher.update(&buffer[..n]);
         }
 
-        hasher.finalize().to_vec()
+        Ok(hasher.finalize().to_vec())
     }
 
     pub fn sha3_256_string(str: &str) -> Vec<u8> {

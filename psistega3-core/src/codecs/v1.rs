@@ -29,9 +29,6 @@ const SUPPORTED_FORMATS: [ImageFormat; 3] = [ImageFormat::Png, ImageFormat::Gif,
 pub struct StegaV1 {
     /// The data index to cell ID map.
     data_cell_map: HashMap<usize, usize>,
-    /// The read-only reference image.
-    /// A RNG that will be used to handle data adjustments.
-    data_rng: ThreadRng,
     /// If the noise layer should be applied to the output image.
     noise_layer: bool,
     /// If the resulting image file should be saved when encoding.
@@ -49,7 +46,6 @@ impl StegaV1 {
     pub fn new(noise_layer: bool, fast_bit_variance: bool) -> Self {
         Self {
             data_cell_map: HashMap::with_capacity(1),
-            data_rng: thread_rng(),
             noise_layer,
             save_output_file: true,
             fast_bit_variance,
@@ -76,7 +72,7 @@ impl StegaV1 {
             return Err(Error::ImageDimensionsMismatch);
         }
 
-        let file_hash_bytes = Hashers::sha3_512_file(original_img_path);
+        let file_hash_bytes = Hashers::sha3_512_file(original_img_path)?;
         let file_hash_string = utils::u8_array_to_hex(&file_hash_bytes);
 
         // The key for the encryption is the SHA3-512 hash of the input image file
@@ -215,7 +211,7 @@ impl StegaV1 {
         // We don't need to hold a separate reference image instance here.
         let mut img = StegaV1::load_image(original_img_path, false)?;
 
-        let file_hash_bytes = Hashers::sha3_512_file(original_img_path);
+        let file_hash_bytes = Hashers::sha3_512_file(original_img_path)?;
         let file_hash_string = utils::u8_array_to_hex(&file_hash_bytes);
 
         /*
@@ -565,6 +561,7 @@ impl StegaV1 {
         */
         let data = data.to_le();
 
+        // Get the image bytes relevant to this cell.
         let bytes = img.get_subcells_from_index_mut(cell_start, 2);
         let mut add = true;
 
@@ -573,10 +570,10 @@ impl StegaV1 {
                 continue;
             }
 
-            let sign = if self.fast_bit_variance {
+            let should_add = if self.fast_bit_variance {
                 add
             } else {
-                self.data_rng.gen_bool(0.5)
+                thread_rng().gen_bool(0.5)
             };
 
             // If the value is 0 then the new value will always be 1.
@@ -585,7 +582,7 @@ impl StegaV1 {
             *b = match *b {
                 0 => 1,
                 1..=254 => {
-                    if sign {
+                    if should_add {
                         *b + 1
                     } else {
                         *b - 1
@@ -638,8 +635,8 @@ impl Codec for StegaV1 {
         &mut self,
         original_img_path: &str,
         key: String,
-        encoded_img_path: &str,
         input_file_path: &str,
+        encoded_img_path: &str,
     ) -> Result<()> {
         if !std::path::Path::new(input_file_path).exists() {
             return Err(Error::PathInvalid);
@@ -891,23 +888,365 @@ impl DataEncoder {
 }
 
 #[cfg(test)]
-mod tests_encryption_decryption {
-    use crate::error::{Error, Result};
+mod tests_encode_decode {
+    use std::path::{Path, PathBuf};
+
+    use rand::Rng;
+
+    use crate::{codecs::codec::Codec, hashers::Hashers, utils};
 
     use super::StegaV1;
 
-    struct TestEntry<'a> {
-        pub file: &'a str,
-        pub expected_result: Result<()>,
-        pub fail_message: &'a str,
+    // The generic key used for encoding text.
+    const KEY: &str = "ElPsyKongroo";
+    // The generic text used to text encoding and decoding.
+    const TEXT: &str = "3.1415926535";
+
+    /// This class will be used to automatically delete any
+    /// files generated with the tests.
+    struct FileCleaner {
+        files: Vec<String>,
     }
 
-    impl<'a> TestEntry<'a> {
-        fn new(file: &'a str, expected_result: Result<()>, fail_message: &'a str) -> Self {
+    impl FileCleaner {
+        pub fn new() -> Self {
+            Self { files: Vec::new() }
+        }
+
+        pub fn add(&mut self, path: &str) {
+            self.files.push(path.to_string());
+        }
+    }
+
+    impl Drop for FileCleaner {
+        fn drop(&mut self) {
+            for f in &self.files {
+                let _ = std::fs::remove_file(f);
+            }
+        }
+    }
+
+    /// Returns a [`PathBuf`] to the path for the test files.
+    fn test_base_path() -> PathBuf {
+        let mut path = utils::get_current_dir();
+        path.push("../tests/assets/encoding_decoding");
+
+        assert!(path.exists(), "unable to find test file path!");
+        path
+    }
+
+    /// Get the full path to a test file.
+    fn get_test_in_file_str(file: &str) -> String {
+        let mut path = test_base_path();
+        path.push(file);
+
+        assert!(path.exists(), "unable to find test file path!");
+
+        path.to_str().unwrap().to_string()
+    }
+
+    /// Get the full path to a random output file path, with a given extension.
+    fn get_test_out_file_str(ext: &str) -> String {
+        let random: u128 = rand::thread_rng().gen();
+
+        let mut path = test_base_path();
+        path.push("outputs");
+        path.push(format!("{}.{}", random, ext));
+
+        path.to_str().unwrap().to_string()
+    }
+
+    #[test]
+    fn test_encode_string() {
+        let input_path = get_test_in_file_str("reference-valid.png");
+        let output_img_path = get_test_out_file_str("png");
+
+        let mut f = FileCleaner::new();
+        f.add(&output_img_path);
+
+        // Attempt to encode the file.
+        let mut stega = StegaV1::default();
+        let r = stega.encode(&input_path, KEY.to_string(), TEXT, &output_img_path);
+
+        assert!(
+            Path::new(&output_img_path).exists(),
+            "file not written to disk."
+        );
+
+        // Did we successfully encode the string?
+        assert_eq!(r, Ok(()), "failed to encode data into image file.");
+    }
+
+    #[test]
+    fn test_encode_file() {
+        let input_path = get_test_in_file_str("reference-valid.png");
+        let input_file_path = get_test_in_file_str("text-file.txt");
+        let output_img_path = get_test_out_file_str("png");
+
+        let mut f = FileCleaner::new();
+        f.add(&output_img_path);
+
+        // Attempt to encode the file.
+        let mut stega = StegaV1::default();
+        let r = stega.encode_file(
+            &input_path,
+            KEY.to_string(),
+            &input_file_path,
+            &output_img_path,
+        );
+
+        assert!(
+            Path::new(&output_img_path).exists(),
+            "file not written to disk."
+        );
+
+        // Did we successfully encode the file?
+        assert_eq!(r, Ok(()), "failed to encode data into image file.");
+    }
+
+    #[test]
+    fn test_encode_file_binary() {
+        let input_path = get_test_in_file_str("reference-valid.png");
+        let input_file_path = get_test_in_file_str("binary-file.bin");
+        let output_img_path = get_test_out_file_str("png");
+
+        let mut f = FileCleaner::new();
+        f.add(&output_img_path);
+
+        // Attempt to encode the file.
+        let mut stega = StegaV1::default();
+        let r = stega.encode_file(
+            &input_path,
+            KEY.to_string(),
+            &input_file_path,
+            &output_img_path,
+        );
+
+        assert!(
+            Path::new(&output_img_path).exists(),
+            "file not written to disk."
+        );
+
+        // Did we successfully encode the file?
+        assert_eq!(r, Ok(()), "failed to encode data into image file.");
+    }
+
+    #[test]
+    fn test_decode_string() {
+        let ref_img_path = get_test_in_file_str("reference-valid.png");
+        let enc_img_path = get_test_in_file_str("encoded-text.png");
+
+        // Attempt to decode the string.
+        let mut stega = StegaV1::default();
+        let r = stega
+            .decode(&ref_img_path, KEY.to_string(), &enc_img_path)
+            .expect("failed to decode string");
+
+        // Did we successfully decode the string?
+        assert_eq!(r, TEXT, "decrypted information does not match input.");
+    }
+
+    #[test]
+    fn test_decode_string_invalid_key() {
+        let ref_img_path = get_test_in_file_str("reference-valid.png");
+        let enc_img_path = get_test_in_file_str("encoded-text.png");
+
+        // Attempt to decode the string.
+        let mut stega = StegaV1::default();
+        let r = stega.decode(&ref_img_path, "A".to_string(), &enc_img_path);
+
+        // Did we successfully decode the string?
+        assert!(
+            r.is_err(),
+            "successfully decrypted the information with an invalid key!"
+        );
+    }
+
+    #[test]
+    fn test_decode_string_wrong_ref_image() {
+        let ref_path = get_test_in_file_str("reference-invalid.png");
+        let enc_path = get_test_in_file_str("encoded-text.png");
+
+        // Attempt to decode the string.
+        // The key is valid but the reference image is not.
+        let mut stega = StegaV1::default();
+        let r = stega.decode(&ref_path, KEY.to_string(), &enc_path);
+
+        // Did we successfully decode the string?
+        assert!(
+            r.is_err(),
+            "successfully decrypted the information with an invalid key!"
+        );
+    }
+
+    #[test]
+    fn test_decode_file() {
+        let ref_path = get_test_in_file_str("reference-valid.png");
+        let enc_path = get_test_in_file_str("encoded-file-text.png");
+        let output_file_path = get_test_out_file_str("png");
+
+        let mut f = FileCleaner::new();
+        f.add(&output_file_path);
+
+        // Attempt to decode the file.
+        let mut stega = StegaV1::default();
+        stega
+            .decode_file(&ref_path, KEY.to_string(), &enc_path, &output_file_path)
+            .expect("failed to decode string");
+
+        // Did we successfully decode a file?
+        assert!(
+            Path::new(&output_file_path).exists(),
+            "file not written to disk."
+        );
+
+        // Create a hash of the original and new file. If these hashes match then we
+        // can be confident that the files are the same.
+        let hash_original = Hashers::sha3_512_file(&output_file_path);
+        let hash_new = Hashers::sha3_512_file(&output_file_path);
+
+        assert_eq!(
+            hash_original, hash_new,
+            "decoded file is not the same as the original."
+        );
+    }
+
+    #[test]
+    fn test_decode_file_invalid_key() {
+        let ref_path = get_test_in_file_str("reference-valid.png");
+        let enc_path = get_test_in_file_str("encoded-file-text.png");
+        let output_file_path = get_test_out_file_str("png");
+
+        let mut f = FileCleaner::new();
+        f.add(&output_file_path);
+
+        // Attempt to decode the file.
+        let mut stega = StegaV1::default();
+        let r = stega.decode_file(&ref_path, "A".to_string(), &enc_path, &output_file_path);
+
+        // Did we successfully decode the string?
+        assert!(
+            r.is_err(),
+            "successfully decrypted the information with an invalid key!"
+        );
+    }
+
+    #[test]
+    fn test_decode_file_wrong_ref_image() {
+        let ref_path = get_test_in_file_str("reference-invalid.png");
+        let enc_path = get_test_in_file_str("encoded-file-text.png");
+        let output_file_path = get_test_out_file_str("png");
+
+        let mut f = FileCleaner::new();
+        f.add(&output_file_path);
+
+        // Attempt to decode the file.
+        let mut stega = StegaV1::default();
+        let r = stega.decode_file(&ref_path, KEY.to_string(), &enc_path, &output_file_path);
+
+        // Did we successfully decode the string?
+        assert!(
+            r.is_err(),
+            "successfully decrypted the information with an invalid key!"
+        );
+    }
+
+    #[test]
+    fn test_decode_file_binary() {
+        let ref_path = get_test_in_file_str("reference-valid.png");
+        let enc_path = get_test_in_file_str("encoded-file-binary.png");
+        let original_file_path = get_test_in_file_str("binary-file.bin");
+        let output_file_path = get_test_out_file_str("bin");
+
+        let mut f = FileCleaner::new();
+        f.add(&output_file_path);
+
+        // Attempt to decode the file.
+        let mut stega = StegaV1::default();
+        stega
+            .decode_file(&ref_path, KEY.to_string(), &enc_path, &output_file_path)
+            .expect("failed to decode string");
+
+        // Did we successfully decode a file?
+        assert!(
+            Path::new(&output_file_path).exists(),
+            "file not written to disk."
+        );
+
+        // Create a hash of the original and new file. If these hashes match then we
+        // can be confident that the files are the same.
+        assert_eq!(
+            Hashers::sha3_512_file(&original_file_path),
+            Hashers::sha3_512_file(&output_file_path),
+            "decoded file is not the same as the original."
+        );
+    }
+
+    #[test]
+    fn test_roundtrip_string_invalid_sequences() {
+        let input_path = get_test_in_file_str("reference-valid.png");
+        let output_img_path = get_test_out_file_str("png");
+
+        let mut f = FileCleaner::new();
+        f.add(&output_img_path);
+
+        let invalid_utf8 = unsafe { String::from_utf8_unchecked(vec![65, 159, 146, 150, 65]) };
+
+        // Attempt to encode the file.
+        let mut stega = StegaV1::default();
+        let r = stega.encode(
+            &input_path,
+            KEY.to_string(),
+            &invalid_utf8,
+            &output_img_path,
+        );
+
+        assert!(
+            Path::new(&output_img_path).exists(),
+            "file not written to disk."
+        );
+
+        // Did we successfully encode the string?
+        assert_eq!(r, Ok(()), "failed to encode data into image file.");
+
+        // Now we will attempt to decode the string.
+        let str = stega
+            .decode(&input_path, KEY.to_string(), &output_img_path)
+            .expect("failed to decode string");
+
+        // Did we successfully decode the string?
+        // Any invalid UTF-8 sequences should have been removed
+        // during the decode cycle.
+        assert_eq!(
+            str, "A���A",
+            "invalid sequences not removed during encode-decode cycle."
+        );
+    }
+}
+
+#[cfg(test)]
+mod tests_encryption_decryption {
+    use std::path::PathBuf;
+
+    use crate::{
+        error::{Error, Result},
+        utils,
+    };
+
+    use super::StegaV1;
+
+    struct TestEntry {
+        pub file: String,
+        pub expected_result: Result<()>,
+        pub fail_message: String,
+    }
+
+    impl<'a> TestEntry {
+        fn new(file: &str, expected_result: Result<()>, fail_message: &str) -> Self {
             Self {
-                file,
+                file: file.to_string(),
                 expected_result,
-                fail_message,
+                fail_message: fail_message.to_string(),
             }
         }
 
@@ -922,6 +1261,16 @@ mod tests_encryption_decryption {
                 self.file, expected_str, self.fail_message
             )
         }
+    }
+
+    fn test_base_path() -> PathBuf {
+        let mut path = utils::get_current_dir();
+        path.push("../tests/assets/loading_and_validation");
+        if !path.exists() {
+            panic!("unable to find test file path!");
+        }
+
+        path
     }
 
     #[test]
@@ -959,15 +1308,10 @@ mod tests_encryption_decryption {
             ),
         ];
 
-        let mut path = std::env::current_dir().unwrap();
-        path.push("../tests/assets/loading_and_validation");
-        if !path.exists() {
-            panic!("unable to find test file path!");
-        }
-
+        let path = test_base_path();
         for test in tests {
             let mut full_path = path.clone();
-            full_path.push(test.file);
+            full_path.push(&test.file);
 
             let path_str = full_path.as_path().to_str().unwrap();
             let result = match StegaV1::load_image(path_str, true) {

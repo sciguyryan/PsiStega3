@@ -3,7 +3,10 @@ use crate::error::{Error, Result};
 use core::fmt::Write;
 use rand::Rng;
 use rand_core::{OsRng, RngCore};
-use std::{fs::File, path::Path};
+use std::{
+    fs::File,
+    path::{Path, PathBuf},
+};
 
 /// A list of the bitmasks that can check if a given but is set in a u8 value.
 pub(crate) const U8_BIT_MASKS: [u8; 8] = [1, 2, 4, 8, 16, 32, 64, 128];
@@ -213,4 +216,8 @@ pub(crate) fn write_u8_slice_to_file(out_file: &str, bytes: &[u8]) -> Result<()>
         Ok(_) => Ok(()),
         Err(_) => Err(Error::FileWrite),
     }
+}
+
+pub fn get_current_dir() -> PathBuf {
+    std::env::current_dir().unwrap()
 }

@@ -22,6 +22,8 @@ pub enum Error {
     File,
     /// Error creating a file.
     FileCreate,
+    /// An error occurred while attempting to hash a file.
+    FileHashingError,
     /// Error reading from a file.
     FileRead,
     /// Error writing to a file.
@@ -55,6 +57,7 @@ impl fmt::Display for Error {
             Error::EncryptionFailed => "the data could not be encrypted",
             Error::File => "a generic file-related error occurred.",
             Error::FileCreate => "an error occurred when attempting to create a file.",
+            Error::FileHashingError => "an error occurred when attempting to hash a file.",
             Error::FileRead => "an error occurred when attempting to read from a file.",
             Error::FileWrite => "an error occurred when attempting to write to a file.",
             Error::ImageDimensionsInvalid => {
