@@ -129,8 +129,9 @@ pub(crate) fn normalise_path(path: &str) -> Result<String> {
 
     let mut normalised_path_buf = match path_buf.canonicalize() {
         Ok(p) => p,
-        Err(_) => {
+        Err(e) => {
             // TODO: do we need a better error here?
+            panic!("here 1: {:?}", e);
             return Err(Error::File);
         }
     };
@@ -252,8 +253,6 @@ pub(crate) fn write_u8_slice_to_file(out_file: &str, bytes: &[u8]) -> Result<()>
         Ok(p) => p,
         Err(e) => return Err(e),
     };
-
-    panic!("{}", normalised_path);
 
     // We have decoded a valid base64 string.
     // Next we need to write the data to the file.
