@@ -929,15 +929,14 @@ mod tests_encode_decode {
 
     /// Returns a [`PathBuf`] to the path for the test files.
     fn test_base_path() -> PathBuf {
-        let mut path = utils::get_current_dir();
+        let mut path = PathBuf::new();
         path.push("..");
         path.push("tests");
         path.push("assets");
         path.push("encoding_decoding");
 
-        let noralised = path.canonicalize().unwrap();
-        assert!(noralised.exists(), "unable to find test file path!");
-        noralised
+        let rp = RelativePath::new("../tests/assets/encoding_decoding");
+        rp.to_logical_path(utils::get_current_dir())
     }
 
     /// Get the full path to a test file.
@@ -945,11 +944,9 @@ mod tests_encode_decode {
         let mut path = test_base_path();
         path.push(file);
 
-        // Resolve any relative paths we might have.
-        let noralised = path.canonicalize().unwrap();
-        assert!(noralised.exists(), "unable to find test file path!");
+        assert!(path.exists(), "unable to find test file path!");
 
-        noralised.to_str().unwrap().to_string()
+        path.to_str().unwrap().to_string()
     }
 
     /// Get the full path to a random output file path, with a given extension.
@@ -960,10 +957,7 @@ mod tests_encode_decode {
         path.push("outputs");
         path.push(format!("{}.{}", random, ext));
 
-        // Resolve any relative paths we might have.
-        let noralised = path.canonicalize().unwrap();
-
-        noralised.to_str().unwrap().to_string()
+        path.to_str().unwrap().to_string()
     }
 
     #[test]
