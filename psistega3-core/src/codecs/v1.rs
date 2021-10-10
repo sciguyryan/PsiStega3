@@ -936,7 +936,6 @@ mod tests_encode_decode {
         path.push("encoding_decoding");
 
         let noralised = path.canonicalize().unwrap();
-
         assert!(noralised.exists(), "unable to find test file path!");
         noralised
     }
@@ -946,8 +945,8 @@ mod tests_encode_decode {
         let mut path = test_base_path();
         path.push(file);
 
+        // Resolve any relative paths we might have.
         let noralised = path.canonicalize().unwrap();
-
         assert!(noralised.exists(), "unable to find test file path!");
 
         noralised.to_str().unwrap().to_string()
@@ -961,7 +960,10 @@ mod tests_encode_decode {
         path.push("outputs");
         path.push(format!("{}.{}", random, ext));
 
-        path.to_str().unwrap().to_string()
+        // Resolve any relative paths we might have.
+        let noralised = path.canonicalize().unwrap();
+
+        noralised.to_str().unwrap().to_string()
     }
 
     #[test]
