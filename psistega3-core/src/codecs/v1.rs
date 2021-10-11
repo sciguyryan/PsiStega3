@@ -32,14 +32,15 @@ pub struct StegaV1 {
     /// If the noise layer should be applied to the output image.
     noise_layer: bool,
     /// If the resulting image file should be saved when encoding.
-    /// This is mainly for testing and debugging.
-    pub save_output_file: bool,
+    save_output_file: bool,
     /// If the faster method of setting the bit variance should be
     /// used.
     ///
-    /// This method will not use randomness to determine the bit variance,
-    /// instead it will simply +1 first, then -1, then +1, etc.
+    /// This method will not use randomness to determine the pixel value varience
+    /// and will instead alternate between adding and subtracting 1.
     fast_bit_variance: bool,
+    /// If we have verbose mode enabled.
+    verbose_mode: bool,
 }
 
 impl StegaV1 {
@@ -49,6 +50,44 @@ impl StegaV1 {
             noise_layer,
             save_output_file: true,
             fast_bit_variance,
+            verbose_mode: true,
+        }
+    }
+
+    /// Builds a map of data indices to cell indices.
+    ///
+    /// # Arguments
+    ///
+    /// * `key` - The key that should be used to seed the random number generator.
+    /// * `img` - A reference to the [`ImageWrapper`] that holds the image.
+    ///
+    fn build_data_to_cell_index_map(&mut self, img: &ImageWrapper, key: &str) {
+        /*
+          When we can't use the Argon2 hash for the positional RNG
+          as we will need the salt, which will not be available when
+          initially reading the data from the file.
+        */
+        let bytes = Hashers::sha3_256_string(key);
+        let mut rng: ChaCha20Rng = StegaV1::u8_slice_to_seed(&bytes);
+
+        // It doesn't matter if we call this on reference or encoded
+        // as they will have the same value at this point.
+        let total_cells = StegaV1::get_total_cells(img) as usize;
+
+        // Create and fill our vector with sequential values, one
+        // for each cell ID.
+        let mut cell_list = Vec::with_capacity(total_cells);
+        utils::fill_vector_sequential(&mut cell_list);
+
+        // Randomize the order of the cell IDs.
+        cell_list.shuffle(&mut rng);
+
+        // Add the randomized entries to our cell map.
+        self.data_cell_map = HashMap::with_capacity(total_cells);
+        let mut i = 0;
+        while let Some(id) = cell_list.pop() {
+            self.data_cell_map.insert(i, id);
+            i += 1;
         }
     }
 
@@ -328,43 +367,6 @@ impl StegaV1 {
         }
 
         Ok(())
-    }
-
-    /// Builds a map of data indices to cell indices.
-    ///
-    /// # Arguments
-    ///
-    /// * `key` - The key that should be used to seed the random number generator.
-    /// * `img` - A reference to the [`ImageWrapper`] that holds the image.
-    ///
-    fn build_data_to_cell_index_map(&mut self, img: &ImageWrapper, key: &str) {
-        /*
-          When we can't use the Argon2 hash for the positional RNG
-          as we will need the salt, which will not be available when
-          initially reading the data from the file.
-        */
-        let bytes = Hashers::sha3_256_string(key);
-        let mut rng: ChaCha20Rng = StegaV1::u8_slice_to_seed(&bytes);
-
-        // It doesn't matter if we call this on reference or encoded
-        // as they will have the same value at this point.
-        let total_cells = StegaV1::get_total_cells(img) as usize;
-
-        // Create and fill our vector with sequential values, one
-        // for each cell ID.
-        let mut cell_list = Vec::with_capacity(total_cells);
-        utils::fill_vector_sequential(&mut cell_list);
-
-        // Randomize the order of the cell IDs.
-        cell_list.shuffle(&mut rng);
-
-        // Add the randomized entries to our cell map.
-        self.data_cell_map = HashMap::with_capacity(total_cells);
-        let mut i = 0;
-        while let Some(id) = cell_list.pop() {
-            self.data_cell_map.insert(i, id);
-            i += 1;
-        }
     }
 
     /// Gets the cell index that will hold the specified data index.
@@ -681,6 +683,10 @@ impl Codec for StegaV1 {
 
         // Write the raw bytes directly to the output file.
         utils::write_u8_slice_to_file(output_file_path, &bytes)
+    }
+
+    fn set_save_output_file(&mut self, state: bool) {
+        self.save_output_file = state;
     }
 }
 

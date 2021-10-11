@@ -37,6 +37,8 @@ pub trait Codec {
 
     /// Decrypt and decode the information from an image.
     ///
+    /// # Arguments
+    ///
     /// * `original_img_path` - The path to the reference image.
     /// * `key` - The key to be used when decrypting the information.
     /// * `encoded_img_path` - The path to the modified image.
@@ -62,4 +64,12 @@ pub trait Codec {
         encoded_img_path: &str,
         output_file_path: &str,
     ) -> Result<()>;
+
+    /// Enable or disable file saving mode.
+    ///
+    /// # Arguments
+    ///
+    /// * `state` - A boolean indicating whether file saving mode should be enabled or disabled.
+    ///
+    fn set_save_output_file(&mut self, state: bool);
 }
