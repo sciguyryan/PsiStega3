@@ -4,7 +4,7 @@ use psistega3_core::codecs::codec::Codec;
 use psistega3_core::codecs::v1::StegaV1;
 
 use simple_logger::SimpleLogger;
-use std::io::stdin;
+use std::{env, io::stdin};
 
 //ookneporlygs
 

@@ -420,6 +420,25 @@ impl StegaV1 {
         Ok(img)
     }
 
+    /// Write a log file to the console, if verbose mode is enabled.
+    ///
+    /// # Arguments
+    ///
+    /// * `string` - The string to be logged.
+    ///
+    #[allow(dead_code)]
+    fn log(&self, string: &str) {
+        if !self.verbose_mode {
+            return;
+        }
+
+        #[cfg(debug_assertions)]
+        log::debug!("{}", string);
+
+        #[cfg(not(debug_assertions))]
+        println!("{}", string);
+    }
+
     /// Read a byte of encoded data, starting at a specified index.
     ///
     /// # Arguments
@@ -687,6 +706,10 @@ impl Codec for StegaV1 {
 
     fn set_save_output_file(&mut self, state: bool) {
         self.save_output_file = state;
+    }
+
+    fn set_verbose_mode(&mut self, state: bool) {
+        self.verbose_mode = state;
     }
 }
 

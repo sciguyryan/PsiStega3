@@ -72,4 +72,12 @@ pub trait Codec {
     /// * `state` - A boolean indicating whether file saving mode should be enabled or disabled.
     ///
     fn set_save_output_file(&mut self, state: bool);
+
+    /// Enable or disable verbose mode.
+    ///
+    /// # Arguments
+    ///
+    /// * `state` - A boolean indicating whether verbose mode should be enabled or disabled.
+    ///
+    fn set_verbose_mode(&mut self, state: bool);
 }
