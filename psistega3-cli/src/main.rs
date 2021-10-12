@@ -70,13 +70,16 @@ fn main() {
     // is valid.
     let mut codec = get_codec_by_version(codec_version.unwrap());
 
+    // Apply any settings that might have been specified.
+    handle_codec_settings(&mut codec, &args[4..]);
+
     // Execute the requested action with the provided arguments.
-    let params = &args[5..];
+    let params = &args[4..];
     let result = match action.as_str() {
         "-e" | "-encrypt" => handle_encode(params, &mut codec),
         "-d" | "-decrypt" => handle_decode(params, &mut codec),
-        "-ef" | "-encrypt-file" => handle_file_encode(params, &mut codec),
-        "-df" | "-decrypt-file" => handle_file_decode(params, &mut codec),
+        "-ef" | "-encrypt-file" => handle_encode_file(params, &mut codec),
+        "-df" | "-decrypt-file" => handle_decode_file(params, &mut codec),
         "-examples" => {
             show_examples();
             Ok(())
@@ -99,12 +102,24 @@ fn main() {
         .expect("Failed to read a line.");
 }
 
+/// Get an instance of the [`Codec`] for a specified [`Version`].
+///
+/// # Arguments
+///
+/// * `key` - The [`Codec`] [`Version`].
+///
 fn get_codec_by_version(version: Version) -> Box<dyn Codec> {
     match version {
         Version::V0x01 => Box::new(StegaV1::default()),
     }
 }
 
+/// Prompt the user to input a password.
+///
+/// # Arguments
+///
+/// * `prompt` - The password prompt string.
+///
 fn get_password(prompt: &str) -> Option<String> {
     match rpassword::read_password_from_tty(Some(prompt)) {
         Ok(s) => Some(s),
@@ -112,54 +127,13 @@ fn get_password(prompt: &str) -> Option<String> {
     }
 }
 
-fn handle_encode(args: &[String], codec: &mut Box<dyn Codec>) -> Result<()> {
-    // Reference image path, output image path, text.
-    if args.len() < 3 {
-        return Err(Error::InsufficientArguments);
-    }
-
-    let ref_image = &args[0];
-    let output_image = &args[1];
-    let text = &args[2];
-
-    if has_no_noise_arg(args) {
-        codec.set_setting_state(Settings::NoiseLayer, false);
-    }
-
-    if has_fast_variance_arg(args) {
-        codec.set_setting_state(Settings::FastVariance, true);
-    }
-
-    if has_verbose_arg(args) {
-        codec.set_setting_state(Settings::Verbose, true);
-    }
-
-    // Read the password from the console.
-    // If the passwords do not match then we will not continue execution.
-    // Note: empty password are supported, but are not recommended.
-    let password = read_password_with_verify();
-    if password.is_none() {
-        return Err(Error::PasswordMismatch);
-    }
-
-    let password = password.unwrap();
-
-    match codec.encode(ref_image, password, text, output_image) {
-        Ok(_) => Ok(()),
-        Err(e) => Err(Error::Encoding(e.to_string())),
-    }
-}
-
-fn handle_file_encode(args: &[String], codec: &mut Box<dyn Codec>) -> Result<()> {
-    // Reference image path, output image path, input file path.
-    if args.len() < 3 {
-        return Err(Error::InsufficientArguments);
-    }
-
-    println!("{:?}", args);
-    Ok(())
-}
-
+/// Handle a text decode command.
+///
+/// # Arguments
+///
+/// * `args` - A list of arguments relevant for this command.
+/// * `codec` - The instance of the [`Codec`] to be used for this command.
+///
 fn handle_decode(args: &[String], codec: &mut Box<dyn Codec>) -> Result<()> {
     // Reference image path, encoded image path.
     if args.len() < 2 {
@@ -168,10 +142,6 @@ fn handle_decode(args: &[String], codec: &mut Box<dyn Codec>) -> Result<()> {
 
     let ref_image = &args[0];
     let enc_image = &args[1];
-
-    if has_verbose_arg(args) {
-        codec.set_setting_state(Settings::Verbose, true);
-    }
 
     // Read the password from the console.
     let password = read_password();
@@ -194,32 +164,154 @@ fn handle_decode(args: &[String], codec: &mut Box<dyn Codec>) -> Result<()> {
     Ok(())
 }
 
-fn handle_file_decode(args: &[String], codec: &mut Box<dyn Codec>) -> Result<()> {
+/// Handle a file decode command.
+///
+/// # Arguments
+///
+/// * `args` - A list of arguments relevant for this command.
+/// * `codec` - The instance of the [`Codec`] to be used for this command.
+///
+fn handle_decode_file(args: &[String], codec: &mut Box<dyn Codec>) -> Result<()> {
     // Reference image path, encoded image path, output file path.
     if args.len() < 3 {
         return Err(Error::InsufficientArguments);
     }
 
-    println!("{:?}", args);
+    let ref_image = &args[0];
+    let enc_image = &args[1];
+    let output_file_path = &args[2];
+
+    // Read the password from the console.
+    let password = read_password();
+    if password.is_none() {
+        return Err(Error::NoPassword);
+    }
+
+    let password = password.unwrap();
+
+    // Attempt to decode the data.
+    match codec.decode_file(ref_image, password, enc_image, output_file_path) {
+        Ok(_) => Ok(()),
+        Err(e) => Err(Error::Decoding(e.to_string())),
+    }?;
+
+    // Output the decoded string to the console.
+    println!("The file has been successfully decoded to the specified output path.");
+
     Ok(())
 }
 
-fn has_fast_variance_arg(args: &[String]) -> bool {
-    args.contains(&String::from("--fv")) || args.contains(&String::from("--fast-variance"))
+/// Handle a text encode command.
+///
+/// # Arguments
+///
+/// * `args` - A list of arguments relevant for this command.
+/// * `codec` - The instance of the [`Codec`] to be used for this command.
+///
+fn handle_encode(args: &[String], codec: &mut Box<dyn Codec>) -> Result<()> {
+    // Reference image path, output image path, text.
+    if args.len() < 3 {
+        return Err(Error::InsufficientArguments);
+    }
+
+    let ref_image = &args[0];
+    let output_image = &args[1];
+    let text = &args[2];
+
+    // Read the password from the console.
+    // If the passwords do not match then we will not continue execution.
+    // Note: empty password are supported, but are not recommended.
+    let password = read_password_with_verify();
+    if password.is_none() {
+        return Err(Error::PasswordMismatch);
+    }
+
+    let password = password.unwrap();
+
+    match codec.encode(ref_image, password, text, output_image) {
+        Ok(_) => Ok(()),
+        Err(e) => Err(Error::Encoding(e.to_string())),
+    }?;
+
+    println!("The text has been successfully encoded.");
+    Ok(())
 }
 
-fn has_no_noise_arg(args: &[String]) -> bool {
-    args.contains(&String::from("--n")) || args.contains(&String::from("--no-noise"))
+/// Handle a file encode command.
+///
+/// # Arguments
+///
+/// * `args` - A list of arguments relevant for this command.
+/// * `codec` - The instance of the [`Codec`] to be used for this command.
+///
+fn handle_encode_file(args: &[String], codec: &mut Box<dyn Codec>) -> Result<()> {
+    println!("{:?}", args);
+
+    // Reference image path, output image path, input file path.
+    if args.len() < 3 {
+        return Err(Error::InsufficientArguments);
+    }
+
+    let ref_image = &args[0];
+    let output_image = &args[1];
+    let input_file = &args[2];
+
+    // Read the password from the console.
+    // If the passwords do not match then we will not continue execution.
+    // Note: empty password are supported, but are not recommended.
+    let password = read_password_with_verify();
+    if password.is_none() {
+        return Err(Error::PasswordMismatch);
+    }
+
+    let password = password.unwrap();
+
+    match codec.encode_file(ref_image, password, input_file, output_image) {
+        Ok(_) => Ok(()),
+        Err(e) => Err(Error::Encoding(e.to_string())),
+    }?;
+
+    println!("The file has been successfully encoded.");
+    Ok(())
 }
 
-fn has_verbose_arg(args: &[String]) -> bool {
-    args.contains(&String::from("--verbose"))
+/// Apply any specified coded settings.
+///
+/// # Arguments
+///
+/// * `codec` - The instance of the [`Codec`] to be used for this command.
+/// * `args` - A list of arguments relevant for this command.
+///
+fn handle_codec_settings(codec: &mut Box<dyn Codec>, args: &[String]) {
+    if args.contains(&String::from("--fv")) || args.contains(&String::from("--fast-variance")) {
+        codec.set_setting_state(Settings::FastVariance, true);
+    }
+
+    if args.contains(&String::from("--nf")) || args.contains(&String::from("--no-files")) {
+        codec.set_setting_state(Settings::OutputFiles, false);
+    }
+
+    if args.contains(&String::from("--nn")) || args.contains(&String::from("--no-noise")) {
+        codec.set_setting_state(Settings::NoiseLayer, false);
+    }
+
+    if args.contains(&String::from("--verbose")) {
+        codec.set_setting_state(Settings::Verbose, true);
+    }
 }
 
+/// Read a password from the terminal.
 fn read_password() -> Option<String> {
     get_password("Password: ")
 }
 
+/// Prompt the user for a password, with verification.
+///
+/// # Returns
+///
+/// If the two passwords are the same then a [`String`] [`Option`] will be returned,
+/// otherwise a [`None`] will be returned.
+///
 fn read_password_with_verify() -> Option<String> {
     let pwd_1 = get_password("Password: ");
     let pwd_2 = get_password("Confirm password: ");
@@ -233,8 +325,9 @@ fn read_password_with_verify() -> Option<String> {
     None
 }
 
+/// Write some basic help information on screen.
 fn show_help() {
-    println!("A stegranography tool written in Rust.");
+    println!("A steganography tool written in Rust.");
     println!();
     println!("USAGE:");
     println!("\tpsistega3 ACTION VERSION PARAMS [OPTIONS]");
@@ -253,6 +346,7 @@ fn show_help() {
     println!("Please use -examples to display some example commands.");
 }
 
+/// Write some example commands on screen.
 fn show_examples() {
     let split = "-".repeat(32);
     println!("{}", split);
@@ -286,6 +380,12 @@ fn show_examples() {
     println!("{}", split);
 }
 
+/// Write an [`Error`] message on screen and then abort the program.
+///
+/// # Arguments
+///
+/// * `error` - The [`Error`] to be displayed on screen.
+///
 fn show_abort_message(error: Error) {
     println!("{}", error);
     std::process::exit(0);

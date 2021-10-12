@@ -430,6 +430,7 @@ impl StegaV1 {
     /// * `string` - The string to be logged.
     ///
     #[allow(dead_code)]
+    #[inline]
     fn log(&self, string: &str) {
         if !self.verbose_mode {
             return;

@@ -17,6 +17,7 @@ pub(crate) struct ImageWrapper {
 
 impl ImageWrapper {
     /// Return the image's dimension.
+    #[inline]
     pub fn dimensions(&self) -> (u32, u32) {
         self.dimensions
     }
@@ -54,6 +55,7 @@ impl ImageWrapper {
     }
 
     /// Get the format of the image.
+    #[inline]
     pub fn get_image_format(&self) -> ImageFormat {
         self.format
     }
