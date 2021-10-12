@@ -55,7 +55,7 @@ fn main() {
 
     // Attempt to extract the codec version number.
     let mut codec_version: Option<Version> = None;
-    if &args[index] == "-version" {
+    if &args[index] == "-v" {
         let version = &args[index + 1];
         if let Ok(v) = version.parse::<u8>() {
             if let Ok(cv) = Version::try_from(v) {
@@ -215,7 +215,7 @@ fn has_no_noise_arg(args: &[String]) -> bool {
 }
 
 fn has_verbose_arg(args: &[String]) -> bool {
-    args.contains(&String::from("--v")) || args.contains(&String::from("--verbose"))
+    args.contains(&String::from("--verbose"))
 }
 
 fn read_password() -> Option<String> {
@@ -256,22 +256,28 @@ fn show_help() {
 fn show_examples() {
     let split = "-".repeat(32);
     println!("{}", split);
-    println!("psistega3 -e -version 1 \"C:\\reference.png\" \"C:\\encoded.png\" \"A very important message.\"");
+    println!(
+        "psistega3 -e -v 1 \"C:\\reference.png\" \"C:\\encoded.png\" \"A very important message.\""
+    );
     println!();
     println!("This command will attempt to encode a string into the reference image.");
     println!("You will be prompted twice for a password after executing this command.");
     println!("{}", split);
-    println!("psistega3 -d -version 1 \"C:\\reference.png\" \"C:\\encoded.png\"");
+    println!("psistega3 -d -v 1 \"C:\\reference.png\" \"C:\\encoded.png\"");
     println!();
     println!("You will be prompted for a password after executing this command.");
     println!("If any data was successfully decoded then it will be displayed on screen.");
     println!("{}", split);
-    println!("psistega3 -ef -version 1 \"C:\\reference.png\" \"C:\\encoded.png\" \"C:\\input_file_path.foo\"");
+    println!(
+        "psistega3 -ef -v 1 \"C:\\reference.png\" \"C:\\encoded.png\" \"C:\\input_file_path.foo\""
+    );
     println!();
     println!("This command will attempt to encode a file into the reference image.");
     println!("You will be prompted twice for a password after executing this command.");
     println!("{}", split);
-    println!("psistega3 -df -version 1 \"C:\\reference.png\" \"C:\\encoded.png\" \"C:\\output_file_path.foo\"");
+    println!(
+        "psistega3 -df -v 1 \"C:\\reference.png\" \"C:\\encoded.png\" \"C:\\output_file_path.foo\""
+    );
     println!();
     println!("You will be prompted for a password after executing this command.");
     println!(
