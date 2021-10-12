@@ -49,29 +49,29 @@ pub enum Error {
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
-            Error::Argon2InvalidParams => "one or more invalid parameters passed to argon2 hasher",
-            Error::Argon2NoHash => "error creating an Argon2 hash with the specified parameters",
-            Error::Base64Decoding => "the base64 string was invalid and could not be decoded.",
-            Error::DataTooLarge => "the data is too large",
-            Error::DecryptionFailed => "the data could not be decrypted; the data was invalid.",
-            Error::EncryptionFailed => "the data could not be encrypted",
-            Error::File => "a generic file-related error occurred.",
-            Error::FileCreate => "an error occurred when attempting to create a file.",
-            Error::FileHashingError => "an error occurred when attempting to hash a file.",
-            Error::FileRead => "an error occurred when attempting to read from a file.",
-            Error::FileWrite => "an error occurred when attempting to write to a file.",
+            Error::Argon2InvalidParams => "One or more invalid parameters passed to the Argon2 hashing algorithm.",
+            Error::Argon2NoHash => "Error creating an Argon2 hash with the specified parameters.",
+            Error::Base64Decoding => "The base64 string was invalid and could not be decoded.",
+            Error::DataTooLarge => "The data is too large",
+            Error::DecryptionFailed => "The data could not be decrypted; the data was invalid.",
+            Error::EncryptionFailed => "The data could not be encrypted.",
+            Error::File => "A generic file-related error occurred.",
+            Error::FileCreate => "An error occurred when attempting to create a file.",
+            Error::FileHashingError => "An error occurred when attempting to hash a file.",
+            Error::FileRead => "An error occurred when attempting to read from a file.",
+            Error::FileWrite => "An error occurred when attempting to write to a file.",
             Error::ImageDimensionsInvalid => {
-                "invalid image dimensions: the total number of pixels must be divisible by two"
+                "Invalid image dimensions: the total number of available data channels must be divisible by 8."
             }
-            Error::ImageDimensionsMismatch => "the dimensions of the image files are not equal",
+            Error::ImageDimensionsMismatch => "The dimensions of the image files are not equal.",
             Error::ImageInsufficientSpace => {
-                "there is insufficient space to encode the data within the image"
+                "There is insufficient space to encode the data within the image."
             }
-            Error::ImageOpening => "error when attempting to load the specified image",
-            Error::ImageSaving => "error when attempting to save the specified image",
-            Error::ImageTypeInvalid => "invalid image pixel type",
-            Error::PathInvalid => "the specified path is invalid or does not exist",
-            Error::VersionInvalid => "invalid version number",
+            Error::ImageOpening => "Error when attempting to load the specified image.",
+            Error::ImageSaving => "Error when attempting to save the specified image.",
+            Error::ImageTypeInvalid => "Invalid image pixel type.",
+            Error::PathInvalid => "The specified path is invalid or does not exist.",
+            Error::VersionInvalid => "The version number is invalid.",
         })
     }
 }

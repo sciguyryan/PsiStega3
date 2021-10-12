@@ -65,19 +65,31 @@ pub trait Codec {
         output_file_path: &str,
     ) -> Result<()>;
 
-    /// Enable or disable file saving mode.
+    /// Enable or disable a specific setting.
     ///
     /// # Arguments
     ///
-    /// * `state` - A boolean indicating whether file saving mode should be enabled or disabled.
+    /// * `setting` - The setting to be configured.
+    /// * `state` - A boolean indicating whether the option should be enabled or disabled.
     ///
-    fn set_save_output_file(&mut self, state: bool);
+    fn set_setting_state(&mut self, setting: Settings, state: bool);
+}
 
+pub enum Settings {
+    /// Enable or disable the noise map.
+    ///
+    /// Applicable to: v1.
+    NoiseLayer,
+    /// Enable or disable fast variance.
+    ///
+    /// Applicable to: v1.
+    FastVariance,
     /// Enable or disable verbose mode.
     ///
-    /// # Arguments
+    /// Applicable to: v1.
+    Verbose,
+    /// Enable or disable the saving of files when encoding or decoding.
     ///
-    /// * `state` - A boolean indicating whether verbose mode should be enabled or disabled.
-    ///
-    fn set_verbose_mode(&mut self, state: bool);
+    /// Applicable to: v1.
+    OutputFiles,
 }

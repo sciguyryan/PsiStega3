@@ -3,9 +3,8 @@ mod error;
 
 use crate::error::{Error, Result};
 
-use psistega3_core::codecs::codec::Codec;
+use psistega3_core::codecs::codec::{Codec, Settings};
 use psistega3_core::codecs::v1::StegaV1;
-//use psistega3_core::error::{Error};
 use psistega3_core::version::*;
 
 use simple_logger::SimpleLogger;
@@ -15,94 +14,6 @@ use std::{convert::TryFrom, env, io::stdin};
 
 fn main() {
     SimpleLogger::new().init().unwrap();
-
-    let mut args: Vec<String> = env::args().collect();
-    if args.len() == 1 {
-        show_help();
-        return;
-    }
-
-    // Automatically convert any command arguments to lowercase.
-    for arg in args.iter_mut() {
-        if arg.contains('-') {
-            *arg = arg.to_lowercase();
-        }
-    }
-
-    // The action argument.
-    let mut action = &args[1];
-
-    // If we should enable verbose mode.
-    let mut verbose = false;
-
-    // If the first argument is -v or -verbose then we need to shift the action
-    // argument index by one.
-    if action == "-verbose" || action == "-v" {
-        // There must be at least 7 arguments.
-        if args.len() < 7 {
-            show_abort_error(Error::InsufficientArguments);
-        }
-
-        verbose = true;
-        action = &args[2];
-    } else if action == "-examples" {
-        show_examples();
-        return;
-    } else {
-        // There must be at least 6 arguments.
-        if args.len() < 6 {
-            show_abort_error(Error::InsufficientArguments);
-        }
-    }
-
-    let mut index = if verbose { 3 } else { 2 };
-
-    // Attempt to extract the codec version number.
-    let mut codec_version: Option<Version> = None;
-    if &args[index] == "-version" {
-        let version = &args[index + 1];
-        if let Ok(v) = version.parse::<u8>() {
-            if let Ok(cv) = Version::try_from(v) {
-                codec_version = Some(cv);
-            }
-        }
-    }
-
-    if codec_version.is_none() {
-        show_abort_error(Error::InvalidVersion);
-    }
-
-    // Skip over the version arguments.
-    index += 2;
-
-    // This shadowing is safe since we have verified that we
-    // have a valid version number above.
-    let codec_version = codec_version.unwrap();
-
-    // Parge the arguments for the requested action.
-    let result = match action.as_str() {
-        "-e" | "-encrypt" => handle_encrypt(&args[index..], codec_version, verbose),
-        "-d" | "-decrypt" => handle_decrypt(&args[index..], codec_version, verbose),
-        "-ef" | "-encrypt-file" => handle_file_encrypt(&args[index..], codec_version, verbose),
-        "-df" | "-decrypt-file" => handle_file_decrypt(&args[index..], codec_version, verbose),
-        _ => {
-            show_help();
-            Ok(())
-        }
-    };
-
-    println!("{:?}", result);
-
-    return;
-
-    // These strings are obviously just for testing.
-    let input = String::from("This is a test.");
-    let password = String::from("banana1234");
-
-    let input_img_path = "D:\\GitHub\\PsiStega3\\test-images\\b.png";
-    let output_img_path = "D:\\GitHub\\PsiStega3\\test-images\\b2.png";
-
-    let mut stega = StegaV1::default();
 
     /*let iterations = 10;
     let start_0a = std::time::Instant::now();
@@ -119,15 +30,72 @@ fn main() {
 
     return;*/
 
-    log::debug!("{}", "-".repeat(32));
-    log::debug!("Starting encoding...");
-    let e = stega.encode(input_img_path, password.clone(), &input, output_img_path);
-    log::debug!("Result = {:?}", e);
-    log::debug!("{}", "-".repeat(32));
-    log::debug!("Starting decoding...");
-    let d = stega.decode(input_img_path, password, output_img_path);
-    log::debug!("Result = {:?}", d);
-    log::debug!("{}", "-".repeat(32));
+    let mut args: Vec<String> = env::args().collect();
+    if args.len() == 1 {
+        show_help();
+        return;
+    }
+
+    // Automatically convert any command-type arguments to lowercase.
+    for arg in args.iter_mut() {
+        if arg.starts_with('-') {
+            *arg = arg.to_lowercase();
+        }
+    }
+
+    // The action argument.
+    let action = &args[1];
+
+    // There must be at least 6 arguments.
+    if args.len() < 6 {
+        show_abort_message(Error::InsufficientArguments);
+    }
+
+    let mut index = 2;
+
+    // Attempt to extract the codec version number.
+    let mut codec_version: Option<Version> = None;
+    if &args[index] == "-version" {
+        let version = &args[index + 1];
+        if let Ok(v) = version.parse::<u8>() {
+            if let Ok(cv) = Version::try_from(v) {
+                codec_version = Some(cv);
+            }
+        }
+    }
+
+    if codec_version.is_none() {
+        show_abort_message(Error::InvalidVersion);
+    }
+
+    // Skip over the version arguments.
+    index += 2;
+
+    // The unwrap is safe here as we have verified the codec version
+    // is valid.
+    let mut codec = get_codec_by_version(codec_version.unwrap());
+
+    // Execute the requested action with the provided arguments.
+    let params = &args[index..];
+    let result = match action.as_str() {
+        "-e" | "-encrypt" => handle_encode(params, &mut codec),
+        "-d" | "-decrypt" => handle_decode(params, &mut codec),
+        "-ef" | "-encrypt-file" => handle_file_encode(params, &mut codec),
+        "-df" | "-decrypt-file" => handle_file_decode(params, &mut codec),
+        "-examples" => {
+            show_examples();
+            Ok(())
+        }
+        _ => {
+            show_help();
+            Ok(())
+        }
+    };
+
+    // If we encountered an error then display that error to the console.
+    if let Err(e) = result {
+        show_abort_message(e);
+    }
 
     // Wait for user input.
     let mut input_string = String::new();
@@ -136,17 +104,58 @@ fn main() {
         .expect("Failed to read a line.");
 }
 
-fn handle_encrypt(args: &[String], ver: Version, verbose: bool) -> Result<()> {
+fn get_codec_by_version(version: Version) -> Box<dyn Codec> {
+    match version {
+        Version::V0x01 => Box::new(StegaV1::default()),
+    }
+}
+
+fn get_password(prompt: &str) -> Option<String> {
+    match rpassword::read_password_from_tty(Some(prompt)) {
+        Ok(s) => Some(s),
+        Err(_) => None,
+    }
+}
+
+fn handle_encode(args: &[String], codec: &mut Box<dyn Codec>) -> Result<()> {
     // Reference image path, output image path, text.
     if args.len() < 3 {
         return Err(Error::InsufficientArguments);
     }
 
-    println!("{:?}", args);
-    Ok(())
+    let ref_image = &args[0];
+    let output_image = &args[1];
+    let text = &args[2];
+
+    if has_no_noise_arg(args) {
+        codec.set_setting_state(Settings::NoiseLayer, false);
+    }
+
+    if has_fast_variance_arg(args) {
+        codec.set_setting_state(Settings::FastVariance, true);
+    }
+
+    if has_verbose_arg(args) {
+        codec.set_setting_state(Settings::Verbose, true);
+    }
+
+    // Read the password from the console.
+    // If the passwords do not match then we will not continue execution.
+    // Note: empty password are supported, but are not recommended.
+    let password = read_password_with_verify();
+    if password.is_none() {
+        return Err(Error::PasswordMismatch);
+    }
+
+    let password = password.unwrap();
+
+    match codec.encode(ref_image, password, text, output_image) {
+        Ok(_) => Ok(()),
+        Err(e) => Err(Error::Encoding(e.to_string())),
+    }
 }
 
-fn handle_file_encrypt(args: &[String], ver: Version, verbose: bool) -> Result<()> {
+fn handle_file_encode(args: &[String], codec: &mut Box<dyn Codec>) -> Result<()> {
     // Reference image path, output image path, input file path.
     if args.len() < 3 {
         return Err(Error::InsufficientArguments);
@@ -156,17 +165,38 @@ fn handle_file_encrypt(args: &[String], ver: Version, verbose: bool) -> Result<(
     Ok(())
 }
 
-fn handle_decrypt(args: &[String], ver: Version, verbose: bool) -> Result<()> {
+fn handle_decode(args: &[String], codec: &mut Box<dyn Codec>) -> Result<()> {
     // Reference image path, encoded image path.
     if args.len() < 2 {
         return Err(Error::InsufficientArguments);
     }
 
-    println!("{:?}", args);
-    Ok(())
+    let ref_image = &args[0];
+    let enc_image = &args[1];
+
+    if has_verbose_arg(args) {
+        codec.set_setting_state(Settings::Verbose, true);
+    }
+
+    // Read the password from the console.
+    let password = read_password();
+    if password.is_none() {
+        return Err(Error::NoPassword);
+    }
+
+    let password = password.unwrap();
+
+    // Attempt to decode the data.
+    match codec.decode(ref_image, password, enc_image) {
+        Ok(s) => {
+            println!("{}", s);
+            Ok(())
+        }
+        Err(e) => Err(Error::Decoding(e.to_string())),
+    }
 }
 
-fn handle_file_decrypt(args: &[String], ver: Version, verbose: bool) -> Result<()> {
+fn handle_file_decode(args: &[String], codec: &mut Box<dyn Codec>) -> Result<()> {
     // Reference image path, encoded image path, output file path.
     if args.len() < 3 {
         return Err(Error::InsufficientArguments);
@@ -174,6 +204,35 @@ fn handle_file_decrypt(args: &[String], ver: Version, verbose: bool) -> Result<(
 
     println!("{:?}", args);
     Ok(())
+}
+
+fn has_fast_variance_arg(args: &[String]) -> bool {
+    args.contains(&String::from("--fv")) || args.contains(&String::from("--fast-variance"))
+}
+
+fn has_no_noise_arg(args: &[String]) -> bool {
+    args.contains(&String::from("--n")) || args.contains(&String::from("--no-noise"))
+}
+
+fn has_verbose_arg(args: &[String]) -> bool {
+    args.contains(&String::from("--v")) || args.contains(&String::from("--verbose"))
+}
+
+fn read_password() -> Option<String> {
+    get_password("Password: ")
+}
+
+fn read_password_with_verify() -> Option<String> {
+    let pwd_1 = get_password("Password: ");
+    let pwd_2 = get_password("Confirm password: ");
+
+    if pwd_1 == pwd_2 {
+        if let Some(pwd) = pwd_1 {
+            return Some(pwd);
+        }
+    }
+
+    None
 }
 
 fn show_help() {
@@ -195,32 +254,33 @@ fn show_help() {
 }
 
 fn show_examples() {
-    println!("{}", "-".repeat(32));
+    let split = "-".repeat(32);
+    println!("{}", split);
     println!("psistega3 -e -version 1 \"C:\\reference.png\" \"C:\\encoded.png\" \"A very important message.\"");
     println!();
     println!("This command will attempt to encode a string into the reference image.");
     println!("You will be prompted twice for a password after executing this command.");
-    println!("{}", "-".repeat(32));
+    println!("{}", split);
     println!("psistega3 -d -version 1 \"C:\\reference.png\" \"C:\\encoded.png\"");
     println!();
     println!("You will be prompted for a password after executing this command.");
     println!("If any data was successfully decoded then it will be displayed on screen.");
-    println!("{}", "-".repeat(32));
+    println!("{}", split);
     println!("psistega3 -ef -version 1 \"C:\\reference.png\" \"C:\\encoded.png\" \"C:\\input_file_path.foo\"");
     println!();
     println!("This command will attempt to encode a file into the reference image.");
     println!("You will be prompted twice for a password after executing this command.");
-    println!("{}", "-".repeat(32));
+    println!("{}", split);
     println!("psistega3 -df -version 1 \"C:\\reference.png\" \"C:\\encoded.png\" \"C:\\output_file_path.foo\"");
     println!();
     println!("You will be prompted for a password after executing this command.");
     println!(
         "If any data was successfully decoded then it will be written to the output file path."
     );
-    println!("{}", "-".repeat(32));
+    println!("{}", split);
 }
 
-fn show_abort_error(error: Error) {
+fn show_abort_message(error: Error) {
     println!("{}", error);
     std::process::exit(0);
 }

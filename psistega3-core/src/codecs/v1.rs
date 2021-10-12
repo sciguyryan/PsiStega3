@@ -14,6 +14,8 @@ use rand_chacha::ChaCha20Rng;
 use std::collections::{HashMap, VecDeque};
 use std::convert::{TryFrom, TryInto};
 
+use super::codec::Settings;
+
 /// The time cost (iterations) for use with the Argon2 hashing algorithm.
 const T_COST: u32 = 8;
 /// The parallel cost (threads) for use with the Argon2 hashing algorithm.
@@ -32,24 +34,24 @@ pub struct StegaV1 {
     /// If the noise layer should be applied to the output image.
     noise_layer: bool,
     /// If the resulting image file should be saved when encoding.
-    save_output_file: bool,
+    output_files: bool,
     /// If the faster method of setting the bit variance should be
     /// used.
     ///
     /// This method will not use randomness to determine the pixel value varience
     /// and will instead alternate between adding and subtracting 1.
-    fast_bit_variance: bool,
+    fast_variance: bool,
     /// If we have verbose mode enabled.
     verbose_mode: bool,
 }
 
 impl StegaV1 {
-    pub fn new(noise_layer: bool, fast_bit_variance: bool) -> Self {
+    pub fn new() -> Self {
         Self {
             data_cell_map: HashMap::with_capacity(1),
-            noise_layer,
-            save_output_file: true,
-            fast_bit_variance,
+            noise_layer: true,
+            output_files: true,
+            fast_variance: false,
             verbose_mode: true,
         }
     }
@@ -359,7 +361,7 @@ impl StegaV1 {
         });
 
         // Save the modified image.
-        if self.save_output_file {
+        if self.output_files {
             if let Err(e) = img.save(encoded_img_path) {
                 // TODO: Add more granularity here.
                 return Err(Error::ImageSaving);
@@ -591,7 +593,7 @@ impl StegaV1 {
                 continue;
             }
 
-            let should_add = if self.fast_bit_variance {
+            let should_add = if self.fast_variance {
                 add
             } else {
                 thread_rng().gen_bool(0.5)
@@ -704,18 +706,27 @@ impl Codec for StegaV1 {
         utils::write_u8_slice_to_file(output_file_path, &bytes)
     }
 
-    fn set_save_output_file(&mut self, state: bool) {
-        self.save_output_file = state;
-    }
-
-    fn set_verbose_mode(&mut self, state: bool) {
-        self.verbose_mode = state;
+    fn set_setting_state(&mut self, setting: Settings, state: bool) {
+        match setting {
+            Settings::NoiseLayer => {
+                self.noise_layer = state;
+            }
+            Settings::FastVariance => {
+                self.fast_variance = state;
+            }
+            Settings::Verbose => {
+                self.verbose_mode = state;
+            }
+            Settings::OutputFiles => {
+                self.output_files = state;
+            }
+        }
     }
 }
 
 impl Default for StegaV1 {
     fn default() -> Self {
-        Self::new(true, false)
+        Self::new()
     }
 }
 
