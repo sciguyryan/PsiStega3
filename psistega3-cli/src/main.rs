@@ -245,8 +245,6 @@ fn handle_encode(args: &[String], codec: &mut Box<dyn Codec>) -> Result<()> {
 /// * `codec` - The instance of the [`Codec`] to be used for this command.
 ///
 fn handle_encode_file(args: &[String], codec: &mut Box<dyn Codec>) -> Result<()> {
-    println!("{:?}", args);
-
     // Reference image path, output image path, input file path.
     if args.len() < 3 {
         return Err(Error::InsufficientArguments);

@@ -50,7 +50,7 @@ pub(crate) fn is_bit_set(value: &u8, index: usize) -> bool {
 /// Check if the current platform is little Endian.
 #[allow(dead_code)]
 pub(crate) fn is_little_endian() -> bool {
-    let val: u32 = 0x1234;
+    let val = 0x1234u32;
     let val2 = val.to_le();
 
     val == val2
