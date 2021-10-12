@@ -187,13 +187,16 @@ fn handle_decode(args: &[String], codec: &mut Box<dyn Codec>) -> Result<()> {
     let password = password.unwrap();
 
     // Attempt to decode the data.
-    match codec.decode(ref_image, password, enc_image) {
-        Ok(s) => {
-            println!("{}", s);
-            Ok(())
-        }
+    let plaintext = match codec.decode(ref_image, password, enc_image) {
+        Ok(s) => Ok(s),
         Err(e) => Err(Error::Decoding(e.to_string())),
-    }
+    }?;
+
+    // Output the decoded string to the console.
+    println!("{}", "-".repeat(32));
+    println!("{}", plaintext);
+
+    Ok(())
 }
 
 fn handle_file_decode(args: &[String], codec: &mut Box<dyn Codec>) -> Result<()> {
@@ -236,19 +239,21 @@ fn read_password_with_verify() -> Option<String> {
 }
 
 fn show_help() {
-    println!("A stegranography tool.");
+    println!("A stegranography tool written in Rust.");
     println!();
     println!("USAGE:");
-    println!("\tpsistega3 [VERBOSE] [ACTION] [VERSION] [PARAMS]");
-    println!();
-    println!("VERBOSE:");
-    println!("\t-v, -V\t\t\tEnable verbose mode.");
+    println!("\tpsistega3 ACTION VERSION PARAMS [OPTIONS]");
     println!();
     println!("ACTION:");
     println!("\t-e, -E\t\t\tEncode a string into a target image.");
     println!("\t-d, -D\t\t\tDecode a string from a target image.");
     println!("\t-ef, -EF\t\tEncode a file into a target image.");
     println!("\t-df, -DF\t\tDecode a file from a target image.");
+    println!();
+    println!("OPTIONS:");
+    println!("\t--fv, --fast-variance\tEnable the fast variance encoding mode.");
+    println!("\t--n, --no-noise\t\tDisable the noise layer when encoding.");
+    println!("\t--verbose\t\tEnable verbose mode.");
     println!();
     println!("Please use -examples to display some example commands.");
 }
