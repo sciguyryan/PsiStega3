@@ -75,6 +75,7 @@ pub trait Codec {
     fn set_setting_state(&mut self, setting: Settings, state: bool);
 }
 
+/// A list of settings that are applicable to a codec.
 pub enum Settings {
     /// Enable or disable the noise map.
     ///

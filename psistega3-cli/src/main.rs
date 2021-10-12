@@ -51,12 +51,10 @@ fn main() {
         show_abort_message(Error::InsufficientArguments);
     }
 
-    let mut index = 2;
-
     // Attempt to extract the codec version number.
     let mut codec_version: Option<Version> = None;
-    if &args[index] == "-v" {
-        let version = &args[index + 1];
+    if &args[2] == "-v" {
+        let version = &args[3];
         if let Ok(v) = version.parse::<u8>() {
             if let Ok(cv) = Version::try_from(v) {
                 codec_version = Some(cv);
@@ -68,15 +66,12 @@ fn main() {
         show_abort_message(Error::InvalidVersion);
     }
 
-    // Skip over the version arguments.
-    index += 2;
-
     // The unwrap is safe here as we have verified the codec version
     // is valid.
     let mut codec = get_codec_by_version(codec_version.unwrap());
 
     // Execute the requested action with the provided arguments.
-    let params = &args[index..];
+    let params = &args[5..];
     let result = match action.as_str() {
         "-e" | "-encrypt" => handle_encode(params, &mut codec),
         "-d" | "-decrypt" => handle_decode(params, &mut codec),

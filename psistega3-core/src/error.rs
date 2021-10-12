@@ -4,7 +4,7 @@ use core::fmt;
 pub type Result<T> = core::result::Result<T, Error>;
 
 /// Error type.
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Error {
     /// One or more invalid Argon2 parameters specified.
     Argon2InvalidParams,
@@ -37,7 +37,7 @@ pub enum Error {
     /// There was an error when attempting to load an image file.
     ImageOpening,
     /// There was an error when attempting to save an image file.
-    ImageSaving,
+    ImageSaving(String),
     /// The image type is cannot be used for steganography.
     ImageTypeInvalid,
     /// The specified path is invalid.
@@ -68,7 +68,7 @@ impl fmt::Display for Error {
                 "There is insufficient space to encode the data within the image."
             }
             Error::ImageOpening => "Error when attempting to load the specified image.",
-            Error::ImageSaving => "Error when attempting to save the specified image.",
+            Error::ImageSaving(s) => s,
             Error::ImageTypeInvalid => "Invalid image pixel type.",
             Error::PathInvalid => "The specified path is invalid or does not exist.",
             Error::VersionInvalid => "The version number is invalid.",

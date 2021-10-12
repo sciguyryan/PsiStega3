@@ -360,15 +360,16 @@ impl StegaV1 {
             self.write_u8_by_data_index(&mut img, byte, i);
         });
 
-        // Save the modified image.
-        if self.output_files {
-            if let Err(e) = img.save(encoded_img_path) {
-                // TODO: Add more granularity here.
-                return Err(Error::ImageSaving);
-            }
+        if !self.output_files {
+            return Ok(());
         }
 
-        Ok(())
+        // Attempt to save the modified image.
+        if let Err(e) = img.save(encoded_img_path) {
+            Err(Error::ImageSaving(e.to_string()))
+        } else {
+            Ok(())
+        }
     }
 
     /// Gets the cell index that will hold the specified data index.
@@ -703,7 +704,11 @@ impl Codec for StegaV1 {
         let bytes = utils::base64_string_to_vector(&b64_str)?;
 
         // Write the raw bytes directly to the output file.
-        utils::write_u8_slice_to_file(output_file_path, &bytes)
+        if self.output_files {
+            utils::write_u8_slice_to_file(output_file_path, &bytes)
+        } else {
+            Ok(())
+        }
     }
 
     fn set_setting_state(&mut self, setting: Settings, state: bool) {
@@ -1297,7 +1302,7 @@ mod tests_encryption_decryption {
         }
 
         fn fail_message(&self) -> String {
-            let expected_str = match self.expected_result {
+            let expected_str = match self.expected_result.clone() {
                 Ok(_) => "pass".to_string(),
                 Err(e) => "error = ".to_string() + &e.to_string(),
             };
