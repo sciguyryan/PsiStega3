@@ -11,10 +11,9 @@ impl Hashers {
         let mut hasher = Sha3_512::new();
 
         // The file will automatically be closed when it goes out of scope.
-        let mut f = match std::fs::File::open(path) {
-            Ok(file) => file,
-            Err(e) => {
-                // TODO: consider adding more granularity here.
+        let mut file = match std::fs::File::open(path) {
+            Ok(f) => f,
+            Err(_) => {
                 return Err(Error::FileHashingError);
             }
         };
@@ -22,7 +21,7 @@ impl Hashers {
 
         // Loop until we have read the entire file (in chunks).
         loop {
-            let n = f.read(&mut buffer).unwrap();
+            let n = file.read(&mut buffer).unwrap();
             if n == 0 {
                 break;
             }
@@ -48,24 +47,17 @@ impl Hashers {
     ) -> Result<[u8; 128]> {
         let mut builder = argon2::ParamsBuilder::new();
 
-        if builder.m_cost(m_cost).is_err() {
+        if builder.m_cost(m_cost).is_err()
+            || builder.p_cost(p_cost).is_err()
+            || builder.t_cost(t_cost).is_err()
+        {
             return Err(Error::Argon2InvalidParams);
         };
 
-        if builder.p_cost(p_cost).is_err() {
-            return Err(Error::Argon2InvalidParams);
-        };
-
-        if builder.t_cost(t_cost).is_err() {
-            return Err(Error::Argon2InvalidParams);
-        };
-
-        // This method return an error condition if any of supplied parameters are incorrect prior to this statement.
+        // This method return an error condition if any of supplied
+        // parameters are incorrect prior to this statement.
         // This unwrap should be safe as a result.
         let params = builder.params().unwrap();
-
-        // Convert the string to a byte array.
-        let str_bytes = str.as_bytes();
 
         // Construct the hasher.
         let hasher = Argon2::new(argon2::Algorithm::Argon2id, version, params);
@@ -73,7 +65,7 @@ impl Hashers {
         // Nom!
         let mut key_bytes = [0u8; 128];
         if hasher
-            .hash_password_into(str_bytes, &salt, &mut key_bytes)
+            .hash_password_into(str.as_bytes(), &salt, &mut key_bytes)
             .is_err()
         {
             return Err(Error::Argon2NoHash);

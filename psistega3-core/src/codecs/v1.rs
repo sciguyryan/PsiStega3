@@ -14,7 +14,7 @@ use rand_chacha::ChaCha20Rng;
 use std::collections::{HashMap, VecDeque};
 use std::convert::{TryFrom, TryInto};
 
-use super::codec::Settings;
+use super::codec::Config;
 
 /// The time cost (iterations) for use with the Argon2 hashing algorithm.
 const T_COST: u32 = 8;
@@ -504,15 +504,12 @@ impl StegaV1 {
         enc_img: &ImageWrapper,
         data_index: usize,
     ) -> u8 {
-        // First we will look up the cell to which this
-        // byte of data will be encoded within the image.
-        let cell_index = self.get_data_cell_index(&data_index);
-
-        // Now we will look up the start position for the cell.
-        let cell_start_index = cell_index * 2;
+        // We need to look up the cell to which this byte of data
+        //will be encoded within the image.
+        let start_index = self.get_data_cell_index(&data_index) * 2;
 
         // Finally we can decode and read a byte of data from the cell.
-        self.read_u8(ref_img, enc_img, cell_start_index)
+        self.read_u8(ref_img, enc_img, start_index)
     }
 
     /// Create a seedable RNG object with a defined 32-byte seed.
@@ -574,24 +571,17 @@ impl StegaV1 {
     ///
     fn write_u8(&mut self, img: &mut ImageWrapper, data: &u8, cell_start: usize) {
         // If the data is zero then we can fast-path here as we will not
-        // have any set bits to work with.
+        // have any bit set to work with.
         if *data == 0 {
             return;
         }
-
-        /*
-          We convert everything into Little Endian to ensure everything operates
-          as expected cross-platform. On a LE platform these will end up being
-          no-op calls and so will not impact performance at all.
-        */
-        let data = data.to_le();
 
         // Get the image bytes relevant to this cell.
         let bytes = img.get_subcells_from_index_mut(cell_start, 2);
         let mut add = true;
 
         for (i, b) in bytes.iter_mut().enumerate() {
-            if !utils::is_bit_set(&data, i) {
+            if !utils::is_bit_set(data, i) {
                 continue;
             }
 
@@ -616,7 +606,8 @@ impl StegaV1 {
                 255 => 254,
             };
 
-            add = !add;
+            // XOR should be slightly faster than inversion here.
+            add ^= add;
         }
     }
 
@@ -630,8 +621,8 @@ impl StegaV1 {
     ///
     #[inline]
     fn write_u8_by_data_index(&mut self, img: &mut ImageWrapper, data: &u8, data_index: usize) {
-        // First we will look up the cell to which this
-        // byte of data will be encoded within the image.
+        // We need to look up the cell to which this byte of data
+        //will be encoded within the image.
         // Each cell is 2 subcells (16 channels) in length.
         let start_index = self.get_data_cell_index(&data_index) * 2;
 
@@ -712,18 +703,18 @@ impl Codec for StegaV1 {
         }
     }
 
-    fn set_setting_state(&mut self, setting: Settings, state: bool) {
-        match setting {
-            Settings::NoiseLayer => {
+    fn set_config_state(&mut self, config: Config, state: bool) {
+        match config {
+            Config::NoiseLayer => {
                 self.noise_layer = state;
             }
-            Settings::FastVariance => {
+            Config::FastVariance => {
                 self.fast_variance = state;
             }
-            Settings::Verbose => {
+            Config::Verbose => {
                 self.verbose_mode = state;
             }
-            Settings::OutputFiles => {
+            Config::OutputFiles => {
                 self.output_files = state;
             }
         }
@@ -762,7 +753,7 @@ impl DataDecoder {
     /// Iterates through each XOR'ed byte and XOR pair, adds the value produced by applying the XOR operation on them to the internal list.
     pub fn decode(&mut self) {
         let len = self.xor_bytes.len() / 2;
-        for _ in 0..len {
+        (0..len).for_each(|_| {
             let xor_value = self.xor_bytes.pop_front().unwrap();
             let xor = self.xor_bytes.pop_front();
 
@@ -777,7 +768,7 @@ impl DataDecoder {
             } else {
                 self.bytes.push_back(xor_value);
             }
-        }
+        });
 
         self.xor_bytes.shrink_to_fit();
     }

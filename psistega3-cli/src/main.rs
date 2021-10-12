@@ -3,7 +3,7 @@ mod error;
 
 use crate::error::{Error, Result};
 
-use psistega3_core::codecs::codec::{Codec, Settings};
+use psistega3_core::codecs::codec::{Codec, Config};
 use psistega3_core::codecs::v1::StegaV1;
 use psistega3_core::version::*;
 
@@ -157,6 +157,10 @@ fn handle_decode(args: &[String], codec: &mut Box<dyn Codec>) -> Result<()> {
         Err(e) => Err(Error::Decoding(e.to_string())),
     }?;
 
+    // TODO: add a check here to ensure that no non-printable bytes are
+    // TODO: printed to the screen. That will be an indicator that someone
+    // TODO: has probably decoded a file, rather than text, oops!
+
     // Output the decoded string to the console.
     println!("{}", "-".repeat(32));
     println!("{}", plaintext);
@@ -282,19 +286,19 @@ fn handle_encode_file(args: &[String], codec: &mut Box<dyn Codec>) -> Result<()>
 ///
 fn handle_codec_settings(codec: &mut Box<dyn Codec>, args: &[String]) {
     if args.contains(&String::from("--fv")) || args.contains(&String::from("--fast-variance")) {
-        codec.set_setting_state(Settings::FastVariance, true);
+        codec.set_config_state(Config::FastVariance, true);
     }
 
     if args.contains(&String::from("--nf")) || args.contains(&String::from("--no-files")) {
-        codec.set_setting_state(Settings::OutputFiles, false);
+        codec.set_config_state(Config::OutputFiles, false);
     }
 
     if args.contains(&String::from("--nn")) || args.contains(&String::from("--no-noise")) {
-        codec.set_setting_state(Settings::NoiseLayer, false);
+        codec.set_config_state(Config::NoiseLayer, false);
     }
 
     if args.contains(&String::from("--verbose")) {
-        codec.set_setting_state(Settings::Verbose, true);
+        codec.set_config_state(Config::Verbose, true);
     }
 }
 
@@ -337,8 +341,9 @@ fn show_help() {
     println!("\t-df, -DF\t\tDecode a file from a target image.");
     println!();
     println!("OPTIONS:");
-    println!("\t--fv, --fast-variance\tEnable the fast variance encoding mode.");
-    println!("\t--n, --no-noise\t\tDisable the noise layer when encoding.");
+    println!("\t--fv, --fast-variance\tEnable the fast variance encoding mode (better performance, lower security).");
+    println!("\t--nn, --no-noise\t\tDisable the noise layer when encoding (better performance, lower security).");
+    println!("\t--nf, --no-files\t\tDisable the creation of any output files.");
     println!("\t--verbose\t\tEnable verbose mode.");
     println!();
     println!("Please use -examples to display some example commands.");

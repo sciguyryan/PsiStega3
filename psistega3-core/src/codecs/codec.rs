@@ -65,18 +65,18 @@ pub trait Codec {
         output_file_path: &str,
     ) -> Result<()>;
 
-    /// Enable or disable a specific setting.
+    /// Enable or disable a specific configuration.
     ///
     /// # Arguments
     ///
-    /// * `setting` - The setting to be configured.
-    /// * `state` - A boolean indicating whether the option should be enabled or disabled.
+    /// * `config` - The [`Config`] option to be configured.
+    /// * `state` - A boolean indicating whether the config option should be enabled or disabled.
     ///
-    fn set_setting_state(&mut self, setting: Settings, state: bool);
+    fn set_config_state(&mut self, config: Config, state: bool);
 }
 
-/// A list of settings that are applicable to a codec.
-pub enum Settings {
+/// A list of configuration options that are applicable to a [`Codec`].
+pub enum Config {
     /// Enable or disable the noise map.
     ///
     /// Applicable to: v1.

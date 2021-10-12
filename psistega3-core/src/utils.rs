@@ -50,10 +50,7 @@ pub(crate) fn is_bit_set(value: &u8, index: usize) -> bool {
 /// Check if the current platform is little Endian.
 #[allow(dead_code)]
 pub(crate) fn is_little_endian() -> bool {
-    let val = 0x1234u32;
-    let val2 = val.to_le();
-
-    val == val2
+    0x1234u32 == 0x1234u32.to_le()
 }
 
 /// Fill a u8 vector with randomly generated values.
@@ -70,15 +67,15 @@ where
     T: RngCore,
 {
     const ARRAY_SIZE: usize = 64;
-    let total_needed = in_vec.capacity() - in_vec.len();
-    let iterations = total_needed / ARRAY_SIZE;
-    let remainder = total_needed - (iterations * ARRAY_SIZE);
+    let needed = in_vec.capacity() - in_vec.len();
+    let iterations = needed / ARRAY_SIZE;
+    let remainder = needed - (iterations * ARRAY_SIZE);
 
-    let mut vec1: Vec<u8> = Vec::with_capacity(total_needed);
+    let mut vec1: Vec<u8> = Vec::with_capacity(needed);
     for _ in 0..iterations {
-        let mut rand_bytes: [u8; ARRAY_SIZE] = [0; ARRAY_SIZE];
-        rng.fill(&mut rand_bytes);
-        vec1.extend_from_slice(&rand_bytes);
+        let mut bytes: [u8; ARRAY_SIZE] = [0; ARRAY_SIZE];
+        rng.fill(&mut bytes);
+        vec1.extend_from_slice(&bytes);
     }
 
     let mut vec2: Vec<u8> = (0..remainder).map(|_| rng.gen()).collect();
@@ -105,7 +102,7 @@ pub(crate) fn get_current_dir() -> PathBuf {
 #[inline]
 pub(crate) fn fill_vector_sequential(vec: &mut Vec<usize>) {
     (0..vec.capacity()).for_each(|i| {
-        vec.insert(i, i);
+        vec.push(i);
     });
 }
 
@@ -174,7 +171,6 @@ pub(crate) fn u8_array_to_hex(arr: &[u8]) -> String {
 pub(crate) fn u8_slice_to_base64_string(bytes: &[u8]) -> String {
     let mut buf = String::new();
     base64::encode_config_buf(bytes, base64::STANDARD, &mut buf);
-
     buf
 }
 
@@ -198,7 +194,6 @@ pub(crate) fn u8_to_binary(byte: &u8) -> String {
 pub(crate) fn secure_random_bytes<const N: usize>() -> [u8; N] {
     let mut arr = [0u8; N];
     OsRng.fill_bytes(&mut arr);
-
     arr
 }
 
