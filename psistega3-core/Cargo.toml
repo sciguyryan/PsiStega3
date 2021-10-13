@@ -12,7 +12,6 @@ homepage = "https://github.com/sciguyryan/PsiStega3"
 
 [dependencies]
 aes-gcm = "0.9.4"
-aes-siv = "0.6.2"
 argon2 = "0.3.1"
 base64 = "0.13.0"
 hex-literal = "0.3.3"

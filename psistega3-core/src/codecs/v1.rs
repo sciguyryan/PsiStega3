@@ -578,7 +578,6 @@ impl StegaV1 {
 
         // Get the image bytes relevant to this cell.
         let bytes = img.get_subcells_from_index_mut(cell_start, 2);
-        let mut add = true;
 
         for (i, b) in bytes.iter_mut().enumerate() {
             if !utils::is_bit_set(data, i) {
@@ -586,7 +585,7 @@ impl StegaV1 {
             }
 
             let should_add = if self.fast_variance {
-                add
+                *b >= 128
             } else {
                 thread_rng().gen_bool(0.5)
             };
@@ -605,9 +604,6 @@ impl StegaV1 {
                 }
                 255 => 254,
             };
-
-            // XOR should be slightly faster than inversion here.
-            add ^= add;
         }
     }
 
@@ -964,8 +960,6 @@ mod tests_encode_decode {
     }
 
     /// Returns a [`PathBuf`] to the path for the test files.
-    /// This path is canonicalized to avoid creating any issues
-    /// with relative paths.
     fn test_base_path() -> PathBuf {
         let mut path = utils::get_current_dir();
         path.push("..");
@@ -975,17 +969,22 @@ mod tests_encode_decode {
 
         assert!(path.exists(), "testing file directory does not exist.");
 
-        path.canonicalize().unwrap()
+        path
     }
 
     /// Get the full path to a test file.
+    ///
+    /// `Note:` This path is canonicalized to avoid creating any issues
+    /// with relative paths.
     fn get_test_in_file_str(file: &str) -> String {
         let mut path = test_base_path();
         path.push(file);
 
         assert!(path.exists(), "unable to find test file.");
 
-        path.to_str().unwrap().to_string()
+        let path_can = path.canonicalize().unwrap();
+
+        path_can.to_str().unwrap().to_string()
     }
 
     /// Get the full path to a random output file path, with a given extension.

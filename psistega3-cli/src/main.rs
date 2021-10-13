@@ -157,13 +157,14 @@ fn handle_decode(args: &[String], codec: &mut Box<dyn Codec>) -> Result<()> {
         Err(e) => Err(Error::Decoding(e.to_string())),
     }?;
 
-    // TODO: add a check here to ensure that no non-printable bytes are
-    // TODO: printed to the screen. That will be an indicator that someone
-    // TODO: has probably decoded a file, rather than text, oops!
-
-    // Output the decoded string to the console.
     println!("{}", "-".repeat(32));
-    println!("{}", plaintext);
+    if plaintext.contains('�') {
+        println!("One or more unprintable characters were detected in the decoded data. This could mean the data is binary data and cannot be printed here.");
+        println!("Please try decoding the data using the -df command instead.");
+    } else {
+        // Output the decoded string to the console.
+        println!("{}", plaintext);
+    }
 
     Ok(())
 }
