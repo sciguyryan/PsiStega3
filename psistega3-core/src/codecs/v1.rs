@@ -982,9 +982,8 @@ mod tests_encode_decode {
 
         assert!(path.exists(), "unable to find test file.");
 
-        let path_can = path.canonicalize().unwrap();
-
-        path_can.to_str().unwrap().to_string()
+        let pc = path.canonicalize().unwrap();
+        pc.to_str().unwrap().to_string()
     }
 
     /// Get the full path to a random output file path, with a given extension.
@@ -1312,7 +1311,7 @@ mod tests_encryption_decryption {
             panic!("unable to find test file path!");
         }
 
-        path
+        path.canonicalize().unwrap()
     }
 
     #[test]
