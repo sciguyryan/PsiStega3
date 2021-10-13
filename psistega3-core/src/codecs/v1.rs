@@ -547,7 +547,9 @@ impl StegaV1 {
             }
 
             let should_add = if self.fast_variance {
-                *b >= 128
+                // We will tend towards the median value
+                // when using the fast variance method.
+                *b <= 128
             } else {
                 thread_rng().gen_bool(0.5)
             };
