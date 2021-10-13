@@ -8,7 +8,6 @@ use psistega3_core::codecs::v1::StegaV1;
 use psistega3_core::version::*;
 
 use simple_logger::SimpleLogger;
-use std::path::Path;
 use std::{convert::TryFrom, env, io::stdin};
 
 //ookneporlygs
@@ -72,7 +71,7 @@ fn main() {
     let mut codec = get_codec_by_version(codec_version.unwrap());
 
     // Apply any settings that might have been specified.
-    handle_codec_settings(&mut codec, &args[4..]);
+    apply_codec_settings(&mut codec, &args[4..]);
 
     // Execute the requested action with the provided arguments.
     let params = &args[4..];
@@ -103,14 +102,29 @@ fn main() {
         .expect("Failed to read a line.");
 }
 
-/// Check if a specified path exists.
+/// Apply any specified coded settings.
 ///
 /// # Arguments
 ///
-/// * `path` - The path to be checked.
+/// * `codec` - The instance of the [`Codec`] to be used for this command.
+/// * `args` - A list of arguments relevant for this command.
 ///
-fn check_path_exists(path: &str) -> bool {
-    Path::new(path).exists()
+fn apply_codec_settings(codec: &mut Box<dyn Codec>, args: &[String]) {
+    if args.contains(&String::from("--fv")) || args.contains(&String::from("--fast-variance")) {
+        codec.set_config_state(Config::FastVariance, true);
+    }
+
+    if args.contains(&String::from("--nf")) || args.contains(&String::from("--no-files")) {
+        codec.set_config_state(Config::OutputFiles, false);
+    }
+
+    if args.contains(&String::from("--nn")) || args.contains(&String::from("--no-noise")) {
+        codec.set_config_state(Config::NoiseLayer, false);
+    }
+
+    if args.contains(&String::from("--verbose")) {
+        codec.set_config_state(Config::Verbose, true);
+    }
 }
 
 /// Get an instance of the [`Codec`] for a specified [`Version`].
@@ -287,31 +301,6 @@ fn handle_encode_file(args: &[String], codec: &mut Box<dyn Codec>) -> Result<()>
 
     println!("The file has been successfully encoded.");
     Ok(())
-}
-
-/// Apply any specified coded settings.
-///
-/// # Arguments
-///
-/// * `codec` - The instance of the [`Codec`] to be used for this command.
-/// * `args` - A list of arguments relevant for this command.
-///
-fn handle_codec_settings(codec: &mut Box<dyn Codec>, args: &[String]) {
-    if args.contains(&String::from("--fv")) || args.contains(&String::from("--fast-variance")) {
-        codec.set_config_state(Config::FastVariance, true);
-    }
-
-    if args.contains(&String::from("--nf")) || args.contains(&String::from("--no-files")) {
-        codec.set_config_state(Config::OutputFiles, false);
-    }
-
-    if args.contains(&String::from("--nn")) || args.contains(&String::from("--no-noise")) {
-        codec.set_config_state(Config::NoiseLayer, false);
-    }
-
-    if args.contains(&String::from("--verbose")) {
-        codec.set_config_state(Config::Verbose, true);
-    }
 }
 
 /// Read a password from the terminal.
