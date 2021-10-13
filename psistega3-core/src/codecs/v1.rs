@@ -1,8 +1,8 @@
 use crate::codecs::codec::Codec;
 use crate::error::{Error, Result};
-use crate::hashers::*;
 use crate::image_wrapper::ImageWrapper;
 use crate::utils;
+use crate::{hashers::*, logger};
 
 use aes_gcm::{
     aead::{Aead, NewAead},
@@ -41,8 +41,6 @@ pub struct StegaV1 {
     /// This method will not use randomness to determine the pixel value varience
     /// and will instead alternate between adding and subtracting 1.
     fast_variance: bool,
-    /// If we have verbose mode enabled.
-    verbose_mode: bool,
 }
 
 impl StegaV1 {
@@ -52,7 +50,6 @@ impl StegaV1 {
             noise_layer: true,
             output_files: true,
             fast_variance: false,
-            verbose_mode: true,
         }
     }
 
@@ -423,26 +420,6 @@ impl StegaV1 {
         Ok(img)
     }
 
-    /// Write a log file to the console, if verbose mode is enabled.
-    ///
-    /// # Arguments
-    ///
-    /// * `string` - The string to be logged.
-    ///
-    #[allow(dead_code)]
-    #[inline]
-    fn log(&self, string: &str) {
-        if !self.verbose_mode {
-            return;
-        }
-
-        #[cfg(debug_assertions)]
-        log::debug!("{}", string);
-
-        #[cfg(not(debug_assertions))]
-        println!("{}", string);
-    }
-
     /// Read a byte of encoded data, starting at a specified index.
     ///
     /// # Arguments
@@ -534,9 +511,6 @@ impl StegaV1 {
         if !SUPPORTED_FORMATS.contains(&fmt) {
             return Err(Error::ImageTypeInvalid);
         }
-
-        // This statement is kept around for debugging purposes.
-        let (_w, _h) = img.dimensions();
 
         // The total number of channels must be divisible by 8.
         // This will ensure that we can always encode a given byte
@@ -638,7 +612,7 @@ impl Codec for StegaV1 {
         input_file_path: &str,
         encoded_img_path: &str,
     ) -> Result<()> {
-        if !std::path::Path::new(input_file_path).exists() {
+        if !utils::path_exists(input_file_path) {
             return Err(Error::PathInvalid);
         }
 
@@ -696,7 +670,7 @@ impl Codec for StegaV1 {
                 self.fast_variance = state;
             }
             Config::Verbose => {
-                self.verbose_mode = state;
+                logger::enable_verbose_mode();
             }
             Config::OutputFiles => {
                 self.output_files = state;
@@ -910,12 +884,11 @@ impl DataEncoder {
 
 #[cfg(test)]
 mod tests_encode_decode {
-    use std::path::{Path, PathBuf};
+    use crate::{codecs::codec::Codec, hashers::Hashers, utils};
 
     use path_absolutize::Absolutize;
     use rand::Rng;
-
-    use crate::{codecs::codec::Codec, hashers::Hashers, utils};
+    use std::path::PathBuf;
 
     use super::StegaV1;
 
@@ -1005,7 +978,7 @@ mod tests_encode_decode {
         let r = stega.encode(&input_path, KEY.to_string(), TEXT, &output_img_path);
 
         assert!(
-            Path::new(&output_img_path).exists(),
+            utils::path_exists(&output_img_path),
             "file not written to disk."
         );
 
@@ -1032,7 +1005,7 @@ mod tests_encode_decode {
         );
 
         assert!(
-            Path::new(&output_img_path).exists(),
+            utils::path_exists(&output_img_path),
             "file not written to disk."
         );
 
@@ -1059,7 +1032,7 @@ mod tests_encode_decode {
         );
 
         assert!(
-            Path::new(&output_img_path).exists(),
+            utils::path_exists(&output_img_path),
             "file not written to disk."
         );
 
@@ -1132,7 +1105,7 @@ mod tests_encode_decode {
 
         // Did we successfully decode a file?
         assert!(
-            Path::new(&output_file_path).exists(),
+            utils::path_exists(&output_file_path),
             "file not written to disk."
         );
 
@@ -1205,7 +1178,7 @@ mod tests_encode_decode {
 
         // Did we successfully decode a file?
         assert!(
-            Path::new(&output_file_path).exists(),
+            utils::path_exists(&output_file_path),
             "file not written to disk."
         );
 
@@ -1238,7 +1211,7 @@ mod tests_encode_decode {
         );
 
         assert!(
-            Path::new(&output_img_path).exists(),
+            utils::path_exists(&output_img_path),
             "file not written to disk."
         );
 

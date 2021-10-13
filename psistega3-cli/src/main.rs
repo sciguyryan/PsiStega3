@@ -122,9 +122,9 @@ fn apply_codec_settings(codec: &mut Box<dyn Codec>, args: &[String]) {
         codec.set_config_state(Config::NoiseLayer, false);
     }
 
-    if args.contains(&String::from("--verbose")) {
-        codec.set_config_state(Config::Verbose, true);
-    }
+    //if args.contains(&String::from("--verbose")) {
+    //    codec.set_config_state(Config::Verbose, true);
+    //}
 }
 
 /// Get an instance of the [`Codec`] for a specified [`Version`].
@@ -345,7 +345,7 @@ fn show_help() {
     println!("\t--fv, --fast-variance\tEnable the fast variance encoding mode (better performance, lower security).");
     println!("\t--nn, --no-noise\t\tDisable the noise layer when encoding (better performance, lower security).");
     println!("\t--nf, --no-files\t\tDisable the creation of any output files.");
-    println!("\t--verbose\t\tEnable verbose mode.");
+    //println!("\t--verbose\t\tEnable verbose mode.");
     println!();
     println!("Please use -examples to display some example commands.");
 }

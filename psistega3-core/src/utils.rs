@@ -106,6 +106,15 @@ pub(crate) fn fill_vector_sequential(vec: &mut Vec<usize>) {
     });
 }
 
+/// Check if the specified path is valid and exists.
+///
+/// * `path` - The path to be checked.
+///
+#[inline]
+pub(crate) fn path_exists(path: &str) -> bool {
+    Path::new(path).exists()
+}
+
 /// Read a file into a u8 vector.
 ///
 /// * `path` - The path to the file.
