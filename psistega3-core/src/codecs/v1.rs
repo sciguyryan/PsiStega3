@@ -457,27 +457,19 @@ impl StegaV1 {
     fn read_u8(&self, ref_img: &ImageWrapper, enc_img: &ImageWrapper, cell_start: usize) -> u8 {
         // Extract the bytes representing the pixel channels
         // from the images.
-        let r_bytes = ref_img.get_subcells_from_index(cell_start, 2);
-        let e_bytes = enc_img.get_subcells_from_index(cell_start, 2);
+        let rb = ref_img.get_subcells_from_index(cell_start, 2);
+        let eb = enc_img.get_subcells_from_index(cell_start, 2);
 
         let mut byte = 0u8;
         for i in 0..8 {
             // This block is actually safe because we verify that the loaded
             // image has a total number of channels that is divisible by 8.
-            let ref_b: &u8;
-            let enc_b: &u8;
             unsafe {
-                // Get the value of the channel for the reference and encoded
-                // images.
-                ref_b = r_bytes.get_unchecked(i);
-                enc_b = e_bytes.get_unchecked(i);
-            }
-
-            // We do not need to clear the bit if the variance is
-            // zero as the bits are zero by default.
-            // This allows us to slightly optimise things here.
-            if (*ref_b as i32 - *enc_b as i32).abs() == 0 {
-                continue;
+                // If there the two channels are identical then
+                // we do not need to set this bit of the output byte.
+                if *rb.get_unchecked(i) == *eb.get_unchecked(i) {
+                    continue;
+                }
             }
 
             utils::set_bit_state(&mut byte, i, true);
@@ -539,10 +531,6 @@ impl StegaV1 {
 
         // We currently only support for the following formats for
         // encoding: PNG, GIF and bitmap images.
-        // TODO: check if any of the other support format types
-        // TODO: are suitable for use here.
-        // TODO: webp encoding is viable if a dependency on the
-        // TODO: webp crate is added.
         if !SUPPORTED_FORMATS.contains(&fmt) {
             return Err(Error::ImageTypeInvalid);
         }
