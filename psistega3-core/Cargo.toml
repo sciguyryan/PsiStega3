@@ -22,3 +22,4 @@ rand_core = { version = "0.6.3", features = ["std"] }
 rand_chacha = "0.3.1"
 sha3 = "0.9.1"
 simple_logger = "1.13.0"
+path-absolutize = "3.0.11"

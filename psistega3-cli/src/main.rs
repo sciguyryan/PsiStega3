@@ -8,6 +8,7 @@ use psistega3_core::codecs::v1::StegaV1;
 use psistega3_core::version::*;
 
 use simple_logger::SimpleLogger;
+use std::path::Path;
 use std::{convert::TryFrom, env, io::stdin};
 
 //ookneporlygs
@@ -100,6 +101,16 @@ fn main() {
     stdin()
         .read_line(&mut input_string)
         .expect("Failed to read a line.");
+}
+
+/// Check if a specified path exists.
+///
+/// # Arguments
+///
+/// * `path` - The path to be checked.
+///
+fn check_path_exists(path: &str) -> bool {
+    Path::new(path).exists()
 }
 
 /// Get an instance of the [`Codec`] for a specified [`Version`].

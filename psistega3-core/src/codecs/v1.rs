@@ -136,7 +136,7 @@ impl StegaV1 {
             data.push_u8(val);
         });
 
-        // Decode the XOR-encoded values back into the original values.
+        // Decode the XOR-encoded values back into their original values.
         data.decode();
 
         // The next set of bytes should be the total number of cipher-text bytes
@@ -912,6 +912,7 @@ impl DataEncoder {
 mod tests_encode_decode {
     use std::path::{Path, PathBuf};
 
+    use path_absolutize::Absolutize;
     use rand::Rng;
 
     use crate::{codecs::codec::Codec, hashers::Hashers, utils};
@@ -962,26 +963,32 @@ mod tests_encode_decode {
 
     /// Get the full path to a test file.
     ///
-    /// `Note:` This path is canonicalized to avoid creating any issues
+    /// `Note:` This path is normalised to avoid creating any issues
     /// with relative paths.
+    ///
     fn get_test_in_file_str(file: &str) -> String {
         let mut path = test_base_path();
         path.push(file);
 
         assert!(path.exists(), "unable to find test file.");
 
-        let pc = path.canonicalize().unwrap();
-        pc.to_str().unwrap().to_string()
+        let path = path.absolutize().unwrap();
+        path.to_str().unwrap().to_string()
     }
 
     /// Get the full path to a random output file path, with a given extension.
-    /// These files are created in the operating system temp directory.
+    /// These files are created in the operating system's temp directory.
+    ///
+    /// `Note:` This path is normalised to avoid creating any issues
+    /// with relative paths.
+    ///
     fn get_test_out_file_str(ext: &str) -> String {
         let random: u128 = rand::thread_rng().gen();
 
         let mut path = std::env::temp_dir();
         path.push(format!("{}.{}", random, ext));
 
+        let path = path.absolutize().unwrap();
         path.to_str().unwrap().to_string()
     }
 
