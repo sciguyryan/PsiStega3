@@ -2,7 +2,7 @@
 name = "psistega3-core"
 version = "0.1.0"
 authors = ["Ryan Jones-Ward <sciguyryan@gmail.com>"]
-edition = "2018"
+edition = "2021"
 description = "A core crate for PsiStega3."
 license = "LGPL 2.1"
 repository = "https://github.com/sciguyryan/PsiStega3"
@@ -14,7 +14,7 @@ homepage = "https://github.com/sciguyryan/PsiStega3"
 aes-gcm = "0.9.4"
 argon2 = "0.3.1"
 base64 = "0.13.0"
-hex-literal = "0.3.3"
+hex-literal = "0.3.4"
 image = { version = "0.23.14", features = ["bmp", "gif", "png"] }
 log = "0.4.14"
 rand = "0.8.4"
