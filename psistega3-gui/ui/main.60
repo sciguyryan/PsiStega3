@@ -1,8 +1,0 @@
-MainWindow := Window {
-    title: "PsiStega3 :: GUI";
-    icon: @image-url("../../assets/icon.png");
-    Text {
-        text: "Banana Waffles";
-        color: blue;
-    }
-}
