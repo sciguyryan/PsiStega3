@@ -1,7 +1,6 @@
 #[cfg(windows)]
 extern crate winres;
 
-#[cfg(windows)]
 fn main() {
     #[cfg(windows)]
     {
