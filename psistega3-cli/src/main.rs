@@ -95,11 +95,14 @@ fn main() {
         show_abort_message(e);
     }
 
-    // Wait for user input.
-    let mut input_string = String::new();
-    stdin()
-        .read_line(&mut input_string)
-        .expect("Failed to read a line.");
+    let arg_len = &args.len();
+    if &args[*arg_len] != "-auto-exit" {
+        // Wait for user input.
+        let mut input_string = String::new();
+        stdin()
+            .read_line(&mut input_string)
+            .expect("Failed to read a line.");
+    }
 }
 
 /// Apply any specified coded settings.

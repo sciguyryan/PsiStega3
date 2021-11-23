@@ -1,0 +1,21 @@
+[package]
+name = "psistega3-gui"
+version = "0.1.0"
+authors = ["Ryan Jones-Ward <sciguyryan@gmail.com>"]
+edition = "2021"
+readme = "README.md"
+description = "A GUI for PsiStega3."
+license = "LGPL 2.1"
+repository = "https://github.com/sciguyryan/PsiStega3"
+homepage = "https://github.com/sciguyryan/PsiStega3"
+build = "build.rs"
+
+[dependencies]
+sixtyfps = "0.1.4"
+psistega3-core = { path = "../psistega3-core" }
+
+[build-dependencies]
+sixtyfps-build = "0.1.4"
+
+[target.'cfg(windows)'.build-dependencies]
+winres = "0.1.12"
