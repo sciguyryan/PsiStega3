@@ -9,5 +9,5 @@ fn main() {
         res.compile().unwrap();
     }
 
-    sixtyfps_build::compile("ui\\main.60").unwrap();
+    sixtyfps_build::compile("ui//main.60").unwrap();
 }
