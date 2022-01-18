@@ -14,9 +14,9 @@ build = "build.rs"
 
 [dependencies]
 log = "0.4.14"
-simple_logger = "1.13.0"
 psistega3-core = { path = "../psistega3-core" }
 rpassword = "5.0.1"
+simple_logger = "1.16.0"
 
 [target.'cfg(windows)'.build-dependencies]
 winres = "0.1.12"
