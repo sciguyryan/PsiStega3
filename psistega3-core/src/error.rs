@@ -32,6 +32,8 @@ pub enum Error {
     ImageDimensionsInvalid,
     /// The dimensions of the encoded image are different than those of the reference image.
     ImageDimensionsMismatch,
+    /// The image format is unknown.
+    ImageFormatUnknown,
     /// There is insufficient space within the image to encode the specified data.
     ImageInsufficientSpace,
     /// There was an error when attempting to load an image file.
@@ -64,6 +66,7 @@ impl fmt::Display for Error {
                 "Invalid image dimensions: the total number of available data channels must be divisible by 8."
             }
             Error::ImageDimensionsMismatch => "The dimensions of the image files are not equal.",
+            Error::ImageFormatUnknown => "The image format is unknown.",
             Error::ImageInsufficientSpace => {
                 "There is insufficient space to encode the data within the image."
             }

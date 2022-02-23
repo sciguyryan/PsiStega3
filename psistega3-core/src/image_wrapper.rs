@@ -115,14 +115,15 @@ impl ImageWrapper {
         let colour_type = match &image {
             ImageLuma8(_) => ColorType::L8,
             ImageLumaA8(_) => ColorType::La8,
+            ImageLumaA16(_) => ColorType::La16,
+            ImageLuma16(_) => ColorType::L16,
             ImageRgb8(_) => ColorType::Rgb8,
             ImageRgba8(_) => ColorType::Rgba8,
-            ImageBgr8(_) => ColorType::Bgr8,
-            ImageBgra8(_) => ColorType::Bgra8,
-            ImageLuma16(_) => ColorType::L16,
-            ImageLumaA16(_) => ColorType::La16,
             ImageRgb16(_) => ColorType::Rgb16,
             ImageRgba16(_) => ColorType::Rgb16,
+            ImageRgb32F(_) => ColorType::Rgb32F,
+            ImageRgba32F(_) => ColorType::Rgba32F,
+            _ => return Err(Error::ImageFormatUnknown)
         };
 
         let dimensions = image.dimensions();
