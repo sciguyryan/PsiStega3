@@ -1,5 +1,5 @@
 name: Rust
-
+s
 on:
   push:
     branches: [ main ]
@@ -11,12 +11,20 @@ env:
 
 jobs:
   build:
-
+  
     runs-on: ubuntu-latest
 
     steps:
     - uses: actions/checkout@v2
-    - name: Build
+    - name: Build Linux
+      if: runner.os == 'Linux'
+      run: |
+        sudo apt update
+        sudo apt-get update
+        sudo apt-get -y install apt-get install libx11-dev libxext-dev libxft-dev libxinerama-dev libxcursor-dev libxrender-dev libxfixes-dev libpango1.0-dev libgl1-mesa-dev libglu1-mesa-dev
+        cargo build --verbose
+    - name: Build Else
+      if: runner.os != 'Linux'
       run: cargo build --verbose
     - name: Run tests
       run: cargo test --verbose
