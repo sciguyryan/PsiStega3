@@ -1,4 +1,4 @@
-#cargo-features = ["strip"]
+cargo-features = ["strip"]
 
 [workspace]
 members = ["psistega3-core", "psistega3-cli", "psistega3-gui"]
@@ -9,5 +9,5 @@ opt-level = 0
 [profile.release]
 opt-level = 3
 lto = true
-#strip = true
+strip = true
 #panic = "abort"
