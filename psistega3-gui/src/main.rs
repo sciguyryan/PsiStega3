@@ -17,7 +17,7 @@ fn main() {
 }
 
 fn icon() -> image::PngImage {
-    let bytes = include_bytes!("..\\..\\assets\\icon.png");
+    let bytes = include_bytes!("../../assets/icon.png");
     let ico = image::PngImage::from_data(bytes);
 
     // TODO - error check this.
