@@ -149,7 +149,8 @@ fn get_codec_by_version(version: Version) -> Box<dyn Codec> {
 /// * `prompt` - The password prompt string.
 ///
 fn get_password(prompt: &str) -> Option<String> {
-    match rpassword::read_password_from_tty(Some(prompt)) {
+    println!("{}", prompt);
+    match rpassword::read_password() {
         Ok(s) => Some(s),
         Err(_) => None,
     }
