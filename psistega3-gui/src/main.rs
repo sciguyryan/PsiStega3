@@ -3,7 +3,7 @@
 #![windows_subsystem = "windows"]
 
 use fltk::{app, prelude::*, window::Window, image, group::{Tabs, Group}, button, input, output, enums::Color, menu};
-use fltk_theme::{ColorTheme, color_themes, WidgetTheme, ThemeType};
+use fltk_theme::{WidgetTheme, ThemeType};
 
 const WIDTH: i32 = 550;
 const HEIGHT: i32 = 300;
@@ -42,32 +42,36 @@ fn add_widgets() {
 
     let grp1 = Group::new(10, 35, WIDTH - 20, HEIGHT - 45, "Encode\t\t");
 
-    // Input file
+    // Input path.
     let mut y_pos = 50;
-    let input_browse_encode = button::Button::new(WIDTH - 70, y_pos, 30, base_control_height, "...");
-    let input_encode = output::Output::new(100, y_pos, 370, base_control_height, "")
+    let mut input_encode = output::Output::new(100, y_pos, 370, base_control_height, "")
         .with_label("Input Path: ");
+    let mut input_browse_encode = button::Button::new(WIDTH - 70, y_pos, 30, base_control_height, "...");
+    input_browse_encode.set_callback(move |_| input_encode.set_value("Hello World!"));
 
+    // Output path.
     y_pos += base_control_height + spacer;
-    let output_browse_encode = button::Button::new(WIDTH - 70, y_pos, 30, base_control_height, "...");
-    let output_encode = output::Output::new(100, y_pos, 370, base_control_height, "")
+    let mut output_encode = output::Output::new(100, y_pos, 370, base_control_height, "")
         .with_label("Output Path: ");
+    let mut output_browse_encode = button::Button::new(WIDTH - 70, y_pos, 30, base_control_height, "...");
+    output_browse_encode.set_callback(move |_| output_encode.set_value("Hello World!"));
 
-    y_pos += base_control_height + spacer;
-    let output_browse_encode = button::Button::new(WIDTH - 70, y_pos, 30, base_control_height, "...");
-    let output_encode = output::Output::new(100, y_pos, 370, base_control_height, "")
-        .with_label("Output Path: ");
-
+    // Version.
     y_pos += base_control_height + spacer;
     let mut version_select_encode = menu::Choice::new(100, y_pos, 100, base_control_height, None)
         .with_label("Version: ");
     version_select_encode.add_choice("1");
 
+    // Set key.
     y_pos += base_control_height + spacer;
-    let password_encode = button::Button::new(100, y_pos, 100, base_control_height, "Set Key");
+    let mut key = "";
+    let mut set_key = button::Button::new(100, y_pos, 100, base_control_height, "Set Key");
+    set_key.set_callback(move |_| key = "pineapples");
 
+    // Encode.
     y_pos += base_control_height + spacer;
-    let encode = button::Button::new(100, y_pos, 100, base_control_height, "Encode!");
+    let mut encode = button::Button::new(100, y_pos, 100, base_control_height, "Encode!");
+    encode.set_callback(move |_| handle_encode());
 
     grp1.end();
 
@@ -76,10 +80,10 @@ fn add_widgets() {
     tab.end();
 }
 
+fn handle_encode() {
+}
+
 fn icon() -> image::PngImage {
     let bytes = include_bytes!("../../assets/icon.png");
-    let ico = image::PngImage::from_data(bytes);
-
-    // TODO - error check this.
-    ico.unwrap()
+    image::PngImage::from_data(bytes).expect("Error getting window icon data.")
 }
