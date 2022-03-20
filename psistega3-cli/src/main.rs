@@ -46,40 +46,52 @@ fn main() {
     // The action argument.
     let action = &args[1];
 
-    // There must be at least 6 arguments.
-    if args.len() < 6 {
-        show_abort_message(Error::InsufficientArguments);
-    }
-
-    // Attempt to extract the codec version number.
-    let mut codec_version: Option<Version> = None;
-    if &args[2] == "-v" {
-        let version = &args[3];
-        if let Ok(v) = version.parse::<u8>() {
-            if let Ok(cv) = Version::try_from(v) {
-                codec_version = Some(cv);
+    // There must be at least 6 arguments in most circumstances.
+    let mut needs_codec = true;
+    match action.as_str() {
+        "-e" | "-encrypt" | "-d" | "-decrypt" |
+        "-ef" | "-encrypt-file" |
+        "-df" | "-decrypt-file" => {
+            if args.len() < 6 {
+                show_abort_message(Error::InsufficientArguments);
             }
+        },
+        _ => {
+            needs_codec = false;
         }
     }
 
-    if codec_version.is_none() {
-        show_abort_message(Error::InvalidVersion);
+    // Attempt to extract the codec version number.
+    let mut codec: Box<dyn Codec> = Box::new(StegaV1::default());
+    if needs_codec {
+        let mut codec_version: Option<Version> = None;
+        if &args[2] == "-v" {
+            let version = &args[3];
+            if let Ok(v) = version.parse::<u8>() {
+                if let Ok(cv) = Version::try_from(v) {
+                    codec_version = Some(cv);
+                }
+            }
+        }
+
+        if codec_version.is_none() {
+            show_abort_message(Error::InvalidVersion);
+        }
+
+        // The unwrap is safe here as we have verified the codec version
+        // is valid.
+        codec = get_codec_by_version(codec_version.unwrap());
+
+        // Apply any settings that might have been specified.
+        apply_codec_settings(&mut codec, &args[4..]);
     }
 
-    // The unwrap is safe here as we have verified the codec version
-    // is valid.
-    let mut codec = get_codec_by_version(codec_version.unwrap());
-
-    // Apply any settings that might have been specified.
-    apply_codec_settings(&mut codec, &args[4..]);
-
     // Execute the requested action with the provided arguments.
-    let params = &args[4..];
     let result = match action.as_str() {
-        "-e" | "-encrypt" => handle_encode(params, &mut codec),
-        "-d" | "-decrypt" => handle_decode(params, &mut codec),
-        "-ef" | "-encrypt-file" => handle_encode_file(params, &mut codec),
-        "-df" | "-decrypt-file" => handle_decode_file(params, &mut codec),
+        "-e" | "-encrypt" => handle_encode(&args[4..], &mut codec),
+        "-d" | "-decrypt" => handle_decode(&args[4..], &mut codec),
+        "-ef" | "-encrypt-file" => handle_encode_file(&args[4..], &mut codec),
+        "-df" | "-decrypt-file" => handle_decode_file(&args[4..], &mut codec),
         "-examples" => {
             show_examples();
             Ok(())
@@ -96,7 +108,7 @@ fn main() {
     }
 
     let arg_len = &args.len();
-    if &args[*arg_len] != "-auto-exit" {
+    if &args[*arg_len - 1] != "-auto-exit" {
         // Wait for user input.
         let mut input_string = String::new();
         stdin()
@@ -255,6 +267,10 @@ fn handle_encode(args: &[String], codec: &mut Box<dyn Codec>) -> Result<()> {
     // Read the password from the console.
     // If the passwords do not match then we will not continue execution.
     // Note: empty password are supported, but are not recommended.
+    //if args.contains(&String::from("--p")) {
+    //
+    //}
+
     let password = read_password_with_verify();
     if password.is_none() {
         return Err(Error::PasswordMismatch);
