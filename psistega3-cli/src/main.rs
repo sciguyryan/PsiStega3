@@ -184,10 +184,14 @@ fn handle_decode(args: &[String], codec: &mut Box<dyn Codec>) -> Result<()> {
     let ref_image = &args[0];
     let enc_image = &args[1];
 
-    // Read the password from the console.
-    let password = read_password();
+    // Attempt to read the password from the supplied arguments.
+    // If none was supplied, then we will offer a password input prompt.
+    let password = read_password_from_args(args);
     if password.is_none() {
-        return Err(Error::NoPassword);
+        let password = read_password();
+        if password.is_none() {
+            return Err(Error::NoPassword);
+        }
     }
 
     let password = password.unwrap();
@@ -227,10 +231,14 @@ fn handle_decode_file(args: &[String], codec: &mut Box<dyn Codec>) -> Result<()>
     let enc_image = &args[1];
     let output_file_path = &args[2];
 
-    // Read the password from the console.
-    let password = read_password();
+    // Attempt to read the password from the supplied arguments.
+    // If none was supplied, then we will offer a password input prompt.
+    let password = read_password_from_args(args);
     if password.is_none() {
-        return Err(Error::NoPassword);
+        let password = read_password();
+        if password.is_none() {
+            return Err(Error::NoPassword);
+        }
     }
 
     let password = password.unwrap();
@@ -264,16 +272,14 @@ fn handle_encode(args: &[String], codec: &mut Box<dyn Codec>) -> Result<()> {
     let output_image = &args[1];
     let text = &args[2];
 
-    // Read the password from the console.
-    // If the passwords do not match then we will not continue execution.
-    // Note: empty password are supported, but are not recommended.
-    //if args.contains(&String::from("--p")) {
-    //
-    //}
-
-    let password = read_password_with_verify();
+    // Attempt to read the password from the supplied arguments.
+    // If none was supplied, then we will offer a password input prompt.
+    let password = read_password_from_args(args);
     if password.is_none() {
-        return Err(Error::PasswordMismatch);
+        let password = read_password_with_verify();
+        if password.is_none() {
+            return Err(Error::PasswordMismatch);
+        }
     }
 
     let password = password.unwrap();
@@ -304,12 +310,14 @@ fn handle_encode_file(args: &[String], codec: &mut Box<dyn Codec>) -> Result<()>
     let output_image = &args[1];
     let input_file = &args[2];
 
-    // Read the password from the console.
-    // If the passwords do not match then we will not continue execution.
-    // Note: empty password are supported, but are not recommended.
-    let password = read_password_with_verify();
+    // Attempt to read the password from the supplied arguments.
+    // If none was supplied, then we will offer a password input prompt.
+    let password = read_password_from_args(args);
     if password.is_none() {
-        return Err(Error::PasswordMismatch);
+        let password = read_password_with_verify();
+        if password.is_none() {
+            return Err(Error::PasswordMismatch);
+        }
     }
 
     let password = password.unwrap();
@@ -346,6 +354,28 @@ fn read_password_with_verify() -> Option<String> {
     }
 
     None
+}
+
+fn read_password_from_args(args: &[String]) -> Option<String> {
+    let password_arg = String::from("-p");
+    if !args.contains(&password_arg) {
+        return None;
+    }
+
+    let mut index = 0;
+    for arg in args {
+        if arg == &password_arg {
+            break;
+        }
+        index += 1;
+    }
+
+    // A password argument was specified, but no password was supplied.
+    if args.len() < index + 1 {
+        return None
+    }
+
+    Some(args[index].to_string())
 }
 
 /// Write some basic help information on screen.
