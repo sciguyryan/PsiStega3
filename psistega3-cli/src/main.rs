@@ -186,9 +186,9 @@ fn handle_decode(args: &[String], codec: &mut Box<dyn Codec>) -> Result<()> {
 
     // Attempt to read the password from the supplied arguments.
     // If none was supplied, then we will offer a password input prompt.
-    let password = read_password_from_args(args);
+    let mut password = read_password_from_args(args);
     if password.is_none() {
-        let password = read_password();
+        password = read_password();
         if password.is_none() {
             return Err(Error::NoPassword);
         }
@@ -233,9 +233,9 @@ fn handle_decode_file(args: &[String], codec: &mut Box<dyn Codec>) -> Result<()>
 
     // Attempt to read the password from the supplied arguments.
     // If none was supplied, then we will offer a password input prompt.
-    let password = read_password_from_args(args);
+    let mut password = read_password_from_args(args);
     if password.is_none() {
-        let password = read_password();
+        password = read_password();
         if password.is_none() {
             return Err(Error::NoPassword);
         }
@@ -274,9 +274,9 @@ fn handle_encode(args: &[String], codec: &mut Box<dyn Codec>) -> Result<()> {
 
     // Attempt to read the password from the supplied arguments.
     // If none was supplied, then we will offer a password input prompt.
-    let password = read_password_from_args(args);
+    let mut password = read_password_from_args(args);
     if password.is_none() {
-        let password = read_password_with_verify();
+        password = read_password_with_verify();
         if password.is_none() {
             return Err(Error::PasswordMismatch);
         }
@@ -312,9 +312,9 @@ fn handle_encode_file(args: &[String], codec: &mut Box<dyn Codec>) -> Result<()>
 
     // Attempt to read the password from the supplied arguments.
     // If none was supplied, then we will offer a password input prompt.
-    let password = read_password_from_args(args);
+    let mut password = read_password_from_args(args);
     if password.is_none() {
-        let password = read_password_with_verify();
+        password = read_password_with_verify();
         if password.is_none() {
             return Err(Error::PasswordMismatch);
         }
@@ -441,6 +441,6 @@ fn show_examples() {
 /// * `error` - The [`Error`] to be displayed on screen.
 ///
 fn show_abort_message(error: Error) {
-    println!("{}", error);
+    println!("Error: {}", error);
     std::process::exit(0);
 }
