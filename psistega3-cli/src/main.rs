@@ -362,16 +362,13 @@ fn read_password_from_args(args: &[String]) -> Option<String> {
         return None;
     }
 
-    let mut index = 0;
-    for arg in args {
-        if arg == &password_arg {
-            break;
-        }
-        index += 1;
-    }
+    let mut index = args.iter()
+        .position(|x| x == &password_arg)
+        .unwrap();
+    index += 1;
 
     // A password argument was specified, but no password was supplied.
-    if args.len() < index + 1 {
+    if args.len() <= index {
         return None
     }
 
