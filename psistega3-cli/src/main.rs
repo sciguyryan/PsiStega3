@@ -347,15 +347,20 @@ fn read_password_with_verify() -> Option<String> {
     let pwd_1 = get_password("Password: ");
     let pwd_2 = get_password("Confirm password: ");
 
-    if pwd_1 == pwd_2 {
-        if let Some(pwd) = pwd_1 {
-            return Some(pwd);
-        }
+    if pwd_1.is_some() && pwd_1 == pwd_2 {
+        return pwd_1;
     }
 
     None
 }
 
+/// Attempt to read a password argument from the argument list.
+///
+/// # Returns
+///
+/// If a password argument is specified, and if the password is not empty then a [`String`] [`Option`] will be returned,
+/// otherwise a [`None`] will be returned.
+///
 fn read_password_from_args(args: &[String]) -> Option<String> {
     let password_arg = String::from("-p");
     if !args.contains(&password_arg) {
