@@ -1303,16 +1303,6 @@ mod tests_encryption_decryption {
                 "file type is valid, channels % 8 == 0",
             ),
             TestEntry::new(
-                "10x10-rbga.gif",
-                Ok(()),
-                "file type is valid, channels % 8 == 0",
-            ),
-            TestEntry::new(
-                "10x10-rbg.bmp",
-                Err(Error::ImageDimensionsInvalid),
-                "file type is valid, channels % 8 != 0",
-            ),
-            TestEntry::new(
                 "missing-file.png",
                 Err(Error::ImageOpening),
                 "file is missing and therefore cannot be loaded",
