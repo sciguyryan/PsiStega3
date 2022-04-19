@@ -1,7 +1,7 @@
 cargo-features = ["strip"]
 
 [workspace]
-members = ["psistega3-core", "psistega3-cli", "psistega3-gui"]
+members = ["psistega3-core", "psistega3-cli"]
 
 [profile.dev]
 opt-level = 0

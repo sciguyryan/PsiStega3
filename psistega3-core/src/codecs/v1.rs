@@ -25,7 +25,7 @@ const M_COST: u32 = 65536;
 /// The version of the Argon2 hashing algorithm to use.
 const ARGON_VER: argon2::Version = argon2::Version::V0x13;
 /// A list of formats that can be used with the v1 algorithm.
-const SUPPORTED_FORMATS: [ImageFormat; 3] = [ImageFormat::Bmp, ImageFormat::Gif, ImageFormat::Png];
+const SUPPORTED_FORMATS: [ImageFormat; 1] = [ImageFormat::Png];
 
 #[derive(Debug)]
 pub struct StegaV1 {

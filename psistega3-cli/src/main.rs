@@ -46,40 +46,52 @@ fn main() {
     // The action argument.
     let action = &args[1];
 
-    // There must be at least 6 arguments.
-    if args.len() < 6 {
-        show_abort_message(Error::InsufficientArguments);
-    }
-
-    // Attempt to extract the codec version number.
-    let mut codec_version: Option<Version> = None;
-    if &args[2] == "-v" {
-        let version = &args[3];
-        if let Ok(v) = version.parse::<u8>() {
-            if let Ok(cv) = Version::try_from(v) {
-                codec_version = Some(cv);
+    // There must be at least 6 arguments in most circumstances.
+    let mut needs_codec = true;
+    match action.as_str() {
+        "-e" | "-encrypt" | "-d" | "-decrypt" |
+        "-ef" | "-encrypt-file" |
+        "-df" | "-decrypt-file" => {
+            if args.len() < 6 {
+                show_abort_message(Error::InsufficientArguments);
             }
+        },
+        _ => {
+            needs_codec = false;
         }
     }
 
-    if codec_version.is_none() {
-        show_abort_message(Error::InvalidVersion);
+    // Attempt to extract the codec version number.
+    let mut codec: Box<dyn Codec> = Box::new(StegaV1::default());
+    if needs_codec {
+        let mut codec_version: Option<Version> = None;
+        if &args[2] == "-v" {
+            let version = &args[3];
+            if let Ok(v) = version.parse::<u8>() {
+                if let Ok(cv) = Version::try_from(v) {
+                    codec_version = Some(cv);
+                }
+            }
+        }
+
+        if codec_version.is_none() {
+            show_abort_message(Error::InvalidVersion);
+        }
+
+        // The unwrap is safe here as we have verified the codec version
+        // is valid.
+        codec = get_codec_by_version(codec_version.unwrap());
+
+        // Apply any settings that might have been specified.
+        apply_codec_settings(&mut codec, &args[4..]);
     }
 
-    // The unwrap is safe here as we have verified the codec version
-    // is valid.
-    let mut codec = get_codec_by_version(codec_version.unwrap());
-
-    // Apply any settings that might have been specified.
-    apply_codec_settings(&mut codec, &args[4..]);
-
     // Execute the requested action with the provided arguments.
-    let params = &args[4..];
     let result = match action.as_str() {
-        "-e" | "-encrypt" => handle_encode(params, &mut codec),
-        "-d" | "-decrypt" => handle_decode(params, &mut codec),
-        "-ef" | "-encrypt-file" => handle_encode_file(params, &mut codec),
-        "-df" | "-decrypt-file" => handle_decode_file(params, &mut codec),
+        "-e" | "-encrypt" => handle_encode(&args[4..], &mut codec),
+        "-d" | "-decrypt" => handle_decode(&args[4..], &mut codec),
+        "-ef" | "-encrypt-file" => handle_encode_file(&args[4..], &mut codec),
+        "-df" | "-decrypt-file" => handle_decode_file(&args[4..], &mut codec),
         "-examples" => {
             show_examples();
             Ok(())
@@ -96,7 +108,7 @@ fn main() {
     }
 
     let arg_len = &args.len();
-    if &args[*arg_len] != "-auto-exit" {
+    if &args[*arg_len - 1] != "-auto-exit" {
         // Wait for user input.
         let mut input_string = String::new();
         stdin()
@@ -149,7 +161,8 @@ fn get_codec_by_version(version: Version) -> Box<dyn Codec> {
 /// * `prompt` - The password prompt string.
 ///
 fn get_password(prompt: &str) -> Option<String> {
-    match rpassword::read_password_from_tty(Some(prompt)) {
+    println!("{}", prompt);
+    match rpassword::read_password() {
         Ok(s) => Some(s),
         Err(_) => None,
     }
@@ -171,10 +184,14 @@ fn handle_decode(args: &[String], codec: &mut Box<dyn Codec>) -> Result<()> {
     let ref_image = &args[0];
     let enc_image = &args[1];
 
-    // Read the password from the console.
-    let password = read_password();
+    // Attempt to read the password from the supplied arguments.
+    // If none was supplied, then we will offer a password input prompt.
+    let mut password = read_password_from_args(args);
     if password.is_none() {
-        return Err(Error::NoPassword);
+        password = read_password();
+        if password.is_none() {
+            return Err(Error::NoPassword);
+        }
     }
 
     let password = password.unwrap();
@@ -214,10 +231,14 @@ fn handle_decode_file(args: &[String], codec: &mut Box<dyn Codec>) -> Result<()>
     let enc_image = &args[1];
     let output_file_path = &args[2];
 
-    // Read the password from the console.
-    let password = read_password();
+    // Attempt to read the password from the supplied arguments.
+    // If none was supplied, then we will offer a password input prompt.
+    let mut password = read_password_from_args(args);
     if password.is_none() {
-        return Err(Error::NoPassword);
+        password = read_password();
+        if password.is_none() {
+            return Err(Error::NoPassword);
+        }
     }
 
     let password = password.unwrap();
@@ -251,12 +272,14 @@ fn handle_encode(args: &[String], codec: &mut Box<dyn Codec>) -> Result<()> {
     let output_image = &args[1];
     let text = &args[2];
 
-    // Read the password from the console.
-    // If the passwords do not match then we will not continue execution.
-    // Note: empty password are supported, but are not recommended.
-    let password = read_password_with_verify();
+    // Attempt to read the password from the supplied arguments.
+    // If none was supplied, then we will offer a password input prompt.
+    let mut password = read_password_from_args(args);
     if password.is_none() {
-        return Err(Error::PasswordMismatch);
+        password = read_password_with_verify();
+        if password.is_none() {
+            return Err(Error::PasswordMismatch);
+        }
     }
 
     let password = password.unwrap();
@@ -287,12 +310,14 @@ fn handle_encode_file(args: &[String], codec: &mut Box<dyn Codec>) -> Result<()>
     let output_image = &args[1];
     let input_file = &args[2];
 
-    // Read the password from the console.
-    // If the passwords do not match then we will not continue execution.
-    // Note: empty password are supported, but are not recommended.
-    let password = read_password_with_verify();
+    // Attempt to read the password from the supplied arguments.
+    // If none was supplied, then we will offer a password input prompt.
+    let mut password = read_password_from_args(args);
     if password.is_none() {
-        return Err(Error::PasswordMismatch);
+        password = read_password_with_verify();
+        if password.is_none() {
+            return Err(Error::PasswordMismatch);
+        }
     }
 
     let password = password.unwrap();
@@ -322,13 +347,37 @@ fn read_password_with_verify() -> Option<String> {
     let pwd_1 = get_password("Password: ");
     let pwd_2 = get_password("Confirm password: ");
 
-    if pwd_1 == pwd_2 {
-        if let Some(pwd) = pwd_1 {
-            return Some(pwd);
-        }
+    if pwd_1.is_some() && pwd_1 == pwd_2 {
+        return pwd_1;
     }
 
     None
+}
+
+/// Attempt to read a password argument from the argument list.
+///
+/// # Returns
+///
+/// If a password argument is specified, and if the password is not empty then a [`String`] [`Option`] will be returned,
+/// otherwise a [`None`] will be returned.
+///
+fn read_password_from_args(args: &[String]) -> Option<String> {
+    let password_arg = String::from("-p");
+    if !args.contains(&password_arg) {
+        return None;
+    }
+
+    let mut index = args.iter()
+        .position(|x| x == &password_arg)
+        .unwrap();
+    index += 1;
+
+    // A password argument was specified, but no password was supplied.
+    if args.len() <= index {
+        return None
+    }
+
+    Some(args[index].to_string())
 }
 
 /// Write some basic help information on screen.
@@ -394,6 +443,6 @@ fn show_examples() {
 /// * `error` - The [`Error`] to be displayed on screen.
 ///
 fn show_abort_message(error: Error) {
-    println!("{}", error);
+    println!("Error: {}", error);
     std::process::exit(0);
 }
