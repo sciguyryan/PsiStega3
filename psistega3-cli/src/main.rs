@@ -1,5 +1,7 @@
 #![crate_name = "psistega3_cli"]
 mod error;
+mod file_attempts;
+mod utils;
 
 use crate::error::{Error, Result};
 
@@ -13,22 +15,13 @@ use std::{convert::TryFrom, env, io::stdin};
 //ookneporlygs
 
 fn main() {
+    if let Err(e) = utils::create_data_file() {
+        show_abort_message(e);
+    }
+
     SimpleLogger::new().init().unwrap();
 
-    /*let iterations = 10;
-    let start_0a = std::time::Instant::now();
-    for _ in 0..=iterations {
-        let e = stega.encode(input_img_path, password.clone(), &input, output_img_path);
-    }
-    let elapsed_0a = start_0a.elapsed();
-    let per_item_0a = elapsed_0a / iterations as u32;
-    println!(
-        "threaded: {:.2?} in total, or {:.2?} per item.",
-        elapsed_0a, per_item_0a
-    );
-    println!("{}", "-".repeat(32));
-
-    return;*/
+    //println!("{:?}", utils::get_data_file_path());
 
     let mut args: Vec<String> = env::args().collect();
     if args.len() == 1 {

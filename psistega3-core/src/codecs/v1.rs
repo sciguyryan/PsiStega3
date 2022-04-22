@@ -38,7 +38,7 @@ pub struct StegaV1 {
     /// If the faster method of setting the bit variance should be
     /// used.
     ///
-    /// This method will not use randomness to determine the pixel value varience
+    /// This method will not use randomness to determine the pixel value variance
     /// and will instead alternate between adding and subtracting 1.
     fast_variance: bool,
 }
