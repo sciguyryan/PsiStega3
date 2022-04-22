@@ -95,11 +95,16 @@ impl Attempts {
     fn write_data_file(&self) -> Result<()> {
         let mut file = Attempts::create_data_file()?;
 
+        // Iterate over the entries in the attempts cache.
         for entry in &self.entries {
             let mut vec = entry.hash.clone();
             vec.push(entry.attempts);
 
-            _ = file.write(&vec);
+            // If we hit an error then we will stop
+            // writing the file immediately.
+            if file.write(&vec).is_err() {
+                return Err(Error::DataFileWrite);
+            }
         }
 
         Ok(())
@@ -132,10 +137,6 @@ impl Drop for Attempts {
         }
 
         let metadata = metadata.unwrap();
-
-        // Set the file accessed time of the data file.
-        //let atime = FileTime::from_last_access_time(&metadata);
-        //_ = filetime::set_file_atime(data_path, atime);
 
         // Set the file last modification time of the data file.
         let mtime = FileTime::from_last_modification_time(&metadata);

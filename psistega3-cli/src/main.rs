@@ -183,8 +183,11 @@ fn handle_decode(args: &[String], codec: &mut Box<dyn Codec>) -> Result<()> {
     let mut password = read_password_from_args(args);
     if password.is_none() {
         password = read_password();
+        // If no password was supplied then an empty string
+        // will be used as the password.
+        // It isn't a safe password, but it is technically valid.
         if password.is_none() {
-            return Err(Error::NoPassword);
+            password = Some(String::from(""));
         }
     }
 
@@ -230,8 +233,11 @@ fn handle_decode_file(args: &[String], codec: &mut Box<dyn Codec>) -> Result<()>
     let mut password = read_password_from_args(args);
     if password.is_none() {
         password = read_password();
+        // If no password was supplied then an empty string
+        // will be used as the password.
+        // It isn't a safe password, but it is technically valid.
         if password.is_none() {
-            return Err(Error::NoPassword);
+            password = Some(String::from(""));
         }
     }
 
