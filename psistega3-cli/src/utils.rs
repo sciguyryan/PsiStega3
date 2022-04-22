@@ -1,4 +1,8 @@
-use std::{fs::{File, self}, io::Read, path::PathBuf};
+use std::{
+    fs::{self, File},
+    io::Read,
+    path::PathBuf,
+};
 
 use crate::{error::*, file_attempts::*};
 
@@ -52,7 +56,7 @@ pub(crate) fn read_data_file() -> Result<Vec<FileAttempts>> {
             break;
         }
 
-        let fa = FileAttempts::new(buffer[..n-1].to_vec(), buffer[n]);
+        let fa = FileAttempts::new(buffer[..n - 1].to_vec(), buffer[n]);
 
         attempts.push(fa);
     }

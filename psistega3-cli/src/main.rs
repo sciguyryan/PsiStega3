@@ -42,13 +42,12 @@ fn main() {
     // There must be at least 6 arguments in most circumstances.
     let mut needs_codec = true;
     match action.as_str() {
-        "-e" | "-encrypt" | "-d" | "-decrypt" |
-        "-ef" | "-encrypt-file" |
-        "-df" | "-decrypt-file" => {
+        "-e" | "-encrypt" | "-d" | "-decrypt" | "-ef" | "-encrypt-file" | "-df"
+        | "-decrypt-file" => {
             if args.len() < 6 {
                 show_abort_message(Error::InsufficientArguments);
             }
-        },
+        }
         _ => {
             needs_codec = false;
         }
@@ -360,14 +359,12 @@ fn read_password_from_args(args: &[String]) -> Option<String> {
         return None;
     }
 
-    let mut index = args.iter()
-        .position(|x| x == &password_arg)
-        .unwrap();
+    let mut index = args.iter().position(|x| x == &password_arg).unwrap();
     index += 1;
 
     // A password argument was specified, but no password was supplied.
     if args.len() <= index {
-        return None
+        return None;
     }
 
     Some(args[index].to_string())
