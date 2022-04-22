@@ -1,9 +1,9 @@
 #![crate_name = "psistega3_cli"]
+mod attempts;
 mod error;
-mod file_attempts;
 mod utils;
 
-use crate::error::{Error, Result};
+use crate::{error::{Error, Result}, attempts::Attempts};
 
 use psistega3_core::codecs::codec::{Codec, Config};
 use psistega3_core::codecs::v1::StegaV1;
@@ -15,13 +15,12 @@ use std::{convert::TryFrom, env, io::stdin};
 //ookneporlygs
 
 fn main() {
-    if let Err(e) = utils::create_data_file() {
-        show_abort_message(e);
-    }
-
     SimpleLogger::new().init().unwrap();
 
-    //println!("{:?}", utils::get_data_file_path());
+    let fas = Attempts::new();
+    if let Err(e) = fas {
+        utils::show_abort_message(e);
+    }
 
     let mut args: Vec<String> = env::args().collect();
     if args.len() == 1 {
@@ -45,7 +44,7 @@ fn main() {
         "-e" | "-encrypt" | "-d" | "-decrypt" | "-ef" | "-encrypt-file" | "-df"
         | "-decrypt-file" => {
             if args.len() < 6 {
-                show_abort_message(Error::InsufficientArguments);
+                utils::show_abort_message(Error::InsufficientArguments);
             }
         }
         _ => {
@@ -67,7 +66,7 @@ fn main() {
         }
 
         if codec_version.is_none() {
-            show_abort_message(Error::InvalidVersion);
+            utils::show_abort_message(Error::InvalidVersion);
         }
 
         // The unwrap is safe here as we have verified the codec version
@@ -96,7 +95,7 @@ fn main() {
 
     // If we encountered an error then display that error to the console.
     if let Err(e) = result {
-        show_abort_message(e);
+        utils::show_abort_message(e);
     }
 
     let arg_len = &args.len();
@@ -424,15 +423,4 @@ fn show_examples() {
         "If any data was successfully decoded then it will be written to the output file path."
     );
     println!("{}", split);
-}
-
-/// Write an [`Error`] message on screen and then abort the program.
-///
-/// # Arguments
-///
-/// * `error` - The [`Error`] to be displayed on screen.
-///
-fn show_abort_message(error: Error) {
-    println!("Error: {}", error);
-    std::process::exit(0);
 }
