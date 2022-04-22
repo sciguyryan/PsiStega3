@@ -9,13 +9,13 @@ use crate::error::*;
 use filetime::FileTime;
 
 pub struct Attempts {
-    entries: Vec<Entry>
+    entries: Vec<Entry>,
 }
 
 impl Attempts {
     pub fn new() -> Result<Self> {
         let mut s = Self {
-            entries: Vec::new()
+            entries: Vec::new(),
         };
 
         s.read_data_file()?;

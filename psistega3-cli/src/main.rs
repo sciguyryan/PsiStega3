@@ -3,7 +3,10 @@ mod attempts;
 mod error;
 mod utils;
 
-use crate::{error::{Error, Result}, attempts::Attempts};
+use crate::{
+    attempts::Attempts,
+    error::{Error, Result},
+};
 
 use psistega3_core::codecs::codec::{Codec, Config};
 use psistega3_core::codecs::v1::StegaV1;
