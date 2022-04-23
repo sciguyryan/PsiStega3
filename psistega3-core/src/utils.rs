@@ -189,7 +189,7 @@ pub(crate) fn u8_slice_to_base64_string(bytes: &[u8]) -> String {
 ///
 /// * `byte` - The byte to be converted.
 ///
-/// Note: we ignore the error condition from write! as this is
+/// `Note:` we ignore the error condition from write! as this is
 /// completely internal and is designed for use with debug code.
 ///
 #[allow(unused_must_use, dead_code)]

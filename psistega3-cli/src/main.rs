@@ -1,5 +1,4 @@
 #![crate_name = "psistega3_cli"]
-//mod attempts;
 mod error;
 mod utils;
 
@@ -7,6 +6,7 @@ use crate::error::{Error, Result};
 
 use psistega3_core::codecs::codec::{Codec, Config};
 use psistega3_core::codecs::v1::StegaV1;
+use psistega3_core::locker::*;
 use psistega3_core::version::*;
 
 use simple_logger::SimpleLogger;
@@ -15,6 +15,8 @@ use std::{convert::TryFrom, env, io::stdin};
 //ookneporlygs
 
 fn main() {
+    let locker = Locker::new();
+
     SimpleLogger::new().init().unwrap();
 
     let mut args: Vec<String> = env::args().collect();

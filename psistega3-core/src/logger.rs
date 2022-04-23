@@ -29,7 +29,6 @@ pub(crate) fn enable_verbose_mode() {
 }
 
 #[allow(dead_code)]
-#[allow(dead_code)]
 pub(crate) fn disable_verbose_mode() {
     unsafe {
         VERBOSE = false;

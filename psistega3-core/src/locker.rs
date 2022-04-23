@@ -5,6 +5,7 @@ use std::{
     fs::{self, File},
     io::{Read, Write},
     path::PathBuf,
+    time::SystemTime,
 };
 
 // TODO: make this private for release.
@@ -17,6 +18,20 @@ impl Locker {
         let mut l = Self {
             entries: Vec::new(),
         };
+
+        /*let n = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH);
+        let mut n2 = n.unwrap().as_secs();
+        n2 -= (60*60*24*30)+1;
+
+        println!("Seconds = {}", n2);
+
+        let bytes = if cfg!(target_endian = "little") {
+            u64::to_le_bytes(n2)
+        } else {
+            u64::to_be_bytes(n2)
+        };
+
+        l.entries.push(Entry::new(&Hashers::sha3_256_string("aaaa"), 255, &bytes));*/
 
         l.read_locker_file()?;
 
@@ -73,7 +88,13 @@ impl Locker {
             }
         };
 
-        let mut buffer = [0u8; 33];
+        // The number of seconds since the UNIX epoch.
+        let now = match SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
+            Ok(n) => n.as_secs(),
+            Err(_) => panic!("SystemTime before UNIX EPOCH!"),
+        };
+
+        let mut buffer = [0u8; 41];
 
         // Loop until we have read the entire file (in chunks).
         loop {
@@ -81,11 +102,23 @@ impl Locker {
 
             // Either there are not enough bytes to
             // create a file access struct instance.
-            if n < 33 {
+            if n < 41 {
                 break;
             }
 
-            let fa = Entry::new(buffer[..32].to_vec(), buffer[32]);
+            // Construct the entry based on the read bytes.
+            let fa = Entry::new(&buffer[..32], buffer[32], &buffer[33..]);
+
+            // This should never happen, it would mean that the entry
+            // was last modified after the the present.
+            let last = if fa.last > now { now } else { fa.last };
+
+            // If the last attempt was more than 30 days ago
+            // then we will disregard it.
+            if (now - last) > 60 * 60 * 24 * 30 {
+                continue;
+            }
+
             self.entries.push(fa);
         }
 
@@ -103,6 +136,14 @@ impl Locker {
             // If we hit an error then we will stop
             // writing the file immediately.
             if file.write(&vec).is_err() {
+                return Err(Error::LockerFileWrite);
+            }
+
+            let bytes = u64::to_le_bytes(entry.last);
+
+            // If we hit an error then we will stop
+            // writing the file immediately.
+            if file.write(&bytes).is_err() {
                 return Err(Error::LockerFileWrite);
             }
         }
@@ -148,10 +189,21 @@ impl Drop for Locker {
 struct Entry {
     hash: Vec<u8>,
     attempts: u8,
+    last: u64,
 }
 
 impl Entry {
-    pub fn new(hash: Vec<u8>, attempts: u8) -> Self {
-        Self { hash, attempts }
+    pub fn new(hash: &[u8], attempts: u8, last: &[u8]) -> Self {
+        assert!(
+            last.len() == 8,
+            "Invalid number of bytes to represent a u64 value."
+        );
+        let arr = <[u8; 8]>::try_from(last).unwrap();
+
+        Self {
+            hash: hash.to_vec(),
+            attempts,
+            last: u64::from_le_bytes(arr),
+        }
     }
 }
