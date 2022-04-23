@@ -1,12 +1,9 @@
 #![crate_name = "psistega3_cli"]
-mod attempts;
+//mod attempts;
 mod error;
 mod utils;
 
-use crate::{
-    attempts::Attempts,
-    error::{Error, Result},
-};
+use crate::error::{Error, Result};
 
 use psistega3_core::codecs::codec::{Codec, Config};
 use psistega3_core::codecs::v1::StegaV1;
@@ -19,11 +16,6 @@ use std::{convert::TryFrom, env, io::stdin};
 
 fn main() {
     SimpleLogger::new().init().unwrap();
-
-    let fas = Attempts::new();
-    if let Err(e) = fas {
-        utils::show_abort_message(e);
-    }
 
     let mut args: Vec<String> = env::args().collect();
     if args.len() == 1 {

@@ -8,23 +8,23 @@ use crate::error::*;
 
 use filetime::FileTime;
 
-pub struct Attempts {
+pub struct Locker {
     entries: Vec<Entry>,
 }
 
-impl Attempts {
+impl Locker {
     pub fn new() -> Result<Self> {
-        let mut s = Self {
+        let mut l = Self {
             entries: Vec::new(),
         };
 
-        s.read_data_file()?;
+        l.read_data_file()?;
 
-        Ok(s)
+        Ok(l)
     }
 
     fn create_data_file() -> Result<File> {
-        let path = Attempts::get_data_file_path();
+        let path = Locker::get_data_file_path();
         if path.is_err() {
             return Err(Error::DataFilePath);
         }
@@ -38,14 +38,14 @@ impl Attempts {
     fn get_data_file_path() -> Result<PathBuf> {
         // Build the path. Disregard the executable file name and append the
         // data file name.
-        let mut path = Attempts::get_executable_path()?;
+        let mut path = Locker::get_executable_path()?;
         path.pop();
         path.push("data.dat");
 
         Ok(path)
     }
 
-    fn get_executable_path() -> Result<PathBuf> {
+    pub fn get_executable_path() -> Result<PathBuf> {
         match std::env::current_exe() {
             Ok(p) => Ok(p),
             Err(_) => Err(Error::DataFilePath),
@@ -60,7 +60,7 @@ impl Attempts {
     }
 
     fn read_data_file(&mut self) -> Result<()> {
-        let path = Attempts::get_data_file_path()?;
+        let path = Locker::get_data_file_path()?;
         if !path.exists() {
             return Ok(());
         }
@@ -93,7 +93,7 @@ impl Attempts {
     }
 
     fn write_data_file(&self) -> Result<()> {
-        let mut file = Attempts::create_data_file()?;
+        let mut file = Locker::create_data_file()?;
 
         // Iterate over the entries in the attempts cache.
         for entry in &self.entries {
@@ -111,7 +111,7 @@ impl Attempts {
     }
 }
 
-impl Drop for Attempts {
+impl Drop for Locker {
     fn drop(&mut self) {
         _ = self.write_data_file();
 
@@ -121,8 +121,8 @@ impl Drop for Attempts {
         // what this tool is used for identifying the use
         // of this file, which is to avoid the same people
         // from repeatedly trying to break the passwords.
-        let exec_path = Attempts::get_executable_path();
-        let data_path = Attempts::get_data_file_path();
+        let exec_path = Locker::get_executable_path();
+        let data_path = Locker::get_data_file_path();
         if exec_path.is_err() || data_path.is_err() {
             return;
         }
@@ -131,7 +131,7 @@ impl Drop for Attempts {
         let exec_path = exec_path.unwrap();
         let data_path = data_path.unwrap();
 
-        let metadata = Attempts::get_file_metadata(&exec_path);
+        let metadata = Locker::get_file_metadata(&exec_path);
         if metadata.is_err() {
             return;
         }
