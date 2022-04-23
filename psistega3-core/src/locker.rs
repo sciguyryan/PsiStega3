@@ -1,13 +1,13 @@
+use crate::error::*;
+
+use filetime::FileTime;
 use std::{
     fs::{self, File},
     io::{Read, Write},
     path::PathBuf,
 };
 
-use crate::error::*;
-
-use filetime::FileTime;
-
+// TODO: make this private for release.
 pub struct Locker {
     entries: Vec<Entry>,
 }
@@ -18,24 +18,24 @@ impl Locker {
             entries: Vec::new(),
         };
 
-        l.read_data_file()?;
+        l.read_locker_file()?;
 
         Ok(l)
     }
 
-    fn create_data_file() -> Result<File> {
-        let path = Locker::get_data_file_path();
+    fn create_locker_file() -> Result<File> {
+        let path = Locker::get_locker_file_path();
         if path.is_err() {
-            return Err(Error::DataFilePath);
+            return Err(Error::LockerFilePath);
         }
 
         match File::create(path.unwrap()) {
             Ok(f) => Ok(f),
-            Err(_) => Err(Error::DataFileCreation),
+            Err(_) => Err(Error::LockerFileCreation),
         }
     }
 
-    fn get_data_file_path() -> Result<PathBuf> {
+    fn get_locker_file_path() -> Result<PathBuf> {
         // Build the path. Disregard the executable file name and append the
         // data file name.
         let mut path = Locker::get_executable_path()?;
@@ -48,7 +48,7 @@ impl Locker {
     pub fn get_executable_path() -> Result<PathBuf> {
         match std::env::current_exe() {
             Ok(p) => Ok(p),
-            Err(_) => Err(Error::DataFilePath),
+            Err(_) => Err(Error::LockerFilePath),
         }
     }
 
@@ -59,8 +59,8 @@ impl Locker {
         }
     }
 
-    fn read_data_file(&mut self) -> Result<()> {
-        let path = Locker::get_data_file_path()?;
+    fn read_locker_file(&mut self) -> Result<()> {
+        let path = Locker::get_locker_file_path()?;
         if !path.exists() {
             return Ok(());
         }
@@ -69,7 +69,7 @@ impl Locker {
         let mut file = match File::open(path) {
             Ok(f) => f,
             Err(_) => {
-                return Err(Error::DataFileRead);
+                return Err(Error::LockerFileRead);
             }
         };
 
@@ -92,8 +92,8 @@ impl Locker {
         Ok(())
     }
 
-    fn write_data_file(&self) -> Result<()> {
-        let mut file = Locker::create_data_file()?;
+    fn write_locker_file(&self) -> Result<()> {
+        let mut file = Locker::create_locker_file()?;
 
         // Iterate over the entries in the attempts cache.
         for entry in &self.entries {
@@ -103,7 +103,7 @@ impl Locker {
             // If we hit an error then we will stop
             // writing the file immediately.
             if file.write(&vec).is_err() {
-                return Err(Error::DataFileWrite);
+                return Err(Error::LockerFileWrite);
             }
         }
 
@@ -113,7 +113,7 @@ impl Locker {
 
 impl Drop for Locker {
     fn drop(&mut self) {
-        _ = self.write_data_file();
+        _ = self.write_locker_file();
 
         // Next, we need to set the data files modified
         // date to be the same as the executable file.
@@ -122,7 +122,7 @@ impl Drop for Locker {
         // of this file, which is to avoid the same people
         // from repeatedly trying to break the passwords.
         let exec_path = Locker::get_executable_path();
-        let data_path = Locker::get_data_file_path();
+        let data_path = Locker::get_locker_file_path();
         if exec_path.is_err() || data_path.is_err() {
             return;
         }

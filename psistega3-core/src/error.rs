@@ -12,14 +12,6 @@ pub enum Error {
     Argon2NoHash,
     /// Unable to decode a base64 string.
     Base64Decoding,
-    /// Unable to create the data file.
-    DataFileCreation,
-    /// Unable to determine the data file path.
-    DataFilePath,
-    /// Unable to read the data file.
-    DataFileRead,
-    /// Unable to write the data file.
-    DataFileWrite,
     /// The total amount number of cells exceeds the maximum amount available.
     DataTooLarge,
     /// The data could not be decrypted; the data was invalid.
@@ -52,6 +44,14 @@ pub enum Error {
     ImageSaving(String),
     /// The image type is cannot be used for steganography.
     ImageTypeInvalid,
+    /// Unable to create the data file.
+    LockerFileCreation,
+    /// Unable to determine the data file path.
+    LockerFilePath,
+    /// Unable to read the data file.
+    LockerFileRead,
+    /// Unable to write the data file.
+    LockerFileWrite,
     /// The specified path is invalid.
     PathInvalid,
     /// Invalid version number.
@@ -65,10 +65,6 @@ impl fmt::Display for Error {
             Error::Argon2NoHash => "Error creating an Argon2 hash with the specified parameters.",
             Error::Base64Decoding => "The base64 string was invalid and could not be decoded.",
             Error::DataTooLarge => "The data is too large",
-            Error::DataFileCreation => "Unable to create the data file.",
-            Error::DataFilePath => "Unable to find the data file path.",
-            Error::DataFileRead => "Unable to read the data file.",
-            Error::DataFileWrite => "Unable to write the data file.",
             Error::DecryptionFailed => "The data could not be decrypted; the data was invalid.",
             Error::EncryptionFailed => "The data could not be encrypted.",
             Error::File => "A generic file-related error occurred.",
@@ -88,6 +84,10 @@ impl fmt::Display for Error {
             Error::ImageOpening => "Error when attempting to load the specified image.",
             Error::ImageSaving(s) => s,
             Error::ImageTypeInvalid => "Invalid image pixel type.",
+            Error::LockerFileCreation => "Unable to create the locker file.",
+            Error::LockerFilePath => "Unable to find the locker file path.",
+            Error::LockerFileRead => "Unable to read the locker file.",
+            Error::LockerFileWrite => "Unable to write the locker file.",
             Error::PathInvalid => "The specified path is invalid or does not exist.",
             Error::VersionInvalid => "The version number is invalid.",
         })
