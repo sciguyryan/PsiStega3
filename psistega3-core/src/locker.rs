@@ -5,6 +5,7 @@ use rand::Rng;
 use rand_chacha::ChaCha20Rng;
 use rand_core::SeedableRng;
 use std::{
+    fmt,
     fs::{self, File},
     io::{Read, Write},
     path::PathBuf,
@@ -27,6 +28,7 @@ impl Locker {
 
         l.read_locker_file()?;
 
+        //l.print_locker_list();
         //println!("fa = {}", l.entries[0].last);
 
         Ok(l)
@@ -64,7 +66,7 @@ impl Locker {
         let now = Locker::get_days_since_epoch();
         let days = self.rng.gen_range(0..now).to_le_bytes();
 
-        Entry::new(&hash, 128, &days)
+        Entry::new(&hash, 0, &days)
     }
 
     fn generate_dummy_entries(&mut self) {
@@ -106,9 +108,13 @@ impl Locker {
         } as u32;
     }
 
-    fn seconds_as_days(seconds: u64) -> u32 {
-        let s = seconds as f32 / (60 * 60 * 24) as f32;
-        s.floor() as u32
+    fn print_locker_list(&self) {
+        #[cfg(debug_assertions)]
+        {
+            for (i, e) in self.entries.iter().enumerate() {
+                println!("Entry {} : {}", i, e);
+            }
+        }
     }
 
     fn read_locker_file(&mut self) -> Result<()> {
@@ -116,6 +122,12 @@ impl Locker {
         if !path.exists() {
             return Ok(());
         }
+
+        /*let fe = File::open(path.clone()).unwrap();
+        let mut reader = std::io::BufReader::new(fe);
+        let mut buffer = Vec::new();
+        reader.read_to_end(&mut buffer).unwrap();
+        println!("{}", utils::entropy(&buffer));*/
 
         // The file will automatically be closed when it goes out of scope.
         let mut file = match File::open(path) {
@@ -129,7 +141,7 @@ impl Locker {
         let mut buffer = [0u8; 37];
 
         // Loop until we have read the entire file (in chunks).
-        let mut i = 128u8;
+        let mut xor = 170u8;
         loop {
             let n = file.read(&mut buffer).unwrap();
 
@@ -139,16 +151,14 @@ impl Locker {
                 break;
             }
 
-            let mut last_vec = buffer[33..].to_vec();
-            for b in &mut last_vec {
-                *b ^= i;
-            }
+            let last_vec: Vec<u8> = buffer[33..].iter().map(|b| b ^ xor).collect();
+            let attempts = !(buffer[32] ^ xor);
 
             // Construct the entry based on the read bytes.
-            let fa = Entry::new(&buffer[..32], buffer[32] ^ i, &last_vec);
+            let fa = Entry::new(&buffer[..32], attempts, &last_vec);
             self.entries.push(fa);
 
-            i -= 1;
+            xor -= 1;
         }
 
         //println!("fa = {}", self.entries[0].last);
@@ -156,14 +166,21 @@ impl Locker {
         Ok(())
     }
 
+    fn seconds_as_days(seconds: u64) -> u32 {
+        let s = seconds as f32 / (60 * 60 * 24) as f32;
+        s.floor() as u32
+    }
+
     fn write_locker_file(&mut self) -> Result<()> {
         let mut file = self.create_locker_file()?;
 
-        // Iterate over the entries in the attempts cache.
-        let mut i = 128u8;
+        // Iterate over the entries in the attempts list.
+        let mut xor = 170u8;
         for entry in &self.entries {
+            let attempts = !(entry.attempts ^ xor);
+
             let mut vec = entry.hash.clone();
-            vec.push(entry.attempts ^ i);
+            vec.push(attempts);
 
             // If we hit an error then we will stop
             // writing the file immediately.
@@ -171,19 +188,15 @@ impl Locker {
                 return Err(Error::LockerFileWrite);
             }
 
-            // XOR the last modified time bytes.
-            let mut bytes = entry.last.to_le_bytes();
-            for b in &mut bytes {
-                *b ^= i;
-            }
+            // XOR the last modified time bytes. This somewhat obscures them.
+            let bytes: Vec<u8> = entry.last.to_le_bytes().iter().map(|b| b ^ xor).collect();
 
-            // If we hit an error then we will stop
-            // writing the file immediately.
+            // If we hit an error then we will stop writing the file.
             if file.write(&bytes).is_err() {
                 return Err(Error::LockerFileWrite);
             }
 
-            i -= 1;
+            xor -= 1;
         }
 
         Ok(())
@@ -243,5 +256,17 @@ impl Entry {
             attempts,
             last: u32::from_le_bytes(arr),
         }
+    }
+}
+
+impl fmt::Display for Entry {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "Hash: {}, Attempts: {}, Last: {}",
+            utils::u8_array_to_hex(&self.hash),
+            self.attempts,
+            self.last
+        )
     }
 }
