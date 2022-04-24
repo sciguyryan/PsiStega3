@@ -13,7 +13,6 @@ use std::{
 };
 
 // TODO: make this private for release.
-// TODO: allocate enough space for 100 entries.
 pub struct Locker {
     entries: Vec<Entry>,
     rng: ChaCha20Rng,
@@ -32,6 +31,12 @@ impl Locker {
         //println!("fa = {}", l.entries[0].last);
 
         Ok(l)
+    }
+
+    fn cipher_slice(slice: &mut [u8], xor: u8) {
+        for b in slice.iter_mut() {
+            *b = !(*b ^ xor)
+        }
     }
 
     fn create_locker_file(&mut self) -> Result<File> {
@@ -60,11 +65,11 @@ impl Locker {
         let mut hash: Vec<u8> = Vec::with_capacity(32);
         utils::fast_fill_vec_random(&mut hash, &mut self.rng);
 
-        // Create a dummy date between the start of the UNIX
-        // epoch and yesterday.
+        // Create a dummy date between now and a year ago.
         // As this date is in the past, it may always be overwritten.
-        let now = Locker::get_days_since_epoch();
-        let days = self.rng.gen_range(0..now).to_le_bytes();
+        let end = Locker::get_days_since_epoch();
+        let start = end - 365;
+        let days = self.rng.gen_range(start..end).to_le_bytes();
 
         Entry::new(&hash, 0, &days)
     }
@@ -108,16 +113,17 @@ impl Locker {
         } as u32;
     }
 
+    #[allow(dead_code)]
+    #[cfg(debug_assertions)]
     fn print_locker_list(&self) {
-        #[cfg(debug_assertions)]
-        {
-            for (i, e) in self.entries.iter().enumerate() {
-                println!("Entry {} : {}", i, e);
-            }
+        for (i, e) in self.entries.iter().enumerate() {
+            println!("Entry {} : {}", i, e);
         }
     }
 
     fn read_locker_file(&mut self) -> Result<()> {
+        const ENTRY_SIZE: usize = 37;
+
         let path = Locker::get_locker_file_path()?;
         if !path.exists() {
             return Ok(());
@@ -125,7 +131,7 @@ impl Locker {
 
         // This will indicate a corrupted locker file.
         let metadata = Locker::get_file_metadata(&path)?;
-        if metadata.len() % 37 != 0 {
+        if metadata.len() % (ENTRY_SIZE as u64) != 0 {
             return Err(Error::LockerFileRead);
         }
 
@@ -144,7 +150,7 @@ impl Locker {
         };
 
         // This will hold the chunk of data that is being read.
-        let mut buffer = [0u8; 37];
+        let mut buffer = [0u8; ENTRY_SIZE];
 
         // Loop until we have read the entire file (in chunks).
         let mut xor = 170u8;
@@ -154,25 +160,21 @@ impl Locker {
                 break;
             }
 
-            let bytes = &buffer[..32];
-            let attempts = !(buffer[32] ^ xor);
-            let last_vec: Vec<u8> = buffer[33..].iter().map(|b| b ^ xor).collect();
+            // Decipher the bytes.
+            Locker::cipher_slice(&mut buffer, xor);
 
             // Construct the entry based on the read bytes.
-            let fa = Entry::new(bytes, attempts, &last_vec);
+            let fa = Entry::new(&buffer[..32], buffer[32], &buffer[33..]);
             self.entries.push(fa);
 
             xor -= 1;
         }
 
-        //println!("fa = {}", self.entries[0].last);
-
         Ok(())
     }
 
     fn seconds_as_days(seconds: u64) -> u32 {
-        let s = seconds as f32 / (60 * 60 * 24) as f32;
-        s.floor() as u32
+        (seconds as f32 / (60 * 60 * 24) as f32).floor() as u32
     }
 
     fn write_locker_file(&mut self) -> Result<()> {
@@ -181,22 +183,18 @@ impl Locker {
         // Iterate over the entries in the attempts list.
         let mut xor = 170u8;
         for entry in &self.entries {
-            let attempts = !(entry.attempts ^ xor);
-
             let mut vec = entry.hash.clone();
-            vec.push(attempts);
+            vec.push(entry.attempts);
+
+            let mut bytes = entry.last.to_le_bytes().to_vec();
+            vec.append(&mut bytes);
+
+            // Cipher the bytes.
+            Locker::cipher_slice(&mut vec, xor);
 
             // If we hit an error then we will stop
             // writing the file immediately.
             if file.write(&vec).is_err() {
-                return Err(Error::LockerFileWrite);
-            }
-
-            // XOR the last modified time bytes. This somewhat obscures them.
-            let bytes: Vec<u8> = entry.last.to_le_bytes().iter().map(|b| b ^ xor).collect();
-
-            // If we hit an error then we will stop writing the file.
-            if file.write(&bytes).is_err() {
                 return Err(Error::LockerFileWrite);
             }
 
@@ -209,7 +207,14 @@ impl Locker {
 
 impl Drop for Locker {
     fn drop(&mut self) {
-        _ = self.write_locker_file();
+        // If writing the locker file failed, delete it and allow it to
+        // be re-created the next time the program runs.
+        let r = self.write_locker_file();
+        if r.is_err() {
+            if let Ok(path) = Locker::get_locker_file_path() {
+                _ = fs::remove_file(path);
+            }
+        }
 
         // Next, we need to set the data files modified
         // date to be the same as the executable file.

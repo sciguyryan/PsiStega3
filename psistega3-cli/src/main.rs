@@ -15,7 +15,7 @@ use std::{convert::TryFrom, env, io::stdin};
 //ookneporlygs
 
 fn main() {
-    let locker = Locker::new();
+    let _locker = Locker::new();
 
     SimpleLogger::new().init().unwrap();
 
