@@ -35,6 +35,36 @@ pub(crate) fn base64_string_to_vector(b64_str: &str) -> Result<Vec<u8>> {
     }
 }
 
+/// Calculate the Shannon entropy of a byte vector.
+///
+/// # Arguments
+///
+/// * `bytes` - The slice of u8 values.
+///
+pub fn entropy(bytes: &[u8]) -> f32 {
+    let mut histogram = [0u64; 256];
+
+    for &b in bytes {
+        histogram[b as usize] += 1;
+    }
+
+    // The total entropy is the sum of the probabilities
+    // of each byte occurring within a sequence.
+    // The maximum total entropy is equal to the
+    // total number of microstates in each term.
+    // As a byte typically consists of 8-bits in most
+    // modern systems, the maximum entropy will be 8.
+    // The closer to 8, the higher the total entropy is.
+    let len = bytes.len();
+    histogram
+        .iter()
+        .cloned()
+        .filter(|&v| v != 0)
+        .map(|v| v as f32 / len as f32)
+        .map(|r| -r * r.log2())
+        .sum()
+}
+
 /// Check if a bitmask is set for a given u8 value.
 ///
 /// # Arguments
