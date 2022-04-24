@@ -123,6 +123,12 @@ impl Locker {
             return Ok(());
         }
 
+        // This will indicate a corrupted locker file.
+        let metadata = Locker::get_file_metadata(&path)?;
+        if metadata.len() % 37 != 0 {
+            return Err(Error::LockerFileRead);
+        }
+
         /*let fe = File::open(path.clone()).unwrap();
         let mut reader = std::io::BufReader::new(fe);
         let mut buffer = Vec::new();
@@ -142,20 +148,18 @@ impl Locker {
 
         // Loop until we have read the entire file (in chunks).
         let mut xor = 170u8;
-        loop {
-            let n = file.read(&mut buffer).unwrap();
-
-            // Either there are not enough bytes to
-            // create a file access struct instance.
+        while let Ok(n) = file.read(&mut buffer) {
+            // Either there are not enough bytes to create a file access struct instance.
             if n < 37 {
                 break;
             }
 
-            let last_vec: Vec<u8> = buffer[33..].iter().map(|b| b ^ xor).collect();
+            let bytes = &buffer[..32];
             let attempts = !(buffer[32] ^ xor);
+            let last_vec: Vec<u8> = buffer[33..].iter().map(|b| b ^ xor).collect();
 
             // Construct the entry based on the read bytes.
-            let fa = Entry::new(&buffer[..32], attempts, &last_vec);
+            let fa = Entry::new(bytes, attempts, &last_vec);
             self.entries.push(fa);
 
             xor -= 1;
