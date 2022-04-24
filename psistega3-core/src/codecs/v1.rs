@@ -1,7 +1,7 @@
 use crate::codecs::codec::Codec;
 use crate::error::{Error, Result};
 use crate::image_wrapper::ImageWrapper;
-use crate::{hashers::*, logger, utils};
+use crate::{hashers, logger, utils};
 
 use aes_gcm::{
     aead::{Aead, NewAead},
@@ -65,7 +65,7 @@ impl StegaV1 {
           as we will need the salt, which will not be available when
           initially reading the data from the file.
         */
-        let bytes = Hashers::sha3_256_string(key);
+        let bytes = hashers::sha3_256_string(key);
         let mut rng: ChaCha20Rng = StegaV1::u8_slice_to_seed(&bytes);
 
         // It doesn't matter if we call this on reference or encoded
@@ -109,7 +109,7 @@ impl StegaV1 {
             return Err(Error::ImageDimensionsMismatch);
         }
 
-        let file_hash_bytes = Hashers::sha3_512_file(original_img_path)?;
+        let file_hash_bytes = hashers::sha3_512_file(original_img_path)?;
         let file_hash_string = utils::u8_array_to_hex(&file_hash_bytes);
 
         // The key for the encryption is the SHA3-512 hash of the input image file
@@ -186,7 +186,7 @@ impl StegaV1 {
         let ct_bytes = data.pop_vec(total_ct_cells as usize);
 
         // Now we can compute the Argon2 hash.
-        let key_bytes_full = Hashers::argon2_string(
+        let key_bytes_full = hashers::argon2_string(
             &composite_key,
             salt_bytes,
             M_COST,
@@ -248,7 +248,7 @@ impl StegaV1 {
         // We don't need to hold a separate reference image instance here.
         let mut img = StegaV1::load_image(original_img_path, false)?;
 
-        let file_hash_bytes = Hashers::sha3_512_file(original_img_path)?;
+        let file_hash_bytes = hashers::sha3_512_file(original_img_path)?;
         let file_hash_string = utils::u8_array_to_hex(&file_hash_bytes);
 
         /*
@@ -263,7 +263,7 @@ impl StegaV1 {
 
         // Generate a random salt for the Argon2 hashing function.
         let salt_bytes: [u8; 12] = utils::secure_random_bytes();
-        let key_bytes_full = Hashers::argon2_string(
+        let key_bytes_full = hashers::argon2_string(
             &composite_key,
             salt_bytes,
             M_COST,
@@ -885,7 +885,7 @@ impl DataEncoder {
 
 #[cfg(test)]
 mod tests_encode_decode {
-    use crate::{codecs::codec::Codec, hashers::Hashers, utils};
+    use crate::{codecs::codec::Codec, hashers, utils};
 
     use path_absolutize::Absolutize;
     use rand::Rng;
@@ -1112,8 +1112,8 @@ mod tests_encode_decode {
 
         // Create a hash of the original and new file. If these hashes match then we
         // can be confident that the files are the same.
-        let hash_original = Hashers::sha3_512_file(&output_file_path);
-        let hash_new = Hashers::sha3_512_file(&output_file_path);
+        let hash_original = hashers::sha3_512_file(&output_file_path);
+        let hash_new = hashers::sha3_512_file(&output_file_path);
 
         assert_eq!(
             hash_original, hash_new,
@@ -1186,8 +1186,8 @@ mod tests_encode_decode {
         // Create a hash of the original and new file. If these hashes match then we
         // can be confident that the files are the same.
         assert_eq!(
-            Hashers::sha3_512_file(&original_file_path),
-            Hashers::sha3_512_file(&output_file_path),
+            hashers::sha3_512_file(&original_file_path),
+            hashers::sha3_512_file(&output_file_path),
             "decoded file is not the same as the original."
         );
     }

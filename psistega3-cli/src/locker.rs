@@ -219,8 +219,7 @@ impl Drop for Locker {
     fn drop(&mut self) {
         // If writing the locker file failed, delete it and allow it to
         // be re-created the next time the program runs.
-        let r = self.write_locker_file();
-        if r.is_err() {
+        if self.write_locker_file().is_err() {
             if let Ok(path) = Locker::get_locker_file_path() {
                 _ = fs::remove_file(path);
             }
@@ -256,7 +255,7 @@ impl Drop for Locker {
 }
 
 #[derive(Debug)]
-pub struct LockerEntry {
+struct LockerEntry {
     hash: Vec<u8>,
     attempts: u8,
     last: u32,

@@ -3,7 +3,7 @@ use crate::error::{Error, Result};
 use image::{ColorType, DynamicImage, GenericImageView, ImageFormat};
 
 #[derive(Clone, Debug)]
-pub(crate) struct ImageWrapper {
+pub struct ImageWrapper {
     image_bytes: Vec<u8>,
     /// A boolean indicating whether modifications to the image should be permitted.
     read_only: bool,
