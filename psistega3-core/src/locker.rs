@@ -1,6 +1,9 @@
-use crate::error::*;
+use crate::{error::*, utils};
 
 use filetime::FileTime;
+use rand::Rng;
+use rand_chacha::ChaCha20Rng;
+use rand_core::SeedableRng;
 use std::{
     fs::{self, File},
     io::{Read, Write},
@@ -9,44 +12,66 @@ use std::{
 };
 
 // TODO: make this private for release.
+// TODO: allocate enough space for 100 entries.
 pub struct Locker {
     entries: Vec<Entry>,
+    rng: ChaCha20Rng,
 }
 
 impl Locker {
     pub fn new() -> Result<Self> {
         let mut l = Self {
             entries: Vec::new(),
+            rng: ChaCha20Rng::from_entropy(),
         };
-
-        /*let n = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH);
-        let mut n2 = n.unwrap().as_secs();
-        n2 -= (60*60*24*30)+1;
-
-        println!("Seconds = {}", n2);
-
-        let bytes = if cfg!(target_endian = "little") {
-            u64::to_le_bytes(n2)
-        } else {
-            u64::to_be_bytes(n2)
-        };
-
-        l.entries.push(Entry::new(&Hashers::sha3_256_string("aaaa"), 255, &bytes));*/
 
         l.read_locker_file()?;
+
+        //println!("fa = {}", l.entries[0].last);
 
         Ok(l)
     }
 
-    fn create_locker_file() -> Result<File> {
+    fn create_locker_file(&mut self) -> Result<File> {
         let path = Locker::get_locker_file_path();
         if path.is_err() {
             return Err(Error::LockerFilePath);
         }
 
-        match File::create(path.unwrap()) {
-            Ok(f) => Ok(f),
-            Err(_) => Err(Error::LockerFileCreation),
+        let path = path.unwrap();
+        let is_new_file = path.exists();
+
+        let f = match File::create(path) {
+            Ok(f) => f,
+            Err(_) => return Err(Error::LockerFileCreation),
+        };
+
+        // Now we need to preload the file with junk data.
+        if !is_new_file {
+            self.generate_dummy_entries();
+        }
+
+        Ok(f)
+    }
+
+    fn generate_dummy_entry(&mut self) -> Entry {
+        // Create a dummy hash.
+        let mut hash: Vec<u8> = Vec::with_capacity(32);
+        utils::fast_fill_vec_random(&mut hash, &mut self.rng);
+
+        // Create a dummy date between the start of the UNIX
+        // epoch and yesterday.
+        // As this date is in the past, it may always be overwritten.
+        let now = Locker::get_days_since_epoch();
+        let days = self.rng.gen_range(0..now).to_le_bytes();
+
+        Entry::new(&hash, 128, &days)
+    }
+
+    fn generate_dummy_entries(&mut self) {
+        for _ in 0..100 {
+            let dummy = self.generate_dummy_entry();
+            self.entries.push(dummy);
         }
     }
 
@@ -60,7 +85,7 @@ impl Locker {
         Ok(path)
     }
 
-    pub fn get_executable_path() -> Result<PathBuf> {
+    fn get_executable_path() -> Result<PathBuf> {
         match std::env::current_exe() {
             Ok(p) => Ok(p),
             Err(_) => Err(Error::LockerFilePath),
@@ -72,6 +97,19 @@ impl Locker {
             Ok(m) => Ok(m),
             Err(_) => Err(Error::FileMetadata),
         }
+    }
+
+    fn get_days_since_epoch() -> u32 {
+        // The number of days since the UNIX epoch.
+        return match SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
+            Ok(n) => Locker::seconds_as_days(n.as_secs()),
+            Err(_) => panic!("SystemTime before UNIX EPOCH!"),
+        } as u32;
+    }
+
+    fn seconds_as_days(seconds: u64) -> u32 {
+        let s = seconds as f32 / (60 * 60 * 24) as f32;
+        s.floor() as u32
     }
 
     fn read_locker_file(&mut self) -> Result<()> {
@@ -88,13 +126,13 @@ impl Locker {
             }
         };
 
-        // The number of seconds since the UNIX epoch.
-        let now = match SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
-            Ok(n) => n.as_secs(),
-            Err(_) => panic!("SystemTime before UNIX EPOCH!"),
-        };
+        // The number of days since the UNIX epoch.
+        let now = Locker::get_days_since_epoch();
 
-        let mut buffer = [0u8; 41];
+        // This will hold the chunk of data that is being read.
+        let mut buffer = [0u8; 37];
+
+        let mut i = 0u8;
 
         // Loop until we have read the entire file (in chunks).
         loop {
@@ -102,36 +140,47 @@ impl Locker {
 
             // Either there are not enough bytes to
             // create a file access struct instance.
-            if n < 41 {
+            if n < 37 {
                 break;
             }
 
+            let mut last_vec = buffer[33..].to_vec();
+            for b in &mut last_vec {
+                *b ^= i;
+            }
+
             // Construct the entry based on the read bytes.
-            let fa = Entry::new(&buffer[..32], buffer[32], &buffer[33..]);
+            let mut fa = Entry::new(&buffer[..32], buffer[32] ^ i, &last_vec);
 
             // This should never happen, it would mean that the entry
-            // was last modified after the the present.
-            let last = if fa.last > now { now } else { fa.last };
+            // was last modified after the present, which should not
+            // be possible. It could indicate tampering with the
+            // system clock, or with the file itself.
+            let last = if fa.last > now { now - 31 } else { fa.last };
 
-            // If the last attempt was more than 30 days ago
-            // then we will disregard it.
-            if (now - last) > 60 * 60 * 24 * 30 {
-                continue;
+            // If the last attempt was more than the entry can be
+            // overwritten with a dummy entry.
+            if (now - last) > 30 {
+                fa = Locker::generate_dummy_entry(self);
             }
 
             self.entries.push(fa);
+
+            i += 1;
         }
+
+        //println!("fa = {}", self.entries[0].last);
 
         Ok(())
     }
 
-    fn write_locker_file(&self) -> Result<()> {
-        let mut file = Locker::create_locker_file()?;
+    fn write_locker_file(&mut self) -> Result<()> {
+        let mut file = self.create_locker_file()?;
 
         // Iterate over the entries in the attempts cache.
-        for entry in &self.entries {
+        for (i, entry) in (0_u8..).zip(self.entries.iter()) {
             let mut vec = entry.hash.clone();
-            vec.push(entry.attempts);
+            vec.push(entry.attempts ^ i);
 
             // If we hit an error then we will stop
             // writing the file immediately.
@@ -139,7 +188,11 @@ impl Locker {
                 return Err(Error::LockerFileWrite);
             }
 
-            let bytes = u64::to_le_bytes(entry.last);
+            // XOR the last modified time bytes.
+            let mut bytes = entry.last.to_le_bytes();
+            for b in &mut bytes {
+                *b ^= i;
+            }
 
             // If we hit an error then we will stop
             // writing the file immediately.
@@ -189,21 +242,21 @@ impl Drop for Locker {
 struct Entry {
     hash: Vec<u8>,
     attempts: u8,
-    last: u64,
+    last: u32,
 }
 
 impl Entry {
     pub fn new(hash: &[u8], attempts: u8, last: &[u8]) -> Self {
         assert!(
-            last.len() == 8,
-            "Invalid number of bytes to represent a u64 value."
+            last.len() == 4,
+            "Invalid number of bytes to represent a u32 value."
         );
-        let arr = <[u8; 8]>::try_from(last).unwrap();
+        let arr = <[u8; 4]>::try_from(last).unwrap();
 
         Self {
             hash: hash.to_vec(),
             attempts,
-            last: u64::from_le_bytes(arr),
+            last: u32::from_le_bytes(arr),
         }
     }
 }
