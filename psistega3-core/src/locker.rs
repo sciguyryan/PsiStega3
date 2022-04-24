@@ -39,17 +39,16 @@ impl Locker {
         }
 
         let path = path.unwrap();
-        let is_new_file = path.exists();
+
+        // Now we need to preload the entries list with junk data.
+        if !path.exists() {
+            self.generate_dummy_entries();
+        }
 
         let f = match File::create(path) {
             Ok(f) => f,
             Err(_) => return Err(Error::LockerFileCreation),
         };
-
-        // Now we need to preload the file with junk data.
-        if !is_new_file {
-            self.generate_dummy_entries();
-        }
 
         Ok(f)
     }
@@ -126,15 +125,11 @@ impl Locker {
             }
         };
 
-        // The number of days since the UNIX epoch.
-        let now = Locker::get_days_since_epoch();
-
         // This will hold the chunk of data that is being read.
         let mut buffer = [0u8; 37];
 
-        let mut i = 0u8;
-
         // Loop until we have read the entire file (in chunks).
+        let mut i = 128u8;
         loop {
             let n = file.read(&mut buffer).unwrap();
 
@@ -150,23 +145,10 @@ impl Locker {
             }
 
             // Construct the entry based on the read bytes.
-            let mut fa = Entry::new(&buffer[..32], buffer[32] ^ i, &last_vec);
-
-            // This should never happen, it would mean that the entry
-            // was last modified after the present, which should not
-            // be possible. It could indicate tampering with the
-            // system clock, or with the file itself.
-            let last = if fa.last > now { now - 31 } else { fa.last };
-
-            // If the last attempt was more than the entry can be
-            // overwritten with a dummy entry.
-            if (now - last) > 30 {
-                fa = Locker::generate_dummy_entry(self);
-            }
-
+            let fa = Entry::new(&buffer[..32], buffer[32] ^ i, &last_vec);
             self.entries.push(fa);
 
-            i += 1;
+            i -= 1;
         }
 
         //println!("fa = {}", self.entries[0].last);
@@ -178,7 +160,8 @@ impl Locker {
         let mut file = self.create_locker_file()?;
 
         // Iterate over the entries in the attempts cache.
-        for (i, entry) in (0_u8..).zip(self.entries.iter()) {
+        let mut i = 128u8;
+        for entry in &self.entries {
             let mut vec = entry.hash.clone();
             vec.push(entry.attempts ^ i);
 
@@ -199,6 +182,8 @@ impl Locker {
             if file.write(&bytes).is_err() {
                 return Err(Error::LockerFileWrite);
             }
+
+            i -= 1;
         }
 
         Ok(())
