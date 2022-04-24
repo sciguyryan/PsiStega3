@@ -1,12 +1,12 @@
 #![crate_name = "psistega3_cli"]
 mod error;
-mod utils;
+mod locker;
 
 use crate::error::{Error, Result};
 
+use locker::Locker;
 use psistega3_core::codecs::codec::{Codec, Config};
 use psistega3_core::codecs::v1::StegaV1;
-use psistega3_core::locker::*;
 use psistega3_core::version::*;
 
 use simple_logger::SimpleLogger;
@@ -15,7 +15,7 @@ use std::{convert::TryFrom, env, io::stdin};
 //ookneporlygs
 
 fn main() {
-    let _locker = Locker::new();
+    let locker = Locker::new();
 
     SimpleLogger::new().init().unwrap();
 
@@ -41,7 +41,7 @@ fn main() {
         "-e" | "-encrypt" | "-d" | "-decrypt" | "-ef" | "-encrypt-file" | "-df"
         | "-decrypt-file" => {
             if args.len() < 6 {
-                utils::show_abort_message(Error::InsufficientArguments);
+                show_abort_message(Error::InsufficientArguments);
             }
         }
         _ => {
@@ -63,7 +63,7 @@ fn main() {
         }
 
         if codec_version.is_none() {
-            utils::show_abort_message(Error::InvalidVersion);
+            show_abort_message(Error::InvalidVersion);
         }
 
         // The unwrap is safe here as we have verified the codec version
@@ -92,7 +92,7 @@ fn main() {
 
     // If we encountered an error then display that error to the console.
     if let Err(e) = result {
-        utils::show_abort_message(e);
+        show_abort_message(e);
     }
 
     let arg_len = &args.len();
@@ -370,6 +370,17 @@ fn read_password_from_args(args: &[String]) -> Option<String> {
     }
 
     Some(args[index].to_string())
+}
+
+/// Write an [`Error`] message on screen and then abort the program.
+///
+/// # Arguments
+///
+/// * `error` - The [`Error`] to be displayed on screen.
+///
+pub fn show_abort_message(error: Error) {
+    println!("Error: {}", error);
+    std::process::exit(0);
 }
 
 /// Write some basic help information on screen.

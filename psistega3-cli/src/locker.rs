@@ -1,4 +1,4 @@
-use crate::{error::*, utils};
+use crate::error::*;
 
 use filetime::FileTime;
 use rand::Rng;
@@ -14,7 +14,7 @@ use std::{
 
 // TODO: make this private for release.
 pub struct Locker {
-    entries: Vec<Entry>,
+    entries: Vec<LockerEntry>,
     rng: ChaCha20Rng,
 }
 
@@ -60,7 +60,9 @@ impl Locker {
         Ok(f)
     }
 
-    fn generate_dummy_entry(&mut self) -> Entry {
+    fn generate_dummy_entry(&mut self) -> LockerEntry {
+        use psistega3_core::utils;
+
         // Create a dummy hash.
         let mut hash: Vec<u8> = Vec::with_capacity(32);
         utils::fast_fill_vec_random(&mut hash, &mut self.rng);
@@ -71,13 +73,32 @@ impl Locker {
         let start = end - 365;
         let days = self.rng.gen_range(start..end).to_le_bytes();
 
-        Entry::new(&hash, 0, &days)
+        LockerEntry::new(&hash, 0, &days)
     }
 
     fn generate_dummy_entries(&mut self) {
         for _ in 0..100 {
             let dummy = self.generate_dummy_entry();
             self.entries.push(dummy);
+        }
+    }
+
+    pub fn get_entry_by_hash(&self, hash: Vec<u8>) -> Option<&LockerEntry> {
+        self.entries.iter().find(|&e| e.hash == hash)
+    }
+
+    fn get_days_since_epoch() -> u32 {
+        // The number of days since the UNIX epoch.
+        return match SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
+            Ok(n) => Locker::seconds_as_days(n.as_secs()),
+            Err(_) => panic!("SystemTime before UNIX EPOCH!"),
+        } as u32;
+    }
+
+    fn get_executable_path() -> Result<PathBuf> {
+        match std::env::current_exe() {
+            Ok(p) => Ok(p),
+            Err(_) => Err(Error::LockerFilePath),
         }
     }
 
@@ -91,13 +112,6 @@ impl Locker {
         Ok(path)
     }
 
-    fn get_executable_path() -> Result<PathBuf> {
-        match std::env::current_exe() {
-            Ok(p) => Ok(p),
-            Err(_) => Err(Error::LockerFilePath),
-        }
-    }
-
     fn get_file_metadata(path: &PathBuf) -> Result<fs::Metadata> {
         match fs::metadata(path) {
             Ok(m) => Ok(m),
@@ -105,13 +119,9 @@ impl Locker {
         }
     }
 
-    fn get_days_since_epoch() -> u32 {
-        // The number of days since the UNIX epoch.
-        return match SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
-            Ok(n) => Locker::seconds_as_days(n.as_secs()),
-            Err(_) => panic!("SystemTime before UNIX EPOCH!"),
-        } as u32;
-    }
+    pub fn clear_file_lock(&mut self, file_path: &str) {}
+
+    pub fn maybe_lock_file(&mut self, file_path: &str) {}
 
     #[allow(dead_code)]
     #[cfg(debug_assertions)]
@@ -164,7 +174,7 @@ impl Locker {
             Locker::cipher_slice(&mut buffer, xor);
 
             // Construct the entry based on the read bytes.
-            let fa = Entry::new(&buffer[..32], buffer[32], &buffer[33..]);
+            let fa = LockerEntry::new(&buffer[..32], buffer[32], &buffer[33..]);
             self.entries.push(fa);
 
             xor -= 1;
@@ -246,13 +256,13 @@ impl Drop for Locker {
 }
 
 #[derive(Debug)]
-struct Entry {
+pub struct LockerEntry {
     hash: Vec<u8>,
     attempts: u8,
     last: u32,
 }
 
-impl Entry {
+impl LockerEntry {
     pub fn new(hash: &[u8], attempts: u8, last: &[u8]) -> Self {
         assert!(
             last.len() == 4,
@@ -268,8 +278,10 @@ impl Entry {
     }
 }
 
-impl fmt::Display for Entry {
+impl fmt::Display for LockerEntry {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use psistega3_core::utils;
+
         write!(
             f,
             "Hash: {}, Attempts: {}, Last: {}",

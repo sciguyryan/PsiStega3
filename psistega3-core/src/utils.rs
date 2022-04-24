@@ -92,7 +92,7 @@ pub(crate) fn is_little_endian() -> bool {
 /// capacity.
 ///
 #[inline]
-pub(crate) fn fast_fill_vec_random<T>(in_vec: &mut Vec<u8>, rng: &mut T)
+pub fn fast_fill_vec_random<T>(in_vec: &mut Vec<u8>, rng: &mut T)
 where
     T: RngCore,
 {
@@ -195,7 +195,7 @@ pub(crate) fn set_bit_state(value: &mut u8, index: usize, state: bool) {
 /// completely internal and is designed for use with debug code.
 ///
 #[allow(unused_must_use)]
-pub(crate) fn u8_array_to_hex(arr: &[u8]) -> String {
+pub fn u8_array_to_hex(arr: &[u8]) -> String {
     let mut str = String::with_capacity(2 * arr.len());
     arr.iter().for_each(|byte| {
         write!(str, "{:02X}", byte);

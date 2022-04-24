@@ -24,8 +24,6 @@ pub enum Error {
     FileCreate,
     /// An error occurred while attempting to hash a file.
     FileHashingError,
-    /// Unable to get the file metadata.
-    FileMetadata,
     /// Error reading from a file.
     FileRead,
     /// Error writing to a file.
@@ -44,14 +42,6 @@ pub enum Error {
     ImageSaving(String),
     /// The image type is cannot be used for steganography.
     ImageTypeInvalid,
-    /// Unable to create the data file.
-    LockerFileCreation,
-    /// Unable to determine the data file path.
-    LockerFilePath,
-    /// Unable to read the data file.
-    LockerFileRead,
-    /// Unable to write the data file.
-    LockerFileWrite,
     /// The specified path is invalid.
     PathInvalid,
     /// Invalid version number.
@@ -70,7 +60,6 @@ impl fmt::Display for Error {
             Error::File => "A generic file-related error occurred.",
             Error::FileCreate => "An error occurred when attempting to create a file.",
             Error::FileHashingError => "An error occurred when attempting to hash a file.",
-            Error::FileMetadata => "Unable to get the file metadata.",
             Error::FileRead => "An error occurred when attempting to read from a file.",
             Error::FileWrite => "An error occurred when attempting to write to a file.",
             Error::ImageDimensionsInvalid => {
@@ -84,10 +73,6 @@ impl fmt::Display for Error {
             Error::ImageOpening => "Error when attempting to load the specified image.",
             Error::ImageSaving(s) => s,
             Error::ImageTypeInvalid => "Invalid image pixel type.",
-            Error::LockerFileCreation => "Unable to create the locker file.",
-            Error::LockerFilePath => "Unable to find the locker file path.",
-            Error::LockerFileRead => "Unable to read the locker file.",
-            Error::LockerFileWrite => "Unable to write the locker file.",
             Error::PathInvalid => "The specified path is invalid or does not exist.",
             Error::VersionInvalid => "The version number is invalid.",
         })

@@ -1,8 +1,7 @@
 use crate::codecs::codec::Codec;
 use crate::error::{Error, Result};
 use crate::image_wrapper::ImageWrapper;
-use crate::utils;
-use crate::{hashers::*, logger};
+use crate::{hashers::*, logger, utils};
 
 use aes_gcm::{
     aead::{Aead, NewAead},

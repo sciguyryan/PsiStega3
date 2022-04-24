@@ -7,7 +7,3 @@ mod image_wrapper;
 mod logger;
 pub mod utils;
 pub mod version;
-
-#[cfg(feature = "locker")]
-// TODO: change this to private in release.
-pub mod locker;
