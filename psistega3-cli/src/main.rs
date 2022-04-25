@@ -2,7 +2,6 @@
 mod error;
 
 use crate::error::{Error, Result};
-use crate::locker::Locker;
 
 use psistega3_core::codecs::codec::{Codec, Config};
 use psistega3_core::codecs::v1::StegaV1;
@@ -14,8 +13,6 @@ use std::{convert::TryFrom, env, io::stdin};
 //ookneporlygs
 
 fn main() {
-    let mut locker = Locker::new();
-
     SimpleLogger::new().init().unwrap();
 
     let mut args: Vec<String> = env::args().collect();

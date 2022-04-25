@@ -7,5 +7,3 @@ mod image_wrapper;
 mod logger;
 pub mod utils;
 pub mod version;
-
-mod locker;

@@ -1,7 +1,6 @@
 use crate::codecs::codec::Codec;
 use crate::error::{Error, Result};
 use crate::image_wrapper::ImageWrapper;
-use crate::locker::Locker;
 use crate::{hashers, logger, utils};
 
 use aes_gcm::{
@@ -41,26 +40,15 @@ pub struct StegaV1 {
     /// This method will not use randomness to determine the pixel value variance
     /// and will instead alternate between adding and subtracting 1.
     fast_variance: bool,
-
-    locker: Option<Locker>,
 }
 
 impl StegaV1 {
     pub fn new() -> Self {
-        #[cfg(feature = "locker")]
-        let locker = match Locker::new() {
-            Ok(l) => Some(l),
-            Err(_) => None,
-        };
-        #[cfg(not(feature = "locker"))]
-        let locker = None;
-
         Self {
             data_cell_map: HashMap::with_capacity(1),
             noise_layer: true,
             output_files: true,
             fast_variance: false,
-            locker,
         }
     }
 
