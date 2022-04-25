@@ -217,12 +217,9 @@ impl Locker {
 
 impl Drop for Locker {
     fn drop(&mut self) {
-        // If writing the locker file failed, delete it and allow it to
-        // be re-created the next time the program runs.
+        // If writing the locker file failed, exit immediately.
         if self.write_locker_file().is_err() {
-            if let Ok(path) = Locker::get_locker_file_path() {
-                _ = fs::remove_file(path);
-            }
+            return;
         }
 
         // Next, we need to set the data files modified
