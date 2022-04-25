@@ -1,6 +1,5 @@
 #![crate_name = "psistega3_cli"]
 mod error;
-mod locker;
 
 use crate::error::{Error, Result};
 use crate::locker::Locker;

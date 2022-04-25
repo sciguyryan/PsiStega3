@@ -1,4 +1,4 @@
-use crate::error::*;
+use crate::{error::*, utils};
 
 use filetime::FileTime;
 use rand::Rng;
@@ -13,6 +13,7 @@ use std::{
 };
 
 // TODO: make this private for release.
+#[derive(Debug)]
 pub struct Locker {
     entries: Vec<LockerEntry>,
     rng: ChaCha20Rng,
@@ -61,8 +62,6 @@ impl Locker {
     }
 
     fn generate_dummy_entry(&mut self) -> LockerEntry {
-        use psistega3_core::utils;
-
         // Create a dummy hash.
         let mut hash: Vec<u8> = Vec::with_capacity(32);
         utils::fast_fill_vec_random(&mut hash, &mut self.rng);
@@ -83,7 +82,7 @@ impl Locker {
         }
     }
 
-    pub fn get_entry_by_hash(&self, hash: Vec<u8>) -> Option<&LockerEntry> {
+    fn get_entry_by_hash(&self, hash: Vec<u8>) -> Option<&LockerEntry> {
         self.entries.iter().find(|&e| e.hash == hash)
     }
 
@@ -218,6 +217,7 @@ impl Locker {
 impl Drop for Locker {
     fn drop(&mut self) {
         // If writing the locker file failed, exit immediately.
+        // TODO: it may be prudent to delete the file if the file isn't locked.
         if self.write_locker_file().is_err() {
             return;
         }
@@ -276,8 +276,6 @@ impl LockerEntry {
 
 impl fmt::Display for LockerEntry {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use psistega3_core::utils;
-
         write!(
             f,
             "Hash: {}, Attempts: {}, Last: {}",
