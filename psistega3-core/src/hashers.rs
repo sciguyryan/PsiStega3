@@ -1,64 +1,22 @@
-use argon2::Argon2;
-use sha3::{Digest, Sha3_256, Sha3_512};
-use std::io::prelude::*;
-
 use crate::error::{Error, Result};
 
-#[allow(dead_code)]
-pub fn sha3_256_file(path: &str) -> Result<Vec<u8>> {
-    let mut hasher = Sha3_256::new();
+use argon2::Argon2;
+use crc32fast::Hasher as Crc32;
+use sha3::{Digest, Sha3_256, Sha3_512};
+use std::fs::File;
+use std::io::prelude::*;
 
-    // The file will automatically be closed when it goes out of scope.
-    let mut file = match std::fs::File::open(path) {
-        Ok(f) => f,
-        Err(_) => {
-            return Err(Error::FileHashingError);
-        }
-    };
-    let mut buffer = [0u8; 16384];
-
-    // Loop until we have read the entire file (in chunks).
-    loop {
-        let n = file.read(&mut buffer).unwrap();
-        if n == 0 {
-            break;
-        }
-        hasher.update(&buffer[..n]);
-    }
-
-    Ok(hasher.finalize().to_vec())
-}
-
-pub fn sha3_512_file(path: &str) -> Result<Vec<u8>> {
-    let mut hasher = Sha3_512::new();
-
-    // The file will automatically be closed when it goes out of scope.
-    let mut file = match std::fs::File::open(path) {
-        Ok(f) => f,
-        Err(_) => {
-            return Err(Error::FileHashingError);
-        }
-    };
-    let mut buffer = [0u8; 16384];
-
-    // Loop until we have read the entire file (in chunks).
-    loop {
-        let n = file.read(&mut buffer).unwrap();
-        if n == 0 {
-            break;
-        }
-        hasher.update(&buffer[..n]);
-    }
-
-    Ok(hasher.finalize().to_vec())
-}
-
-pub fn sha3_256_string(str: &str) -> Vec<u8> {
-    let mut hasher = Sha3_256::new();
-    hasher.update(&str);
-    hasher.finalize().to_vec()
-}
-
+/// Get the Argon2 hash of a string slice.
+///
+/// # Arguments
+///
+/// * `str` - The string to be hashed.
+/// * `salt` - A 12-byte array of random values.
+/// * `m_cost` - The memory cost (in kilobytes) to be applied to the Argon2 hashing function.
+/// * `p_cost` - The parallel cost (in threads) to be applied to the Argon2 hashing function.
+/// * `t_cost` - The time cost (in iterations) to be applied to the Argon2 hashing function.
+/// * `version` - The version of the Argon2 hashing function to be used.
+///
 pub fn argon2_string(
     str: &str,
     salt: [u8; 12],
@@ -76,8 +34,8 @@ pub fn argon2_string(
         return Err(Error::Argon2InvalidParams);
     };
 
-    // This method return an error condition if any of supplied
-    // parameters are incorrect prior to this statement.
+    // This method return an error condition if any of supplied parameters
+    // are incorrect prior to this statement.
     // This unwrap should be safe as a result.
     let params = builder.params().unwrap();
 
@@ -94,4 +52,88 @@ pub fn argon2_string(
     }
 
     Ok(key_bytes)
+}
+
+/// Get the CRC32 hash of a u8 slice.
+///
+/// # Arguments
+///
+/// * `slice` - The u8 slice to be hashed.
+///
+pub fn crc32_slice(slice: &[u8]) -> u32 {
+    let mut hasher = Crc32::new();
+    hasher.update(slice);
+    hasher.finalize()
+}
+
+/// Get the SHA3-256 hashing of a specified file.
+///
+/// # Arguments
+///
+/// * `path` - The path to the file.
+///
+pub fn sha3_256_file(path: &str) -> Result<Vec<u8>> {
+    let mut hasher = Sha3_256::new();
+
+    // The file will automatically be closed when it goes out of scope.
+    let mut file = match File::open(path) {
+        Ok(f) => f,
+        Err(_) => {
+            return Err(Error::FileHashingError);
+        }
+    };
+    let mut buffer = [0u8; 16384];
+
+    // Loop until we have read the entire file (in chunks).
+    loop {
+        let n = file.read(&mut buffer).unwrap();
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buffer[..n]);
+    }
+
+    Ok(hasher.finalize().to_vec())
+}
+
+/// Get the SHA3-512 hashing of a specified file.
+///
+/// # Arguments
+///
+/// * `path` - The path to the file.
+///
+pub fn sha3_512_file(path: &str) -> Result<Vec<u8>> {
+    let mut hasher = Sha3_512::new();
+
+    // The file will automatically be closed when it goes out of scope.
+    let mut file = match File::open(path) {
+        Ok(f) => f,
+        Err(_) => {
+            return Err(Error::FileHashingError);
+        }
+    };
+    let mut buffer = [0u8; 16384];
+
+    // Loop until we have read the entire file (in chunks).
+    loop {
+        let n = file.read(&mut buffer).unwrap();
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buffer[..n]);
+    }
+
+    Ok(hasher.finalize().to_vec())
+}
+
+/// Get the SHA3-256 hash of a string slice.
+///
+/// # Arguments
+///
+/// * `slice` - The string slice to be hashed.
+///
+pub fn sha3_256_string(str: &str) -> Vec<u8> {
+    let mut hasher = Sha3_256::new();
+    hasher.update(&str);
+    hasher.finalize().to_vec()
 }

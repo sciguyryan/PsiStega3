@@ -23,7 +23,7 @@ impl Locker {
 
         l.read_locker_file()?;
 
-        l.print_locker_list();
+        //l.print_locker_list();
         //println!("fa = {}", l.entries[0].last);
 
         Ok(l)

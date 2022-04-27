@@ -50,7 +50,7 @@ impl ImageWrapper {
     #[inline]
     pub fn get_subcells_from_index_mut(&mut self, start_index: usize, count: u16) -> &mut [u8] {
         let start = start_index * 4;
-        let end = start + (count as usize * 4);
+        let end = start + (count * 4) as usize;
         &mut self.image_bytes[start..end]
     }
 

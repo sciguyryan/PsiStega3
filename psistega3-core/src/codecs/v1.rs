@@ -8,7 +8,6 @@ use aes_gcm::{
     aead::{Aead, NewAead},
     Aes256Gcm, Key, Nonce,
 };
-use crc32fast::Hasher as Crc32;
 use image::ImageFormat;
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
@@ -27,8 +26,6 @@ const P_COST: u32 = 8;
 const M_COST: u32 = 65536;
 /// The version of the Argon2 hashing algorithm to use.
 const ARGON_VER: argon2::Version = argon2::Version::V0x13;
-/// A list of formats that can be used with the v1 algorithm.
-const SUPPORTED_FORMATS: [ImageFormat; 1] = [ImageFormat::Png];
 
 #[derive(Debug)]
 pub struct StegaV1 {
@@ -48,7 +45,7 @@ pub struct StegaV1 {
     /// If file locking is enabled then the file will be rendered
     /// invalid after 5 failed attempts to decode it.
     use_file_locker: bool,
-    //locker: Locker,
+    locker: Locker,
 }
 
 impl StegaV1 {
@@ -62,7 +59,7 @@ impl StegaV1 {
             output_files: true,
             fast_variance: false,
             use_file_locker: false,
-            //locker,
+            locker: locker.unwrap(),
         }
     }
 
@@ -454,11 +451,10 @@ impl StegaV1 {
             chunk[i] = *b;
         }
 
-        // Write the CRC for the chunk. This excludes the length of the chunk.
-        let mut crc = Crc32::new();
-        crc.update(&chunk[4..]);
-
-        let mut crc_bytes = crc.finalize().to_be_bytes().to_vec();
+        // Write the CRC for the chunk. This must exclude the bytes indicating
+        // the length of the chunk.
+        let crc = hashers::crc32_slice(&chunk[4..]);
+        let mut crc_bytes = crc.to_be_bytes().to_vec();
         chunk.append(&mut crc_bytes);
 
         chunk
@@ -600,9 +596,8 @@ impl StegaV1 {
     fn validate_image(img: &ImageWrapper) -> Result<()> {
         let fmt = img.get_image_format();
 
-        // We currently only support for the following formats for
-        // encoding: PNG, GIF and bitmap images.
-        if !SUPPORTED_FORMATS.contains(&fmt) {
+        // We currently only support PNG files.
+        if fmt != ImageFormat::Png {
             return Err(Error::ImageTypeInvalid);
         }
 
@@ -640,21 +635,23 @@ impl StegaV1 {
                 continue;
             }
 
-            let should_add = if self.fast_variance {
-                // We will tend towards the median value
-                // when using the fast variance method.
-                *b <= 128
-            } else {
-                thread_rng().gen_bool(0.5)
-            };
-
             // If the value is 0 then the new value will always be 1.
             // If the value is 255 then the new value will always be 254.
             // Otherwise the value will be assigned to be ±1.
             *b = match *b {
                 0 => 1,
                 1..=254 => {
-                    if should_add {
+                    // We do not need to calculate this if the value is either
+                    // 0 or 255. This will slightly improve performance.
+                    let add = if self.fast_variance {
+                        // We will tend towards the median value
+                        // when using the fast variance method.
+                        *b <= 128
+                    } else {
+                        thread_rng().gen_bool(0.5)
+                    };
+
+                    if add {
                         *b + 1
                     } else {
                         *b - 1
@@ -844,7 +841,7 @@ impl DataDecoder {
     /// `Note:` This method will pop `4` bytes from the internal vector.
     ///
     /// `Note:` this method will automatically convert the returned value
-    /// from little Endian to the correct bit-format.
+    ///         from little Endian to the correct bit-format.
     ///
     pub fn pop_u32(&mut self) -> u32 {
         assert!(self.bytes.len() >= 4, "insufficient values available");
@@ -879,7 +876,7 @@ impl DataDecoder {
     /// * `value` - The byte to be stored in the internal vector.
     ///
     /// `Note:` this method will automatically convert the returned value
-    /// from little Endian to the appropriate bit-format.
+    ///          from little Endian to the appropriate bit-format.
     ///
     pub fn push_u8(&mut self, value: u8) {
         self.xor_bytes.push_back(u8::from_le(value));
@@ -892,7 +889,7 @@ impl DataDecoder {
     /// * `values` - The bytes to be stored in the internal vector.
     ///
     /// `Note:` this method will automatically convert the returned value
-    /// from little Endian to the appropriate bit-format.
+    ///         from little Endian to the appropriate bit-format.
     ///
     #[allow(dead_code)]
     pub fn push_u8_slice(&mut self, values: &[u8]) {
@@ -904,8 +901,7 @@ impl DataDecoder {
 
 /// This structure will hold data to be encoded into an image.
 ///
-/// Note: this structure handles little Endian conversions
-/// internally.
+/// Note: this structure handles little Endian conversions internally.
 struct DataEncoder {
     bytes: Vec<u8>,
     rng: ChaCha20Rng,
@@ -1384,11 +1380,6 @@ mod tests_encryption_decryption {
     #[test]
     fn image_loading_and_validation() {
         let tests = [
-            TestEntry::new(
-                "10x10.jpg",
-                Err(Error::ImageTypeInvalid),
-                "file type is invalid",
-            ),
             TestEntry::new(
                 "10x10-rbg.png",
                 Err(Error::ImageDimensionsInvalid),
