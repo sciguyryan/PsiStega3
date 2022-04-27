@@ -9,6 +9,7 @@ license = "LGPL 2.1"
 repository = "https://github.com/sciguyryan/PsiStega3"
 homepage = "https://github.com/sciguyryan/PsiStega3"
 build = "build.rs"
+publish = false
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

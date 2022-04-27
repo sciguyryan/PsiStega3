@@ -1,6 +1,7 @@
 use crate::codecs::codec::Codec;
 use crate::error::{Error, Result};
 use crate::image_wrapper::ImageWrapper;
+use crate::locker::Locker;
 use crate::{hashers, logger, utils};
 
 use aes_gcm::{
@@ -47,16 +48,21 @@ pub struct StegaV1 {
     /// If file locking is enabled then the file will be rendered
     /// invalid after 5 failed attempts to decode it.
     use_file_locker: bool,
+    //locker: Locker,
 }
 
 impl StegaV1 {
     pub fn new() -> Self {
+        let locker = Locker::new();
+        assert!(locker.is_ok(), "Could not initialize the file locker.");
+
         Self {
             data_cell_map: HashMap::with_capacity(1),
             noise_layer: true,
             output_files: true,
             fast_variance: false,
             use_file_locker: false,
+            //locker,
         }
     }
 
@@ -420,7 +426,7 @@ impl StegaV1 {
         chunk.push(0); // Compression method. Only zero is valid here.
 
         // Junk data.
-        for _ in 0..=thread_rng().gen_range(0..=15) {
+        for _ in 0..=thread_rng().gen_range(0..=62) {
             let b = thread_rng().gen_range(1..=255);
             chunk.push(b);
         }
@@ -428,15 +434,18 @@ impl StegaV1 {
         // The data byte.
         // The first four bits are junk data.
         // The remaining four bits are feature flags.
-        let mut data_byte = 0;
+        let mut flags = 0b0000_0000;
         for i in 0..4 {
-            utils::set_bit_state(&mut data_byte, i, thread_rng().gen_bool(0.5))
+            utils::set_bit_state(&mut flags, i, thread_rng().gen_bool(0.5))
         }
 
         // The 5th bit indicates whether file locking is enabled.
         // The 6th to 8th bits are reserved for future use.
-        utils::set_bit_state(&mut data_byte, 5, self.use_file_locker);
-        chunk.push(data_byte);
+        utils::set_bit_state(&mut flags, 5, self.use_file_locker);
+
+        // This will add a bit of randomness to the flags byte.
+        flags ^= chunk.last().unwrap();
+        chunk.push(flags);
 
         // Update the chunk length data. This excludes the length
         // of the chunk (4 bytes) and the chunk type label (4 bytes).
@@ -495,18 +504,12 @@ impl StegaV1 {
 
         // Generate and write the ztxt chunk to the file.
         let ztxt_chunk = self.generate_ztxt_chunk();
-        let wb = f.write(&ztxt_chunk).unwrap();
-        println!("Bytes written: {}", wb);
+        let _wb = f.write(&ztxt_chunk).unwrap();
 
         // Now we can write the IEND chunk, which indicated the end of the PNG file data.
-        // The chunk has the following format:
-        // null, null, null, null, IEND®B`‚
-        // The first four bytes indicate the length.
-        // The next four bytes indicate the chunk type.
-        // The final four bytes are the CRC of the chunk's data.
+        // This chunk is always the same, so it can be hardcoded.
         let end: Vec<u8> = vec![0, 0, 0, 0, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82];
-        let wb = f.write(&end).unwrap();
-        println!("Bytes written: {}", wb);
+        let _wb = f.write(&end).unwrap();
 
         Ok(())
     }
@@ -1032,7 +1035,7 @@ mod tests_encode_decode {
 
     /// Get the full path to a test file.
     ///
-    /// `Note:` This path is normalised to avoid creating any issues
+    /// `Note:` This path is normalized to avoid creating any issues
     /// with relative paths.
     ///
     fn get_test_in_file_str(file: &str) -> String {
@@ -1048,7 +1051,7 @@ mod tests_encode_decode {
     /// Get the full path to a random output file path, with a given extension.
     /// These files are created in the operating system's temp directory.
     ///
-    /// `Note:` This path is normalised to avoid creating any issues
+    /// `Note:` This path is normalized to avoid creating any issues
     /// with relative paths.
     ///
     fn get_test_out_file_str(ext: &str) -> String {

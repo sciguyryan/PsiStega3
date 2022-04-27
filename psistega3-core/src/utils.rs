@@ -4,7 +4,7 @@ use core::fmt::Write;
 use rand::Rng;
 use rand_core::{OsRng, RngCore};
 use std::{
-    fs::{File, Metadata},
+    fs::File,
     path::{Path, PathBuf},
 };
 
@@ -136,17 +136,6 @@ pub(crate) fn get_current_dir() -> PathBuf {
     std::env::current_dir().unwrap()
 }
 
-/// Attempt to get the metadata for a file.
-#[inline]
-pub(crate) fn get_file_metadata(file: &File) -> Result<Metadata> {
-    let meta = file.metadata();
-    if let Ok(m) = meta {
-        Ok(m)
-    } else {
-        Err(Error::FileMetadata)
-    }
-}
-
 /// Check if the specified path is valid and exists.
 ///
 /// * `path` - The path to be checked.
@@ -210,7 +199,7 @@ pub(crate) fn truncate_file(path: &str, bytes_to_trim: u64) -> Result<()> {
     }
     let f = f.unwrap();
 
-    let meta = get_file_metadata(&f);
+    let meta = f.metadata();
     if meta.is_err() {
         return Err(Error::FileMetadata);
     }

@@ -7,6 +7,7 @@ description = "A core crate for PsiStega3."
 license = "LGPL 2.1"
 repository = "https://github.com/sciguyryan/PsiStega3"
 homepage = "https://github.com/sciguyryan/PsiStega3"
+publish = false
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -15,6 +16,7 @@ aes-gcm = "0.9.4"
 argon2 = "0.4.0"
 base64 = "0.13.0"
 crc32fast = "1.3.2"
+filetime = "0.2.16"
 hex-literal = "0.3.4"
 image = { version = "0.24.1", features = ["png"] }
 log = "0.4.16"

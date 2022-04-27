@@ -46,7 +46,9 @@ fn main() {
     }
 
     // Attempt to extract the codec version number.
-    let mut codec: Box<dyn Codec> = Box::new(StegaV1::default());
+    // No default codec needs to be implemented here, the if statement
+    // below will always yield a valid codec.
+    let mut codec: Box<dyn Codec>;
     if needs_codec {
         let mut codec_version: Option<Version> = None;
         if &args[2] == "-v" {
@@ -68,6 +70,8 @@ fn main() {
 
         // Apply any settings that might have been specified.
         apply_codec_settings(&mut codec, &args[4..]);
+    } else {
+        codec = Box::new(StegaV1::default());
     }
 
     // Execute the requested action with the provided arguments.
@@ -134,7 +138,7 @@ fn apply_codec_settings(codec: &mut Box<dyn Codec>, args: &[String]) {
 ///
 fn get_codec_by_version(version: Version) -> Box<dyn Codec> {
     match version {
-        Version::V0x01 => Box::new(StegaV1::default()),
+        Version::V0x01 => Box::new(StegaV1::new()),
     }
 }
 
