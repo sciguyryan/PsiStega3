@@ -109,8 +109,8 @@ impl Locker {
 
     pub fn maybe_update_file_lock(&mut self, path: &str, hash: &[u8]) {
         if self.is_file_locked(hash) {
-            // The entry exists within the list, and it has not yet been
-            // locked. We need to attempt to lock the file.
+            // The entry exists within the list, has hit the attempt limited
+            // but hasn't been locked. We need to attempt to lock the file.
             // If successful then it can be removed from the list.
             if self.lock_file(path) {
                 // TODO: fix this.
@@ -125,7 +125,7 @@ impl Locker {
             (*entry).attempts += 1;
         } else if let Ok(h) = hashers::sha3_256_file(path) {
             // The entry does not exists within the entries list.
-            // We need to attempt to add it.
+            // We need to add it.
             self.entries.push(LockerEntry::new(&h, 0));
         } else {
             // Failed to add the entry to the list.
@@ -140,9 +140,14 @@ impl Locker {
     }
 
     pub fn is_file_locked(&self, hash: &[u8]) -> bool {
-        let index = self.get_entry_index_by_hash(hash);
-        if let Some(i) = index {
-            self.entries[i].attempts >= 4
+        // A file is considered locked if 5 more more attempts have been made
+        // to decode it, where the decryption was unsuccessful, in other words
+        // where an invalid key had been used.
+        // Note that the entry is added to the entry list upon the first
+        // unsuccessful attempt, which means that the 0th attempt is actually
+        // the first one.
+        if let Some(entry) = self.get_entry_by_hash(hash) {
+            entry.attempts >= 4
         } else {
             false
         }
