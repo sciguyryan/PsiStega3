@@ -55,8 +55,16 @@ impl Locker {
         Ok(f)
     }
 
-    fn get_entry_index_by_hash(&self, hash: Vec<u8>) -> Option<usize> {
+    fn get_entry_index_by_hash(&self, hash: &[u8]) -> Option<usize> {
         self.entries.iter().position(|e| e.hash == hash)
+    }
+
+    fn get_entry_by_hash(&self, hash: &[u8]) -> Option<&LockerEntry> {
+        self.entries.iter().find(|e| e.hash == hash)
+    }
+
+    fn get_entry_by_hash_mut(&mut self, hash: &[u8]) -> Option<&mut LockerEntry> {
+        self.entries.iter_mut().find(|e| e.hash == hash)
     }
 
     fn get_executable_path() -> Result<PathBuf> {
@@ -83,17 +91,45 @@ impl Locker {
         }
     }
 
-    pub fn clear_file_lock(&mut self, hash: &[u8]) {}
+    pub fn clear_file_lock(&mut self, hash: &[u8]) {
+        if self.is_file_locked(hash) {
+            // If the file has already been locked then it can't be unlocked.
+            return;
+        }
+
+        if let Some(i) = self.get_entry_index_by_hash(hash) {
+            // The entry exists within the list, attempt to
+            // remove it from the list.
+            self.entries.remove(i);
+        }
+
+        // The file was not in the entry list, we do not need to
+        // do anything here.
+    }
 
     pub fn maybe_update_file_lock(&mut self, path: &str, hash: &[u8]) {
         if self.is_file_locked(hash) {
-            // TODO: do something here.
-            println!("File is locked, do something here.");
+            // The entry exists within the list, and it has not yet been
+            // locked. We need to attempt to lock the file.
+            // If successful then it can be removed from the list.
+            if self.lock_file(path) {
+                // TODO: fix this.
+                println!("Successfully locked the file.");
+            } else {
+                // TODO: fix this.
+                println!("Did not successfully lock the file.");
+            }
+        } else if let Some(entry) = self.get_entry_by_hash_mut(hash) {
+            // The entry exists within the entries list.
+            // We need to update the counter.
+            (*entry).attempts += 1;
+        } else if let Ok(h) = hashers::sha3_256_file(path) {
+            // The entry does not exists within the entries list.
+            // We need to attempt to add it.
+            self.entries.push(LockerEntry::new(&h, 0));
         } else {
-            // TODO: do something here.
-            // 1. Check if the entry exists, if it doesn't then add it
-            //    and initialize the values.
-            // 2. If it does exist then update the attempt counter.
+            // Failed to add the entry to the list.
+            // TODO: figure out what needs to be done here.
         }
     }
 
@@ -104,7 +140,7 @@ impl Locker {
     }
 
     pub fn is_file_locked(&self, hash: &[u8]) -> bool {
-        let index = self.get_entry_index_by_hash(hash.to_vec());
+        let index = self.get_entry_index_by_hash(hash);
         if let Some(i) = index {
             self.entries[i].attempts >= 4
         } else {
@@ -235,7 +271,6 @@ impl Drop for Locker {
             return;
         }
 
-        // In theory this should never happen... but just in case.
         let exec_path = exec_path.unwrap();
         let data_path = data_path.unwrap();
 
@@ -243,7 +278,6 @@ impl Drop for Locker {
         if metadata.is_err() {
             return;
         }
-
         let metadata = metadata.unwrap();
 
         // Set the file last modification time of the data file.

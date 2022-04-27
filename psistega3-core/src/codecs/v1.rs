@@ -45,6 +45,7 @@ pub struct StegaV1 {
     /// If file locking is enabled then the file will be rendered
     /// invalid after 5 failed attempts to decode it.
     use_file_locker: bool,
+    /// The file locker instance for this task.
     locker: Locker,
 }
 
@@ -52,6 +53,8 @@ impl StegaV1 {
     pub fn new() -> Self {
         let locker = Locker::new();
         assert!(locker.is_ok(), "Could not initialize the file locker.");
+
+        println!("here");
 
         Self {
             data_cell_map: HashMap::with_capacity(1),
@@ -386,7 +389,7 @@ impl StegaV1 {
     /// * `data_index` - The data index to be checked.
     ///
     /// Note: this method will panic if the data cell is not present in the map.
-    /// In practice this should never occur.
+    ///       In practice this should never occur.
     ///
     fn get_data_cell_index(&self, data_index: &usize) -> usize {
         *self
@@ -519,7 +522,7 @@ impl StegaV1 {
     /// * `cell_start` - The index from which the encoded data should be read.
     ///
     /// Note: this method will read 8 channels worth of data, starting at
-    /// the specified index.
+    ///       the specified index.
     ///
     fn read_u8(&self, ref_img: &ImageWrapper, enc_img: &ImageWrapper, cell_start: usize) -> u8 {
         // Extract the bytes representing the pixel channels
@@ -554,7 +557,7 @@ impl StegaV1 {
     /// * `data_index` - The index of the data byte to be read.
     ///
     /// Note: this method will read 8 channels worth of data, starting at
-    /// the specified index.
+    ///       the specified index.
     ///
     #[inline]
     fn read_u8_by_index(
@@ -784,7 +787,7 @@ impl Default for StegaV1 {
 /// This structure will hold the decoded data.
 ///
 /// Note: this structure handles little Endian conversions
-/// internally.
+///       internally.
 struct DataDecoder {
     xor_bytes: VecDeque<u8>,
     bytes: VecDeque<u8>,
@@ -1511,7 +1514,7 @@ mod tests_encoder_decoder {
         let mut encoder = DataEncoder::new(8);
         let mut decoder = DataDecoder::new(8);
 
-        let in_val: u32 = 0xDEADBEEF;
+        let in_val: u32 = 0xdeadbeef;
         encoder.push_u32(in_val);
         assert!(encoder.bytes.len() == 8);
 
