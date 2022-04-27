@@ -4,7 +4,7 @@ use core::fmt::Write;
 use rand::Rng;
 use rand_core::{OsRng, RngCore};
 use std::{
-    fs::File,
+    fs::{File, Metadata},
     path::{Path, PathBuf},
 };
 
@@ -114,12 +114,6 @@ where
     in_vec.append(&mut vec2);
 }
 
-/// Get the path to the current execution directory.
-#[allow(dead_code)]
-pub(crate) fn get_current_dir() -> PathBuf {
-    std::env::current_dir().unwrap()
-}
-
 /// Fills a vector with sequential values.
 ///
 /// # Arguments
@@ -134,6 +128,23 @@ pub(crate) fn fill_vector_sequential(vec: &mut Vec<usize>) {
     (0..vec.capacity()).for_each(|i| {
         vec.push(i);
     });
+}
+
+/// Get the path to the current execution directory.
+#[allow(dead_code)]
+pub(crate) fn get_current_dir() -> PathBuf {
+    std::env::current_dir().unwrap()
+}
+
+/// Attempt to get the metadata for a file.
+#[inline]
+pub(crate) fn get_file_metadata(file: &File) -> Result<Metadata> {
+    let meta = file.metadata();
+    if let Ok(m) = meta {
+        Ok(m)
+    } else {
+        Err(Error::FileMetadata)
+    }
 }
 
 /// Check if the specified path is valid and exists.
@@ -183,6 +194,36 @@ pub(crate) fn set_bit_state(value: &mut u8, index: usize, state: bool) {
     } else {
         *value &= U8_UNSET_BIT_MASK[index];
     }
+}
+
+/// Attempt to truncate a set number of bytes from the end of a file.
+///
+/// # Arguments
+///
+/// * `path` - The path to the file.
+/// * `bytes_to_trim` - The number of bytes to be trimmed from the end of the file.
+///
+pub(crate) fn truncate_file(path: &str, bytes_to_trim: u64) -> Result<()> {
+    let f = std::fs::OpenOptions::new().write(true).open(path);
+    if f.is_err() {
+        return Err(Error::File);
+    }
+    let f = f.unwrap();
+
+    let meta = get_file_metadata(&f);
+    if meta.is_err() {
+        return Err(Error::FileMetadata);
+    }
+
+    // Calculate the new file length.
+    let new_len = meta.unwrap().len() - bytes_to_trim;
+
+    // Truncate the file.
+    if f.set_len(new_len).is_err() {
+        return Err(Error::FileTruncate);
+    }
+
+    Ok(())
 }
 
 /// Convert a u8 slice into its hexadecimal representation.

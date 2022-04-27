@@ -7,11 +7,14 @@ use aes_gcm::{
     aead::{Aead, NewAead},
     Aes256Gcm, Key, Nonce,
 };
+use crc32fast::Hasher as Crc32;
 use image::ImageFormat;
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
 use std::collections::{HashMap, VecDeque};
 use std::convert::{TryFrom, TryInto};
+use std::fs::OpenOptions;
+use std::io::Write;
 
 use super::codec::Config;
 
@@ -40,6 +43,10 @@ pub struct StegaV1 {
     /// This method will not use randomness to determine the pixel value variance
     /// and will instead alternate between adding and subtracting 1.
     fast_variance: bool,
+    /// If the file locker should be used for this file.
+    /// If file locking is enabled then the file will be rendered
+    /// invalid after 5 failed attempts to decode it.
+    use_file_locker: bool,
 }
 
 impl StegaV1 {
@@ -49,6 +56,7 @@ impl StegaV1 {
             noise_layer: true,
             output_files: true,
             fast_variance: false,
+            use_file_locker: false,
         }
     }
 
@@ -364,7 +372,7 @@ impl StegaV1 {
         if let Err(e) = img.save(encoded_img_path) {
             Err(Error::ImageSaving(e.to_string()))
         } else {
-            Ok(())
+            self.modify_png_file(encoded_img_path)
         }
     }
 
@@ -397,6 +405,56 @@ impl StegaV1 {
         img.get_total_channels() / 8
     }
 
+    /// Generate a zTXt chunk for our PNG. This chunk will hold information
+    /// about feature flags set while creating the file.
+    ///
+    fn generate_ztxt_chunk(&self) -> Vec<u8> {
+        // zTXt chunk.
+        // See: http://www.libpng.org/pub/png/spec/1.2/PNG-Structure.html
+        // The first four bytes will hold the length, which will be updated
+        // below.
+        let mut chunk: Vec<u8> = vec![0, 0, 0, 0];
+        chunk.append(&mut String::from("zTXt").into_bytes());
+        chunk.append(&mut String::from("Comment").into_bytes());
+        chunk.push(0); // Separator. Must be a null byte.
+        chunk.push(0); // Compression method. Only zero is valid here.
+
+        // Junk data.
+        for _ in 0..=thread_rng().gen_range(0..=15) {
+            let b = thread_rng().gen_range(1..=255);
+            chunk.push(b);
+        }
+
+        // The data byte.
+        // The first four bits are junk data.
+        // The remaining four bits are feature flags.
+        let mut data_byte = 0;
+        for i in 0..4 {
+            utils::set_bit_state(&mut data_byte, i, thread_rng().gen_bool(0.5))
+        }
+
+        // The 5th bit indicates whether file locking is enabled.
+        // The 6th to 8th bits are reserved for future use.
+        utils::set_bit_state(&mut data_byte, 5, self.use_file_locker);
+        chunk.push(data_byte);
+
+        // Update the chunk length data. This excludes the length
+        // of the chunk (4 bytes) and the chunk type label (4 bytes).
+        let chunk_len = (chunk.len() - 8) as u32;
+        for (i, b) in chunk_len.to_be_bytes().iter().enumerate() {
+            chunk[i] = *b;
+        }
+
+        // Write the CRC for the chunk. This excludes the length of the chunk.
+        let mut crc = Crc32::new();
+        crc.update(&chunk[4..]);
+
+        let mut crc_bytes = crc.finalize().to_be_bytes().to_vec();
+        chunk.append(&mut crc_bytes);
+
+        chunk
+    }
+
     /// Loads an image from file and validates that the image is suitable for steganography.
     ///
     /// # Arguments
@@ -417,6 +475,40 @@ impl StegaV1 {
         StegaV1::validate_image(&img)?;
 
         Ok(img)
+    }
+
+    /// Directly modifies a PNG file to add additional encoding data.
+    ///
+    /// # Arguments
+    ///
+    /// * `file_path` - The path to the image file.
+    ///
+    fn modify_png_file(&self, file_path: &str) -> Result<()> {
+        // Truncate the IEND chunk from the file.
+        utils::truncate_file(file_path, 12)?;
+
+        let f = OpenOptions::new().append(true).open(file_path);
+        if f.is_err() {
+            return Err(Error::File);
+        }
+        let mut f = f.unwrap();
+
+        // Generate and write the ztxt chunk to the file.
+        let ztxt_chunk = self.generate_ztxt_chunk();
+        let wb = f.write(&ztxt_chunk).unwrap();
+        println!("Bytes written: {}", wb);
+
+        // Now we can write the IEND chunk, which indicated the end of the PNG file data.
+        // The chunk has the following format:
+        // null, null, null, null, IEND®B`‚
+        // The first four bytes indicate the length.
+        // The next four bytes indicate the chunk type.
+        // The final four bytes are the CRC of the chunk's data.
+        let end: Vec<u8> = vec![0, 0, 0, 0, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82];
+        let wb = f.write(&end).unwrap();
+        println!("Bytes written: {}", wb);
+
+        Ok(())
     }
 
     /// Read a byte of encoded data, starting at a specified index.
@@ -675,6 +767,9 @@ impl Codec for StegaV1 {
             }
             Config::OutputFiles => {
                 self.output_files = state;
+            }
+            Config::Locker => {
+                self.use_file_locker = state;
             }
         }
     }

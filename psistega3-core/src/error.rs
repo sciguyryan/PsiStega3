@@ -28,6 +28,8 @@ pub enum Error {
     FileMetadata,
     /// Error reading from a file.
     FileRead,
+    /// Error truncating a file.
+    FileTruncate,
     /// Error writing to a file.
     FileWrite,
     /// Invalid image dimensions.
@@ -52,7 +54,6 @@ pub enum Error {
     LockerFileRead,
     /// Unable to write the data file.
     LockerFileWrite,
-
     /// The specified path is invalid.
     PathInvalid,
     /// Invalid version number.
@@ -73,6 +74,7 @@ impl fmt::Display for Error {
             Error::FileHashingError => "An error occurred when attempting to hash a file.",
             Error::FileMetadata => "Unable to get the file metadata.",
             Error::FileRead => "An error occurred when attempting to read from a file.",
+            Error::FileTruncate => "An error occurred when attempting to truncate a file.",
             Error::FileWrite => "An error occurred when attempting to write to a file.",
             Error::ImageDimensionsInvalid => {
                 "Invalid image dimensions: the total number of available data channels must be divisible by 8."

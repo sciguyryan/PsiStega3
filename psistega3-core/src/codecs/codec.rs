@@ -93,4 +93,8 @@ pub enum Config {
     ///
     /// Applicable to: v1.
     OutputFiles,
+    /// Enable or disable the file access locking system for this file.
+    ///
+    /// Applicable to: v1.
+    Locker,
 }
