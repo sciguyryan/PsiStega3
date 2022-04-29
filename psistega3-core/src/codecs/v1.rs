@@ -54,8 +54,6 @@ impl StegaV1 {
         let locker = Locker::new();
         assert!(locker.is_ok(), "Could not initialize the file locker.");
 
-        println!("here");
-
         Self {
             data_cell_map: HashMap::with_capacity(1),
             noise_layer: true,
@@ -426,7 +424,7 @@ impl StegaV1 {
         chunk.push(0); // Compression method. Only zero is valid here.
 
         // Junk data.
-        for _ in 0..=thread_rng().gen_range(0..=62) {
+        for _ in 0..=thread_rng().gen_range(122..=176) {
             let b = thread_rng().gen_range(1..=255);
             chunk.push(b);
         }
@@ -443,8 +441,7 @@ impl StegaV1 {
         // The 6th to 8th bits are reserved for future use.
         utils::set_bit_state(&mut flags, 5, self.use_file_locker);
 
-        // This will add a bit of randomness to the flags byte.
-        flags ^= chunk.last().unwrap();
+        // Push the flag byte into the vector.
         chunk.push(flags);
 
         // Update the chunk length data. This excludes the length
