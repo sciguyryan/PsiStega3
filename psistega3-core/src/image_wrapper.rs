@@ -1,6 +1,6 @@
 use crate::error::{Error, Result};
 
-use image::{ColorType, DynamicImage, GenericImageView, ImageFormat};
+use image::{ColorType, ImageFormat};
 
 #[derive(Clone, Debug)]
 pub struct ImageWrapper {
@@ -104,7 +104,7 @@ impl ImageWrapper {
     /// * `file_path` - The path to the image file.
     ///
     pub fn load_from_file(file_path: &str, read_only: bool) -> Result<ImageWrapper> {
-        use DynamicImage::*;
+        use image::{DynamicImage::*, GenericImageView};
 
         let image = match image::open(file_path) {
             Ok(img) => img,
@@ -160,5 +160,33 @@ impl ImageWrapper {
 
         let (w, h) = self.dimensions;
         image::save_buffer_with_format(path, &self.image_bytes, w, h, self.colour_type, self.format)
+    }
+
+    /// Scramble the data within the image file.
+    ///
+    pub fn scramble(&mut self) {
+        use rand::{thread_rng, Rng};
+
+        // Iterate over each of the image bytes and modify them randomly.
+        // The file will be visually the same, but will be modified such that
+        // any encoded data is rendered invalid.
+        for b in &mut self.image_bytes {
+            // If the value is 0 then the new value will always be 1.
+            // If the value is 255 then the new value will always be 254.
+            // Otherwise the value will be assigned to be ±1.
+            *b = match *b {
+                0 => 1,
+                1..=254 => {
+                    // We do not need to calculate this if the value is either
+                    // 0 or 255. This will slightly improve performance.
+                    if thread_rng().gen_bool(0.5) {
+                        *b + 1
+                    } else {
+                        *b - 1
+                    }
+                }
+                255 => 254,
+            };
+        }
     }
 }

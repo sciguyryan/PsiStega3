@@ -8,13 +8,10 @@ use aes_gcm::{
     aead::{Aead, NewAead},
     Aes256Gcm, Key, Nonce,
 };
-use image::ImageFormat;
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
 use std::collections::{HashMap, VecDeque};
 use std::convert::{TryFrom, TryInto};
-use std::fs::OpenOptions;
-use std::io::Write;
 
 use super::codec::Config;
 
@@ -489,6 +486,8 @@ impl StegaV1 {
     /// * `file_path` - The path to the image file.
     ///
     fn modify_png_file(&self, file_path: &str) -> Result<()> {
+        use std::{fs::OpenOptions, io::Write};
+
         // Truncate the IEND chunk from the file.
         utils::truncate_file(file_path, 12)?;
 
@@ -597,7 +596,7 @@ impl StegaV1 {
         let fmt = img.get_image_format();
 
         // We currently only support PNG files.
-        if fmt != ImageFormat::Png {
+        if fmt != image::ImageFormat::Png {
             return Err(Error::ImageTypeInvalid);
         }
 

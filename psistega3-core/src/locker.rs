@@ -6,7 +6,7 @@ use std::{
     fmt,
     fs::{self, File},
     io::{Read, Write},
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 
 // TODO: make this private for release.
@@ -18,7 +18,7 @@ pub struct Locker {
 impl Locker {
     pub fn new() -> Result<Self> {
         let mut l = Self {
-            entries: Vec::with_capacity(100),
+            entries: Vec::with_capacity(20),
         };
 
         l.read_locker_file()?;
@@ -92,18 +92,12 @@ impl Locker {
     }
 
     pub fn clear_file_lock(&mut self, hash: &[u8]) {
-        if self.is_file_locked(hash) {
-            // If the file has already been locked then it can't be unlocked.
-            return;
-        }
-
         if let Some(i) = self.get_entry_index_by_hash(hash) {
-            // The entry exists within the list, attempt to
-            // remove it from the list.
+            // The hash exists within the list so we should remove it.
             self.entries.remove(i);
         }
 
-        // The file was not in the entry list, we do not need to
+        // The hash is not in the entry list, we do not need to
         // do anything here.
     }
 
@@ -113,11 +107,9 @@ impl Locker {
             // but hasn't been locked. We need to attempt to lock the file.
             // If successful then it can be removed from the list.
             if self.lock_file(path) {
-                // TODO: fix this.
-                println!("Successfully locked the file.");
+                self.clear_file_lock(hash);
             } else {
-                // TODO: fix this.
-                println!("Did not successfully lock the file.");
+                // TODO: figure out if anything should be done here.
             }
         } else if let Some(entry) = self.get_entry_by_hash_mut(hash) {
             // The entry exists within the entries list.
@@ -133,10 +125,58 @@ impl Locker {
         }
     }
 
-    fn lock_file(&mut self, path: &str) -> bool {
-        println!("Do something useful here.");
+    fn lock_file(&mut self, file_path: &str) -> bool {
+        use crate::image_wrapper::ImageWrapper;
 
-        false
+        let path = Path::new(file_path);
+        if !path.exists() {
+            return false;
+        }
+
+        // This should never happen, but if it does then
+        // the entry should be removed from the list. We can't lock a directory.
+        if path.is_dir() {
+            return true;
+        }
+
+        // We do not want to lock the file after we are done with this
+        // section of the code. Rust will automatically close the file
+        // when the reference is dropped.
+        {
+            let f = File::open(path);
+            if f.is_err() {
+                return false;
+            }
+            let f = f.unwrap();
+
+            // Get the metadata for the file.
+            let metadata = f.metadata();
+            if metadata.is_err() {
+                return false;
+            }
+            let metadata = metadata.unwrap();
+
+            // If the file is read only, then we need to unset that flag.
+            if metadata.permissions().readonly() {
+                metadata.permissions().set_readonly(false);
+            }
+        }
+
+        // Now we need to ensure that the file can never be decoded.
+        // This will happen regardless of whether the image ever contained
+        // encoded data.
+        let img = ImageWrapper::load_from_file(file_path, false);
+        if img.is_err() {
+            return false;
+        }
+        let mut img = img.unwrap();
+
+        // Scramble the image.
+        img.scramble();
+
+        // If the file was successfully scrambled then it can be removed from
+        // the entry list, otherwise we will need to try again later.
+        img.save(file_path).is_ok()
     }
 
     pub fn is_file_locked(&self, hash: &[u8]) -> bool {
