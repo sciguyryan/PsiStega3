@@ -128,6 +128,8 @@ impl Locker {
     fn lock_file(&mut self, file_path: &str) -> bool {
         use crate::image_wrapper::ImageWrapper;
 
+        // If the path does not currently exist then we cannot lock it,
+        // this means we shouldn't remove it from the list.
         let path = Path::new(file_path);
         if !path.exists() {
             return false;
@@ -164,7 +166,7 @@ impl Locker {
 
         // Now we need to ensure that the file can never be decoded.
         // This will happen regardless of whether the image ever contained
-        // encoded data.
+        // encoded data or not.
         let img = ImageWrapper::load_from_file(file_path, false);
         if img.is_err() {
             return false;

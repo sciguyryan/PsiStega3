@@ -137,7 +137,7 @@ pub(crate) fn path_exists(path: &str) -> bool {
 pub(crate) fn read_file_to_u8_vector(path: &str) -> Result<Vec<u8>> {
     use std::io::Read;
 
-    if !Path::new(path).exists() {
+    if !path_exists(path) {
         return Err(Error::PathInvalid);
     }
 
@@ -202,8 +202,8 @@ pub(crate) fn truncate_file(path: &str, bytes_to_trim: u64) -> Result<()> {
 ///
 /// * `arr` - The u8 slice to be converted.
 ///
-/// Note: we ignore the error condition from write! as this is
-/// completely internal and is designed for use with debug code.
+/// `Note:` we ignore the error condition from write! as this is
+///  completely internal and is designed for use with debug code.
 ///
 #[allow(unused_must_use)]
 pub(crate) fn u8_array_to_hex(arr: &[u8]) -> String {
@@ -231,7 +231,7 @@ pub(crate) fn u8_slice_to_base64_string(bytes: &[u8]) -> String {
 /// * `byte` - The byte to be converted.
 ///
 /// `Note:` we ignore the error condition from write! as this is
-/// completely internal and is designed for use with debug code.
+///  completely internal and is designed for use with debug code.
 ///
 #[allow(unused_must_use, dead_code)]
 pub(crate) fn u8_to_binary(byte: &u8) -> String {

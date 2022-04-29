@@ -10,8 +10,7 @@ use psistega3_core::version::*;
 use simple_logger::SimpleLogger;
 use std::{convert::TryFrom, env, io::stdin};
 
-//ookneporlygs
-
+//ooneporlygs
 
 fn main() {
     SimpleLogger::new().init().unwrap();
@@ -126,9 +125,9 @@ fn apply_codec_settings(codec: &mut Box<dyn Codec>, args: &[String]) {
         codec.set_config_state(Config::NoiseLayer, false);
     }
 
-    //if args.contains(&String::from("--verbose")) {
-    //    codec.set_config_state(Config::Verbose, true);
-    //}
+    if args.contains(&String::from("--verbose")) {
+        codec.set_config_state(Config::Verbose, true);
+    }
 }
 
 /// Get an instance of the [`Codec`] for a specified [`Version`].
