@@ -8,27 +8,12 @@ use std::{
     path::{Path, PathBuf},
 };
 
-/// A list of the bitmasks that can check if a given but is set in a u8 value.
-pub(crate) const U8_BIT_MASKS: [u8; 8] = [1, 2, 4, 8, 16, 32, 64, 128];
-
-/// A list of the bitmasks that can be used to set the state of a bit in a u8 value.
-pub(crate) const U8_UNSET_BIT_MASK: [u8; 8] = [
-    255 - 1,
-    255 - 2,
-    255 - 4,
-    255 - 8,
-    255 - 16,
-    255 - 32,
-    255 - 64,
-    255 - 128,
-];
-
 /// Decode a base64 string and convert it to raw vector of bytes.
 ///
 /// * `string` - The base64 string to be decoded.
 ///
 pub(crate) fn base64_string_to_vector(b64_str: &str) -> Result<Vec<u8>> {
-    let mut buf = Vec::<u8>::new();
+    let mut buf: Vec<u8> = Vec::new();
     match base64::decode_config_buf(&b64_str, base64::STANDARD, &mut buf) {
         Ok(_) => Ok(buf),
         Err(_) => Err(Error::Base64Decoding),
@@ -65,16 +50,16 @@ pub fn entropy(bytes: &[u8]) -> f32 {
         .sum()
 }
 
-/// Check if a bitmask is set for a given u8 value.
+/// Check if a bit is set for a given u8 value.
 ///
 /// # Arguments
 ///
-/// * `value` - The value against which the bitmask should be checked.
+/// * `value` - The value against which the bit should be checked.
 /// * `index` - The bit index to be modified.
 ///
 #[inline]
 pub(crate) fn is_bit_set(value: &u8, index: usize) -> bool {
-    (value & U8_BIT_MASKS[index]) != 0
+    ((value >> index) & 1) == 1
 }
 
 /// Check if the current platform is little Endian.
@@ -178,11 +163,7 @@ pub(crate) fn read_file_to_u8_vector(path: &str) -> Result<Vec<u8>> {
 ///
 #[inline]
 pub(crate) fn set_bit_state(value: &mut u8, index: usize, state: bool) {
-    if state {
-        *value |= U8_BIT_MASKS[index];
-    } else {
-        *value &= U8_UNSET_BIT_MASK[index];
-    }
+    *value = (*value & !(1 << index)) | ((state as u8) << index)
 }
 
 /// Attempt to truncate a set number of bytes from the end of a file.

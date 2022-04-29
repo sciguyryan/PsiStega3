@@ -12,6 +12,7 @@ use std::{convert::TryFrom, env, io::stdin};
 
 //ookneporlygs
 
+
 fn main() {
     SimpleLogger::new().init().unwrap();
 

@@ -24,7 +24,6 @@ const M_COST: u32 = 65536;
 /// The version of the Argon2 hashing algorithm to use.
 const ARGON_VER: argon2::Version = argon2::Version::V0x13;
 
-#[derive(Debug)]
 pub struct StegaV1 {
     /// The data index to cell ID map.
     data_cell_map: HashMap<usize, usize>,
@@ -593,18 +592,15 @@ impl StegaV1 {
     /// * `img` - A reference to the [`ImageWrapper`] that holds the image.
     ///
     fn validate_image(img: &ImageWrapper) -> Result<()> {
-        let fmt = img.get_image_format();
-
         // We currently only support PNG files.
-        if fmt != image::ImageFormat::Png {
+        if img.get_image_format() != image::ImageFormat::Png {
             return Err(Error::ImageTypeInvalid);
         }
 
         // The total number of channels must be divisible by 8.
         // This will ensure that we can always encode a given byte
         // of data.
-        let channels = img.get_total_channels();
-        if channels % 8 != 0 {
+        if img.get_total_channels() % 8 != 0 {
             return Err(Error::ImageDimensionsInvalid);
         }
 
@@ -628,7 +624,6 @@ impl StegaV1 {
 
         // Get the image bytes relevant to this cell.
         let bytes = img.get_subcells_from_index_mut(cell_start, 2);
-
         for (i, b) in bytes.iter_mut().enumerate() {
             if !utils::is_bit_set(data, i) {
                 continue;
