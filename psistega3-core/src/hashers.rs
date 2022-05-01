@@ -80,6 +80,8 @@ pub fn sha3_256_file(path: &str) -> Result<Vec<u8>> {
         }
     };
 
+    // Create a read-only memory map of the file as it should improve
+    // the performance of this function.
     let mmap = unsafe {
         match Mmap::map(&file) {
             Ok(m) => m,
@@ -109,6 +111,8 @@ pub fn sha3_512_file(path: &str) -> Result<Vec<u8>> {
         }
     };
 
+    // Create a read-only memory map of the file as it should improve
+    // the performance of this function.
     let mmap = unsafe {
         match Mmap::map(&file) {
             Ok(m) => m,

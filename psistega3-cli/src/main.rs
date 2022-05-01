@@ -38,6 +38,7 @@ fn main() {
         | "-decrypt-file" => {
             if args.len() < 6 {
                 show_abort_message(Error::InsufficientArguments);
+                return;
             }
         }
         _ => {
@@ -62,6 +63,7 @@ fn main() {
 
         if codec_version.is_none() {
             show_abort_message(Error::InvalidVersion);
+            return;
         }
 
         // The unwrap is safe here as we have verified the codec version
@@ -93,6 +95,7 @@ fn main() {
     // If we encountered an error then display that error to the console.
     if let Err(e) = result {
         show_abort_message(e);
+        return;
     }
 
     let arg_len = &args.len();
@@ -379,7 +382,6 @@ fn read_password_from_args(args: &[String]) -> Option<String> {
 ///
 pub fn show_abort_message(error: Error) {
     println!("Error: {}", error);
-    std::process::exit(0);
 }
 
 /// Write some basic help information on screen.

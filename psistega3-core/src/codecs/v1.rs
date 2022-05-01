@@ -41,7 +41,7 @@ pub struct StegaV1 {
     /// If file locking is enabled then the file will be rendered
     /// invalid after 5 failed attempts to decode it.
     use_file_locker: bool,
-    /// The file locker instance for this task.
+    /// The file locker instance for this codec instance.
     locker: Locker,
 }
 
@@ -109,6 +109,20 @@ impl StegaV1 {
         key: String,
         encoded_img_path: &str,
     ) -> Result<String> {
+        let enc_hash = hashers::sha3_256_file(encoded_img_path);
+        if enc_hash.is_err() {
+            return Err(Error::FileHashingError);
+        }
+        let enc_hash = enc_hash.unwrap();
+
+        // The first thing we need to do is to check whether the file hash
+        // exists within the locker file index.
+        // If it does then we need to check whether the file is locked,
+        // if it is then we will not try to load the file.
+        if self.locker.is_file_locked(&enc_hash) {
+            return Err(Error::DecryptionFailed);
+        }
+
         let ref_image = StegaV1::load_image(original_img_path, true)?;
         let enc_image = StegaV1::load_image(encoded_img_path, true)?;
 
@@ -160,12 +174,15 @@ impl StegaV1 {
             possible value for an unsigned 32-bit integer.
         */
         if total_cells_needed > u32::MAX as u64 {
+            // This error counts as a failed decryption attempt.
+            self.locker.update_file_lock(encoded_img_path, &enc_hash);
             return Err(Error::DataTooLarge);
         }
 
         // Do we have enough space within the image to decode the data?
-        let total_cells = StegaV1::get_total_cells(&enc_image);
-        if total_cells_needed > total_cells {
+        if total_cells_needed > StegaV1::get_total_cells(&enc_image) {
+            // This error counts as a failed decryption attempt.
+            self.locker.update_file_lock(encoded_img_path, &enc_hash);
             return Err(Error::ImageInsufficientSpace);
         }
 
@@ -223,8 +240,16 @@ impl StegaV1 {
         */
         let pt_bytes = match cipher.decrypt(nonce, ct_bytes.as_ref()) {
             Ok(v) => v,
-            Err(_) => return Err(Error::DecryptionFailed),
+            Err(_) => {
+                // This error counts as a failed decryption attempt.
+                self.locker.update_file_lock(encoded_img_path, &enc_hash);
+                return Err(Error::DecryptionFailed);
+            }
         };
+
+        // The decryption was successful, we can remove any file locker
+        // attempts that might be present.
+        self.locker.clear_file_lock(&enc_hash);
 
         let str: String;
         unsafe {
@@ -300,7 +325,7 @@ impl StegaV1 {
 
         /*
           4 cells for the total number of stored cipher-text cells,
-          the salt, the nonce and the cipher-text itself.
+            the salt, the nonce and the cipher-text itself.
 
           This value must be doubled as we need 2 cells per byte:
             one for the XOR encoded byte and one for the XOR byte.
@@ -716,7 +741,7 @@ impl Codec for StegaV1 {
         key: String,
         encoded_img_path: &str,
     ) -> Result<String> {
-        // Decode the base64 string.
+        // Decode the data to yield a base64 string.
         let b64_str = self.decode_internal(original_img_path, key, encoded_img_path)?;
 
         // Decode the base64 string into the raw bytes.
