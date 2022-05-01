@@ -383,7 +383,7 @@ impl StegaV1 {
     /// * `data_index` - The data index to be checked.
     ///
     /// Note: this method will panic if the data cell is not present in the map.
-    ///       In practice this should never occur.
+    /// In practice this should never occur.
     ///
     fn get_data_cell_index(&self, data_index: &usize) -> usize {
         *self
@@ -517,7 +517,7 @@ impl StegaV1 {
     /// * `cell_start` - The index from which the encoded data should be read.
     ///
     /// Note: this method will read 8 channels worth of data, starting at
-    ///       the specified index.
+    /// the specified index.
     ///
     fn read_u8(&self, ref_img: &ImageWrapper, enc_img: &ImageWrapper, cell_start: usize) -> u8 {
         // Extract the bytes representing the pixel channels
@@ -552,7 +552,7 @@ impl StegaV1 {
     /// * `data_index` - The index of the data byte to be read.
     ///
     /// Note: this method will read 8 channels worth of data, starting at
-    ///       the specified index.
+    /// the specified index.
     ///
     #[inline]
     fn read_u8_by_index(
@@ -778,7 +778,7 @@ impl Default for StegaV1 {
 /// This structure will hold the decoded data.
 ///
 /// Note: this structure handles little Endian conversions
-///       internally.
+/// internally.
 struct DataDecoder {
     xor_bytes: VecDeque<u8>,
     bytes: VecDeque<u8>,
@@ -835,7 +835,7 @@ impl DataDecoder {
     /// `Note:` This method will pop `4` bytes from the internal vector.
     ///
     /// `Note:` this method will automatically convert the returned value
-    ///         from little Endian to the correct bit-format.
+    /// from little Endian to the correct bit-format.
     ///
     pub fn pop_u32(&mut self) -> u32 {
         assert!(self.bytes.len() >= 4, "insufficient values available");
@@ -870,7 +870,7 @@ impl DataDecoder {
     /// * `value` - The byte to be stored in the internal vector.
     ///
     /// `Note:` this method will automatically convert the returned value
-    ///          from little Endian to the appropriate bit-format.
+    /// from little Endian to the appropriate bit-format.
     ///
     pub fn push_u8(&mut self, value: u8) {
         self.xor_bytes.push_back(u8::from_le(value));
@@ -883,7 +883,7 @@ impl DataDecoder {
     /// * `values` - The bytes to be stored in the internal vector.
     ///
     /// `Note:` this method will automatically convert the returned value
-    ///         from little Endian to the appropriate bit-format.
+    /// from little Endian to the appropriate bit-format.
     ///
     #[allow(dead_code)]
     pub fn push_u8_slice(&mut self, values: &[u8]) {
@@ -1198,8 +1198,8 @@ mod tests_encode_decode {
             "file not written to disk."
         );
 
-        // Create a hash of the original and new file. If these hashes match then we
-        // can be confident that the files are the same.
+        // Create a hash of the original and new file. If these hashes match
+        // then we can be confident that the files are the same.
         let hash_original = hashers::sha3_512_file(&output_file_path);
         let hash_new = hashers::sha3_512_file(&output_file_path);
 

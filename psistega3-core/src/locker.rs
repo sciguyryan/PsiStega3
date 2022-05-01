@@ -9,9 +9,8 @@ use std::{
     path::{Path, PathBuf},
 };
 
-// TODO: make this private for release.
 #[derive(Debug)]
-pub struct Locker {
+pub(crate) struct Locker {
     entries: Vec<LockerEntry>,
 }
 
@@ -44,15 +43,14 @@ impl Locker {
         if path.is_err() {
             return Err(Error::LockerFilePath);
         }
-
         let path = path.unwrap();
 
-        let f = match File::create(path) {
+        let file = match File::create(path) {
             Ok(f) => f,
             Err(_) => return Err(Error::LockerFileCreation),
         };
 
-        Ok(f)
+        Ok(file)
     }
 
     fn get_entry_index_by_hash(&self, hash: &[u8]) -> Option<usize> {
@@ -91,7 +89,7 @@ impl Locker {
         }
     }
 
-    pub fn clear_file_lock(&mut self, hash: &[u8]) {
+    fn clear_file_lock(&mut self, hash: &[u8]) {
         if let Some(i) = self.get_entry_index_by_hash(hash) {
             // The hash exists within the list so we should remove it.
             self.entries.remove(i);
@@ -99,6 +97,15 @@ impl Locker {
 
         // The hash is not in the entry list, we do not need to
         // do anything here.
+    }
+
+    pub fn maybe_clear_file_lock(&mut self, hash: &[u8]) {
+        // If the file has been locked then we can't unlock it.
+        if self.is_file_locked(hash) {
+            return;
+        }
+
+        self.clear_file_lock(hash);
     }
 
     pub fn maybe_update_file_lock(&mut self, path: &str, hash: &[u8]) {
@@ -125,7 +132,7 @@ impl Locker {
         }
     }
 
-    fn lock_file(&mut self, file_path: &str) -> bool {
+    pub fn lock_file(&mut self, file_path: &str) -> bool {
         use crate::image_wrapper::ImageWrapper;
 
         // If the path does not currently exist then we cannot lock it,
@@ -206,12 +213,10 @@ impl Locker {
 
     #[cfg(debug_assertions)]
     fn inject_debug_entries(&mut self) {
-        let e1 = LockerEntry::new(&hashers::sha3_256_string("AAAA"), 0);
-        self.entries.push(e1);
-        let e2 = LockerEntry::new(&hashers::sha3_256_string("BBBB"), 0);
-        self.entries.push(e2);
-        let e3 = LockerEntry::new(&hashers::sha3_256_string("CCCC"), 0);
-        self.entries.push(e3);
+        for c in ["A", "B", "C"] {
+            let entry = LockerEntry::new(&hashers::sha3_256_string(&str::repeat(c, 4)), 0);
+            self.entries.push(entry);
+        }
     }
 
     fn read_locker_file(&mut self) -> Result<()> {
@@ -240,9 +245,7 @@ impl Locker {
         // The file will automatically be closed when it goes out of scope.
         let mut file = match File::open(path) {
             Ok(f) => f,
-            Err(_) => {
-                return Err(Error::LockerFileRead);
-            }
+            Err(_) => return Err(Error::LockerFileRead),
         };
 
         // This will hold the chunk of data that is being read.

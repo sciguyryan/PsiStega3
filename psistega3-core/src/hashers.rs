@@ -2,9 +2,9 @@ use crate::error::{Error, Result};
 
 use argon2::Argon2;
 use crc32fast::Hasher as Crc32;
+use memmap2::Mmap;
 use sha3::{Digest, Sha3_256, Sha3_512};
 use std::fs::File;
-use std::io::prelude::*;
 
 /// Get the Argon2 hash of a string slice.
 ///
@@ -73,24 +73,23 @@ pub fn crc32_slice(slice: &[u8]) -> u32 {
 /// * `path` - The path to the file.
 ///
 pub fn sha3_256_file(path: &str) -> Result<Vec<u8>> {
-    let mut hasher = Sha3_256::new();
-
-    // The file will automatically be closed when it goes out of scope.
-    let mut file = match File::open(path) {
+    let file = match File::open(path) {
         Ok(f) => f,
         Err(_) => {
             return Err(Error::FileHashingError);
         }
     };
-    let mut buffer = [0u8; 16384];
 
-    // Loop until we have read the entire file (in chunks).
-    loop {
-        let n = file.read(&mut buffer).unwrap();
-        if n == 0 {
-            break;
+    let mmap = unsafe {
+        match Mmap::map(&file) {
+            Ok(m) => m,
+            Err(_) => return Err(Error::FileHashingError),
         }
-        hasher.update(&buffer[..n]);
+    };
+
+    let mut hasher = Sha3_256::new();
+    for c in mmap.chunks(16384) {
+        hasher.update(c);
     }
 
     Ok(hasher.finalize().to_vec())
@@ -103,24 +102,23 @@ pub fn sha3_256_file(path: &str) -> Result<Vec<u8>> {
 /// * `path` - The path to the file.
 ///
 pub fn sha3_512_file(path: &str) -> Result<Vec<u8>> {
-    let mut hasher = Sha3_512::new();
-
-    // The file will automatically be closed when it goes out of scope.
-    let mut file = match File::open(path) {
+    let file = match File::open(path) {
         Ok(f) => f,
         Err(_) => {
             return Err(Error::FileHashingError);
         }
     };
-    let mut buffer = [0u8; 16384];
 
-    // Loop until we have read the entire file (in chunks).
-    loop {
-        let n = file.read(&mut buffer).unwrap();
-        if n == 0 {
-            break;
+    let mmap = unsafe {
+        match Mmap::map(&file) {
+            Ok(m) => m,
+            Err(_) => return Err(Error::FileHashingError),
         }
-        hasher.update(&buffer[..n]);
+    };
+
+    let mut hasher = Sha3_512::new();
+    for c in mmap.chunks(16384) {
+        hasher.update(c);
     }
 
     Ok(hasher.finalize().to_vec())
