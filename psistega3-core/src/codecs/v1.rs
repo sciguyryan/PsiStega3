@@ -2,7 +2,7 @@ use crate::codecs::codec::Codec;
 use crate::error::{Error, Result};
 use crate::image_wrapper::ImageWrapper;
 use crate::locker::Locker;
-use crate::{hashers, logger, utils};
+use crate::{hashers, logger, macros::*, utils};
 
 use aes_gcm::{
     aead::{Aead, NewAead},
@@ -109,11 +109,10 @@ impl StegaV1 {
         key: String,
         encoded_img_path: &str,
     ) -> Result<String> {
-        let enc_hash = hashers::sha3_256_file(encoded_img_path);
-        if enc_hash.is_err() {
-            return Err(Error::FileHashingError);
-        }
-        let enc_hash = enc_hash.unwrap();
+        let enc_hash = unwrap_or_return_err!(
+            hashers::sha3_256_file(encoded_img_path),
+            Error::FileHashingError
+        );
 
         // The first thing we need to do is to check whether the file hash
         // exists within the locker file index.
@@ -515,11 +514,8 @@ impl StegaV1 {
         // Truncate the IEND chunk from the file.
         utils::truncate_file(file_path, 12)?;
 
-        let f = OpenOptions::new().append(true).open(file_path);
-        if f.is_err() {
-            return Err(Error::File);
-        }
-        let mut f = f.unwrap();
+        let mut f =
+            unwrap_or_return_err!(OpenOptions::new().append(true).open(file_path), Error::File);
 
         // Generate and write the ztxt chunk to the file.
         let ztxt_chunk = self.generate_ztxt_chunk();

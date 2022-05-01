@@ -129,10 +129,11 @@ impl Locker {
 
         // If the path does not currently exist then we cannot lock it,
         // this means we shouldn't remove it from the list.
-        let path = PathBuf::from(file_path);
-        if !path.exists() {
+        if !utils::path_exists(file_path) {
             return false;
         }
+
+        let path = PathBuf::from(file_path);
 
         // This should never happen, but if it does then
         // the entry should be removed from the list.

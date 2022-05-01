@@ -1,4 +1,5 @@
 use crate::error::{Error, Result};
+use crate::macros::*;
 
 use core::fmt::Write;
 use rand::Rng;
@@ -87,11 +88,11 @@ where
     let remainder = needed - (iterations * ARRAY_SIZE);
 
     let mut vec1: Vec<u8> = Vec::with_capacity(needed);
-    for _ in 0..iterations {
+    (0..iterations).for_each(|_| {
         let mut bytes: [u8; ARRAY_SIZE] = [0; ARRAY_SIZE];
         rng.fill(&mut bytes);
         vec1.extend_from_slice(&bytes);
-    }
+    });
 
     let mut vec2: Vec<u8> = (0..remainder).map(|_| rng.gen()).collect();
 
@@ -141,11 +142,7 @@ pub(crate) fn read_file_to_u8_vector(path: &str) -> Result<Vec<u8>> {
         return Err(Error::PathInvalid);
     }
 
-    let mut file = match File::open(&path) {
-        Ok(f) => f,
-        Err(_) => return Err(Error::File),
-    };
-
+    let mut file = unwrap_or_return_err!(File::open(&path), Error::File);
     let mut buffer = Vec::new();
     match file.read_to_end(&mut buffer) {
         Ok(_) => Ok(buffer),
@@ -174,19 +171,13 @@ pub(crate) fn set_bit_state(value: &mut u8, index: usize, state: bool) {
 /// * `bytes_to_trim` - The number of bytes to be trimmed from the end of the file.
 ///
 pub(crate) fn truncate_file(path: &str, bytes_to_trim: u64) -> Result<()> {
-    let f = std::fs::OpenOptions::new().write(true).open(path);
-    if f.is_err() {
-        return Err(Error::File);
-    }
-    let f = f.unwrap();
+    use std::fs::OpenOptions;
 
-    let meta = f.metadata();
-    if meta.is_err() {
-        return Err(Error::FileMetadata);
-    }
+    let f = unwrap_or_return_err!(OpenOptions::new().write(true).open(path), Error::File);
+    let meta = unwrap_or_return_err!(f.metadata(), Error::FileMetadata);
 
     // Calculate the new file length.
-    let new_len = meta.unwrap().len() - bytes_to_trim;
+    let new_len = meta.len() - bytes_to_trim;
 
     // Truncate the file.
     if f.set_len(new_len).is_err() {
@@ -257,10 +248,7 @@ pub(crate) fn write_u8_slice_to_file(out_file: &str, bytes: &[u8]) -> Result<()>
 
     // We have decoded a valid base64 string.
     // Next we need to write the data to the file.
-    let mut file = match File::create(&out_file) {
-        Ok(f) => f,
-        Err(_) => return Err(Error::FileCreate),
-    };
+    let mut file = unwrap_or_return_err!(File::create(&out_file), Error::FileCreate);
 
     // Write the resulting bytes directly into the output file.
     match file.write_all(bytes) {
