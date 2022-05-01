@@ -9,6 +9,12 @@ use std::{
     path::{Path, PathBuf},
 };
 
+/// The IEND chunk of a PNG file.
+pub(crate) const IEND: [u8; 12] = [0, 0, 0, 0, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82];
+
+/// The ZTXT chunk header of a PNG file.
+pub(crate) const ZTXT: [u8; 4] = [0x7a, 0x54, 0x58, 0x74];
+
 /// Decode a base64 string and convert it to raw vector of bytes.
 ///
 /// * `string` - The base64 string to be decoded.
@@ -116,6 +122,28 @@ pub(crate) fn fill_vector_sequential(vec: &mut Vec<usize>) {
     });
 }
 
+pub(crate) fn find_png_ztxt_chunk_start(path: &str) -> Option<usize> {
+    use memmap2::Mmap;
+
+    let file = unwrap_or_return_val!(File::open(path), None);
+
+    // Create a read-only memory map of the file as it should improve
+    // the performance of this function.
+    let mmap = unsafe { unwrap_or_return_val!(Mmap::map(&file), None) };
+
+    let index = find_subsequence(&mmap, &ZTXT)?;
+
+    // The start of the chunk is always four bytes behind the header.
+    // The initial four bytes of the chunk indicate the length of the chunk.
+    Some(index - 4)
+}
+
+pub(crate) fn find_subsequence(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    haystack
+        .windows(needle.len())
+        .position(|window| window == needle)
+}
+
 /// Get the path to the current execution directory.
 #[allow(dead_code)]
 pub(crate) fn get_current_dir() -> PathBuf {
@@ -171,16 +199,14 @@ pub(crate) fn set_bit_state(value: &mut u8, index: usize, state: bool) {
 /// * `bytes_to_trim` - The number of bytes to be trimmed from the end of the file.
 ///
 pub(crate) fn truncate_file(path: &str, bytes_to_trim: u64) -> Result<()> {
-    use std::fs::OpenOptions;
-
-    let f = unwrap_or_return_err!(OpenOptions::new().write(true).open(path), Error::File);
-    let meta = unwrap_or_return_err!(f.metadata(), Error::FileMetadata);
+    let file = unwrap_or_return_err!(File::options().write(true).open(path), Error::File);
+    let meta = unwrap_or_return_err!(file.metadata(), Error::FileMetadata);
 
     // Calculate the new file length.
     let new_len = meta.len() - bytes_to_trim;
 
     // Truncate the file.
-    if f.set_len(new_len).is_err() {
+    if file.set_len(new_len).is_err() {
         return Err(Error::FileTruncate);
     }
 

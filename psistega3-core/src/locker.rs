@@ -111,12 +111,15 @@ impl Locker {
     }
 
     pub fn is_file_locked(&self, hash: &[u8]) -> bool {
-        // A file is considered locked if 5 or more attempts have been made
-        // to decode it, where the decryption was unsuccessful, meaning instances
-        // where an invalid key had been used.
-        // Note that the entry is added to the entry list upon the first
-        // unsuccessful attempt, which means that the 0th attempt is actually
-        // the first one.
+        /*
+          A file is considered locked if 5 or more attempts have been made
+            to decode it, where the decryption was unsuccessful, meaning instances
+            where an invalid key had been used.
+
+          Note that the entry is added to the entry list upon the first
+            unsuccessful attempt, which means that the 0th attempt is actually
+            the 1st attempt. Programmer logic!
+        */
         if let Some(entry) = self.get_entry_by_hash(hash) {
             entry.attempts >= 4
         } else {
@@ -171,6 +174,17 @@ impl Locker {
         // If the file was successfully scrambled then it can be removed from
         // the entry list, otherwise we will need to try again later.
         let res = img.save(file_path);
+
+        // Next, we need to remove the ZTXT chunk from the PNG file. This will
+        // act to further camouflage the modifications.
+        if Locker::remove_ztxt_chunk(file_path) {
+            // We need to add the IEND chunk back into the PNG file
+            // in order for it to be considered valid.
+            let mut f = unwrap_or_return_val!(File::options().append(true).open(file_path), false);
+
+            let end = utils::IEND.to_vec();
+            let _wb = f.write(&end).unwrap();
+        }
 
         // Spoof the file last modification time of the data file to make it
         // appear as though it were never changed.
@@ -231,6 +245,23 @@ impl Locker {
         }
 
         Ok(())
+    }
+
+    fn remove_ztxt_chunk(path: &str) -> bool {
+        let index = utils::find_png_ztxt_chunk_start(path);
+        if index.is_none() {
+            return false;
+        }
+
+        // The new length should be the index of the ZTXT chunk less four bytes.
+        // The latter four bytes are the bytes that would indicate the ZTXT
+        // chunk length.
+        let new_len = index.unwrap() - 4;
+
+        // Truncate the file to the new length.
+        // Note that we are not appending the IEND chunk here,
+        // which must be done in order for the PNG file to be valid.
+        utils::truncate_file(path, new_len as u64).is_ok()
     }
 
     fn toggle_read_only(path: &str) {

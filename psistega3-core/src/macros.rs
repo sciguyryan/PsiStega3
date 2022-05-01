@@ -1,3 +1,4 @@
+/// Unwrap a result or return if unsuccessful.
 macro_rules! unwrap_or_return {
     ( $e:expr ) => {
         match $e {
@@ -7,6 +8,7 @@ macro_rules! unwrap_or_return {
     };
 }
 
+/// Unwrap a result or return an error if unsuccessful.
 macro_rules! unwrap_or_return_err {
     ( $e:expr, $b:expr ) => {
         match $e {
@@ -16,6 +18,7 @@ macro_rules! unwrap_or_return_err {
     };
 }
 
+/// Unwrap a result or return a value if unsuccessful.
 macro_rules! unwrap_or_return_val {
     ( $e:expr, $b:expr ) => {
         match $e {

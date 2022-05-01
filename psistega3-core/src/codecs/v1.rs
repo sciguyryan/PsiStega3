@@ -41,7 +41,7 @@ pub struct StegaV1 {
     /// If file locking is enabled then the file will be rendered
     /// invalid after 5 failed attempts to decode it.
     use_file_locker: bool,
-    /// The file locker instance for this codec instance.
+    /// The file locker instance for this codec.
     locker: Locker,
 }
 
@@ -509,13 +509,13 @@ impl StegaV1 {
     /// * `file_path` - The path to the image file.
     ///
     fn modify_png_file(&self, file_path: &str) -> Result<()> {
-        use std::{fs::OpenOptions, io::Write};
+        use std::{fs::File, io::Write};
 
         // Truncate the IEND chunk from the file.
         utils::truncate_file(file_path, 12)?;
 
         let mut f =
-            unwrap_or_return_err!(OpenOptions::new().append(true).open(file_path), Error::File);
+            unwrap_or_return_err!(File::options().append(true).open(file_path), Error::File);
 
         // Generate and write the ztxt chunk to the file.
         let ztxt_chunk = self.generate_ztxt_chunk();
@@ -523,7 +523,7 @@ impl StegaV1 {
 
         // Now we can write the IEND chunk, which indicated the end of the PNG file data.
         // This chunk is always the same, so it can be hardcoded.
-        let end: Vec<u8> = vec![0, 0, 0, 0, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82];
+        let end = utils::IEND.to_vec();
         let _wb = f.write(&end).unwrap();
 
         Ok(())

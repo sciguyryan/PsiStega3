@@ -1,4 +1,5 @@
 use crate::error::{Error, Result};
+use crate::macros::*;
 
 use image::{ColorType, ImageFormat};
 
@@ -106,11 +107,7 @@ impl ImageWrapper {
     pub fn load_from_file(file_path: &str, read_only: bool) -> Result<ImageWrapper> {
         use image::{DynamicImage::*, GenericImageView};
 
-        let image = match image::open(file_path) {
-            Ok(img) => img,
-            // TODO: add more granularity to the errors here.
-            Err(_) => return Err(Error::ImageOpening),
-        };
+        let image = unwrap_or_return_err!(image::open(file_path), Error::ImageOpening);
 
         let colour_type = match &image {
             ImageLuma8(_) => ColorType::L8,
