@@ -1012,7 +1012,7 @@ impl DataEncoder {
 
 #[cfg(test)]
 mod tests_encode_decode {
-    use crate::{codecs::codec::Codec, hashers, locker::Locker, utils};
+    use crate::{codecs::codec::Codec, hashers, utils};
 
     use path_absolutize::Absolutize;
     use rand::Rng;

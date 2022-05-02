@@ -1,4 +1,7 @@
-use crate::error::{Error, Result};
+use crate::{
+    error::{Error, Result},
+    macros::*,
+};
 
 use argon2::Argon2;
 use crc32fast::Hasher as Crc32;
@@ -44,12 +47,10 @@ pub fn argon2_string(
 
     // Nom!
     let mut key_bytes = [0u8; 128];
-    if hasher
-        .hash_password_into(str.as_bytes(), &salt, &mut key_bytes)
-        .is_err()
-    {
-        return Err(Error::Argon2NoHash);
-    }
+    unwrap_or_return_err!(
+        hasher.hash_password_into(str.as_bytes(), &salt, &mut key_bytes),
+        Error::Argon2NoHash
+    );
 
     Ok(key_bytes)
 }
@@ -73,21 +74,11 @@ pub fn crc32_slice(slice: &[u8]) -> u32 {
 /// * `path` - The path to the file.
 ///
 pub fn sha3_256_file(path: &str) -> Result<Vec<u8>> {
-    let file = match File::open(path) {
-        Ok(f) => f,
-        Err(_) => {
-            return Err(Error::FileHashingError);
-        }
-    };
+    let file = unwrap_or_return_err!(File::open(path), Error::FileHashingError);
 
     // Create a read-only memory map of the file as it should improve
     // the performance of this function.
-    let mmap = unsafe {
-        match Mmap::map(&file) {
-            Ok(m) => m,
-            Err(_) => return Err(Error::FileHashingError),
-        }
-    };
+    let mmap = unsafe { unwrap_or_return_err!(Mmap::map(&file), Error::FileHashingError) };
 
     let mut hasher = Sha3_256::new();
     for c in mmap.chunks(16384) {
@@ -104,21 +95,11 @@ pub fn sha3_256_file(path: &str) -> Result<Vec<u8>> {
 /// * `path` - The path to the file.
 ///
 pub fn sha3_512_file(path: &str) -> Result<Vec<u8>> {
-    let file = match File::open(path) {
-        Ok(f) => f,
-        Err(_) => {
-            return Err(Error::FileHashingError);
-        }
-    };
+    let file = unwrap_or_return_err!(File::open(path), Error::FileHashingError);
 
     // Create a read-only memory map of the file as it should improve
     // the performance of this function.
-    let mmap = unsafe {
-        match Mmap::map(&file) {
-            Ok(m) => m,
-            Err(_) => return Err(Error::FileHashingError),
-        }
-    };
+    let mmap = unsafe { unwrap_or_return_err!(Mmap::map(&file), Error::FileHashingError) };
 
     let mut hasher = Sha3_512::new();
     for c in mmap.chunks(16384) {
