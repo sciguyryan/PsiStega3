@@ -146,10 +146,10 @@ impl StegaV1 {
         let len = chunk.len();
 
         // The final byte in the sequence contains the encoded flags.
-        let mut flags = chunk[len - 1];
+        let mut flags = chunk[len-1];
 
         // The byte prior to the final byte is used to cipher the flags byte.
-        StegaV1::cipher_flag_byte(&mut flags, &chunk[len - 2]);
+        StegaV1::cipher_flag_byte(&mut flags, &chunk[len-2]);
 
         // Iterate over each bit in the byte to set the corresponding flags.
         for i in 0..8 {
@@ -317,7 +317,7 @@ impl StegaV1 {
             }
         };
 
-        // The decryption was successful, we can remove any file locker
+        // The decryption was successful, we can remove any file access
         // attempts that might be present.
         self.clear_file_lock(&enc_hash);
 
@@ -526,8 +526,6 @@ impl StegaV1 {
         // The 1st bit indicates whether file locking is enabled.
         // The 2nd to 8th bits are reserved for future use.
         utils::set_bit_state(&mut flags, 0, true);
-
-        println!("Flags = {}", flags);
 
         // Cipher the flag byte in order add some randomness to the value.
         StegaV1::cipher_flag_byte(&mut flags, chunk.last().unwrap());

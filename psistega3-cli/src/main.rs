@@ -120,6 +120,10 @@ fn apply_codec_settings(codec: &mut Box<dyn Codec>, args: &[String]) {
         codec.set_config_state(Config::FastVariance, true);
     }
 
+    if args.contains(&String::from("--l")) || args.contains(&String::from("--locker")) {
+        codec.set_config_state(Config::Locker, true);
+    }
+
     if args.contains(&String::from("--nf")) || args.contains(&String::from("--no-files")) {
         codec.set_config_state(Config::OutputFiles, false);
     }
@@ -399,9 +403,10 @@ fn show_help() {
     println!();
     println!("OPTIONS:");
     println!("\t--fv, --fast-variance\tEnable the fast variance encoding mode (better performance, lower security).");
-    println!("\t--nn, --no-noise\t\tDisable the noise layer when encoding (better performance, lower security).");
-    println!("\t--nf, --no-files\t\tDisable the creation of any output files.");
-    //println!("\t--verbose\t\tEnable verbose mode.");
+    println!("\t--l, --locker\t\tEnable file locker. This option will lock a file after 5 unsuccessful decryption attempts.");
+    println!("\t--nn, --no-noise\tDisable the noise layer when encoding (better performance, lower security).");
+    println!("\t--nf, --no-files\tDisable the creation of any output files.");
+    //println!("\t--verbose\tEnable verbose mode.");
     println!();
     println!("Please use -examples to display some example commands.");
 }
