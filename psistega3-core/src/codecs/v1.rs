@@ -97,6 +97,17 @@ impl StegaV1 {
         }
     }
 
+    /// Cipher the flag byte, for use when reading or writing the zTXt chunk of a PNG file.
+    ///
+    /// # Arguments
+    ///
+    /// * `flags` - The value of the flag u8.
+    /// * `last_byte` - The last junk u8 value in the chunk.
+    ///
+    fn cipher_flag_byte(flags: &mut u8, last: &u8) {
+        *flags = !(*flags ^ !last)
+    }
+
     /// The internal implementation of the decoding algorithm.
     ///
     /// * `original_img_path` - The path to the reference image.
@@ -449,17 +460,15 @@ impl StegaV1 {
             chunk.push(b);
         }
 
-        // The data byte.
-        // The first four bits are junk data.
-        // The remaining four bits are feature flags.
+        // The flag data byte.
         let mut flags = 0b0000_0000;
-        for i in 0..4 {
-            utils::set_bit_state(&mut flags, i, thread_rng().gen_bool(0.5))
-        }
 
-        // The 5th bit indicates whether file locking is enabled.
-        // The 6th to 8th bits are reserved for future use.
-        utils::set_bit_state(&mut flags, 5, self.use_file_locker);
+        // The 1st bit indicates whether file locking is enabled.
+        // The 2nd to 8th bits are reserved for future use.
+        utils::set_bit_state(&mut flags, 0, self.use_file_locker);
+
+        // Cipher the flag byte in order add some randomness to the value.
+        StegaV1::cipher_flag_byte(&mut flags, chunk.last().unwrap());
 
         // Push the flag byte into the vector.
         chunk.push(flags);

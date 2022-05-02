@@ -122,6 +122,12 @@ pub(crate) fn fill_vector_sequential(vec: &mut Vec<usize>) {
     });
 }
 
+/// Attempts to find the position of the ZTXT chunk within a PNG file.
+///
+/// # Arguments
+///
+/// * `path` - The path to the file.
+///
 pub(crate) fn find_png_ztxt_chunk_start(path: &str) -> Option<usize> {
     use memmap2::Mmap;
 
@@ -131,9 +137,11 @@ pub(crate) fn find_png_ztxt_chunk_start(path: &str) -> Option<usize> {
     // the performance of this function.
     let mmap = unsafe { unwrap_or_return_val!(Mmap::map(&file), None) };
 
+    // If we have a ZTXT chunk present then the index of
+    // the header will be returned.
     let index = find_subsequence(&mmap, &ZTXT)?;
 
-    // The start of the chunk is always four bytes behind the header.
+    // The start of a chunk is always four bytes behind the header.
     // The initial four bytes of the chunk indicate the length of the chunk.
     Some(index - 4)
 }
@@ -176,6 +184,49 @@ pub(crate) fn read_file_to_u8_vector(path: &str) -> Result<Vec<u8>> {
         Ok(_) => Ok(buffer),
         Err(_) => Err(Error::FileRead),
     }
+}
+
+/// Attempts to read the ZTXT chunk of a PNG file.
+///
+/// # Arguments
+///
+/// * `path` - The path to the file.
+///
+/// `Note:` This function assumes that the PNG file is valid and not malformed.
+///
+pub(crate) fn read_png_ztxt_chunk_data(path: &str) -> Option<Vec<u8>> {
+    use memmap2::Mmap;
+
+    let file = unwrap_or_return_val!(File::open(path), None);
+
+    // Create a read-only memory map of the file as it should improve
+    // the performance of this function.
+    let mmap = unsafe { unwrap_or_return_val!(Mmap::map(&file), None) };
+
+    // If we have a zTXt chunk present then the index of
+    // the header will be returned.
+    let mut start = find_subsequence(&mmap, &ZTXT)?;
+
+    // The start of a chunk is always four bytes behind the chunk type bytes.
+    // The initial four bytes of the chunk indicate the length of the data
+    // portion of the chunk.
+    let len_bytes = &mmap[start - 4..start];
+    if len_bytes.len() < 4 {
+        return None;
+    }
+
+    let chunk_len_arr = <[u8; 4]>::try_from(len_bytes).unwrap();
+    let chunk_len = u32::from_be_bytes(chunk_len_arr);
+
+    // We can also skip past the chunk type bytes.
+    start += 4;
+
+    // The end of the chunk will be found at the new start index
+    // plus the length of the chunk.
+    let end = start + chunk_len as usize;
+
+    // Return the chunk data, as a vector of u8 values.
+    Some(mmap[start..end].to_vec())
 }
 
 /// Set the state of a bit in a u8 value.
