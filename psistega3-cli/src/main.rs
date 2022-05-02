@@ -10,6 +10,9 @@ use psistega3_core::version::*;
 use simple_logger::SimpleLogger;
 use std::{convert::TryFrom, env, io::stdin};
 
+/// The prompt for confirming a yes/no option.
+const CONFIRM_PROMPT: &str = "Are you sure you wish to enable this feature?";
+
 //ooneporlygs
 
 fn main() {
@@ -98,13 +101,9 @@ fn main() {
         return;
     }
 
-    let arg_len = &args.len();
-    if &args[*arg_len - 1] != "-auto-exit" {
+    if args.last().unwrap() != "-unattended" {
         // Wait for user input.
-        let mut input_string = String::new();
-        stdin()
-            .read_line(&mut input_string)
-            .expect("Failed to read a line.");
+        read_from_stdin();
     }
 }
 
@@ -121,7 +120,15 @@ fn apply_codec_settings(codec: &mut Box<dyn Codec>, args: &[String]) {
     }
 
     if args.contains(&String::from("--l")) || args.contains(&String::from("--locker")) {
-        codec.set_config_state(Config::Locker, true);
+        // We want to warn the user that enabling this option
+        // render the data unrecoverable.
+        let mut enabled = true;
+        if args.last().unwrap() != "-unattended" {
+            print!("WARNING: the file locker will render the encoded data unrecoverable if 5 or more attempts to decode the data are unsuccessful. ");
+            enabled = read_confirm_from_stdin(CONFIRM_PROMPT);
+        }
+
+        codec.set_config_state(Config::Locker, enabled);
     }
 
     if args.contains(&String::from("--nf")) || args.contains(&String::from("--no-files")) {
@@ -141,7 +148,7 @@ fn apply_codec_settings(codec: &mut Box<dyn Codec>, args: &[String]) {
 ///
 /// # Arguments
 ///
-/// * `key` - The [`Codec`] [`Version`].
+/// * `version` - The [`Codec`] [`Version`].
 ///
 fn get_codec_by_version(version: Version) -> Box<dyn Codec> {
     match version {
@@ -178,21 +185,7 @@ fn handle_decode(args: &[String], codec: &mut Box<dyn Codec>) -> Result<()> {
 
     let ref_image = &args[0];
     let enc_image = &args[1];
-
-    // Attempt to read the password from the supplied arguments.
-    // If none was supplied, then we will offer a password input prompt.
-    let mut password = read_password_from_args(args);
-    if password.is_none() {
-        password = read_password();
-        // If no password was supplied then an empty string
-        // will be used as the password.
-        // It isn't a safe password, but it is technically valid.
-        if password.is_none() {
-            password = Some(String::from(""));
-        }
-    }
-
-    let password = password.unwrap();
+    let password = read_password(args)?;
 
     // Attempt to decode the data.
     let plaintext = match codec.decode(ref_image, password, enc_image) {
@@ -228,21 +221,7 @@ fn handle_decode_file(args: &[String], codec: &mut Box<dyn Codec>) -> Result<()>
     let ref_image = &args[0];
     let enc_image = &args[1];
     let output_file_path = &args[2];
-
-    // Attempt to read the password from the supplied arguments.
-    // If none was supplied, then we will offer a password input prompt.
-    let mut password = read_password_from_args(args);
-    if password.is_none() {
-        password = read_password();
-        // If no password was supplied then an empty string
-        // will be used as the password.
-        // It isn't a safe password, but it is technically valid.
-        if password.is_none() {
-            password = Some(String::from(""));
-        }
-    }
-
-    let password = password.unwrap();
+    let password = read_password(args)?;
 
     // Attempt to decode the data.
     match codec.decode_file(ref_image, password, enc_image, output_file_path) {
@@ -272,18 +251,7 @@ fn handle_encode(args: &[String], codec: &mut Box<dyn Codec>) -> Result<()> {
     let ref_image = &args[0];
     let output_image = &args[1];
     let text = &args[2];
-
-    // Attempt to read the password from the supplied arguments.
-    // If none was supplied, then we will offer a password input prompt.
-    let mut password = read_password_from_args(args);
-    if password.is_none() {
-        password = read_password_with_verify();
-        if password.is_none() {
-            return Err(Error::PasswordMismatch);
-        }
-    }
-
-    let password = password.unwrap();
+    let password = read_password_with_verify(args)?;
 
     match codec.encode(ref_image, password, text, output_image) {
         Ok(_) => Ok(()),
@@ -310,18 +278,7 @@ fn handle_encode_file(args: &[String], codec: &mut Box<dyn Codec>) -> Result<()>
     let ref_image = &args[0];
     let output_image = &args[1];
     let input_file = &args[2];
-
-    // Attempt to read the password from the supplied arguments.
-    // If none was supplied, then we will offer a password input prompt.
-    let mut password = read_password_from_args(args);
-    if password.is_none() {
-        password = read_password_with_verify();
-        if password.is_none() {
-            return Err(Error::PasswordMismatch);
-        }
-    }
-
-    let password = password.unwrap();
+    let password = read_password_with_verify(args)?;
 
     match codec.encode_file(ref_image, password, input_file, output_image) {
         Ok(_) => Ok(()),
@@ -332,27 +289,46 @@ fn handle_encode_file(args: &[String], codec: &mut Box<dyn Codec>) -> Result<()>
     Ok(())
 }
 
-/// Read a password from the terminal.
-fn read_password() -> Option<String> {
-    get_password("Password: ")
+/// Read a line of text from stdin.
+fn read_from_stdin() -> String {
+    let mut input_string = String::new();
+    stdin()
+        .read_line(&mut input_string)
+        .expect("Failed to read a line.");
+    input_string
 }
 
-/// Prompt the user for a password, with verification.
-///
-/// # Returns
-///
-/// If the two passwords are the same then a [`String`] [`Option`] will be returned,
-/// otherwise a [`None`] will be returned.
-///
-fn read_password_with_verify() -> Option<String> {
-    let pwd_1 = get_password("Password: ");
-    let pwd_2 = get_password("Confirm password: ");
-
-    if pwd_1.is_some() && pwd_1 == pwd_2 {
-        return pwd_1;
+/// Read a password.
+/// This function will check the argument list first, then if no password was supplied a prompt will be offered.
+fn read_password(args: &[String]) -> Result<String> {
+    // First, attempt to read the password from the supplied arguments.
+    // If none was supplied, then we will offer a password input prompt.
+    let mut password = read_password_args(args);
+    if password.is_none() {
+        password = get_password("Password: ");
     }
 
-    None
+    // If no password was supplied then an empty string
+    // will be used as the password.
+    // It isn't a safe password, but it is technically valid.
+    if password.is_none() {
+        password = Some("".to_string());
+    }
+
+    Ok(password.unwrap())
+}
+
+/// Read a yes/no confirmation from a stdin prompt.
+fn read_confirm_from_stdin(prompt: &str) -> bool {
+    println!("{}", prompt);
+    let mut input_string = String::new();
+    stdin()
+        .read_line(&mut input_string)
+        .expect("Failed to read a line.");
+
+    let confirm = read_from_stdin().trim().to_lowercase();
+
+    confirm == "y" || confirm == "yes"
 }
 
 /// Attempt to read a password argument from the argument list.
@@ -362,7 +338,7 @@ fn read_password_with_verify() -> Option<String> {
 /// If a password argument is specified, and if the password is not empty then a [`String`] [`Option`] will be returned,
 /// otherwise a [`None`] will be returned.
 ///
-fn read_password_from_args(args: &[String]) -> Option<String> {
+fn read_password_args(args: &[String]) -> Option<String> {
     let password_arg = String::from("-p");
     if !args.contains(&password_arg) {
         return None;
@@ -376,6 +352,33 @@ fn read_password_from_args(args: &[String]) -> Option<String> {
     }
 
     Some(args[index].to_string())
+}
+
+/// Read a password, with verification.
+/// This function will check the argument list first, then if no password was supplied a prompt will be offered.
+fn read_password_with_verify(args: &[String]) -> Result<String> {
+    // First, attempt to read the password from the supplied arguments.
+    // If none was supplied, then we will offer a password input prompt.
+    let mut password = read_password_args(args);
+    if password.is_none() {
+        let pwd_1 = get_password("Password: ");
+        let pwd_2 = get_password("Confirm password: ");
+
+        if pwd_1 == pwd_2 {
+            password = pwd_1;
+        } else {
+            return Err(Error::PasswordMismatch);
+        }
+    }
+
+    // If no password was supplied then an empty string
+    // will be used as the password.
+    // It isn't a safe password, but it is technically valid.
+    if password.is_none() {
+        password = Some("".to_string());
+    }
+
+    Ok(password.unwrap())
 }
 
 /// Write an [`Error`] message on screen and then abort the program.

@@ -146,10 +146,10 @@ impl StegaV1 {
         let len = chunk.len();
 
         // The final byte in the sequence contains the encoded flags.
-        let mut flags = chunk[len-1];
+        let mut flags = chunk[len - 1];
 
         // The byte prior to the final byte is used to cipher the flags byte.
-        StegaV1::cipher_flag_byte(&mut flags, &chunk[len-2]);
+        StegaV1::cipher_flag_byte(&mut flags, &chunk[len - 2]);
 
         // Iterate over each bit in the byte to set the corresponding flags.
         for i in 0..8 {
