@@ -12,12 +12,18 @@ use std::{
 #[derive(Debug)]
 pub(crate) struct Locker {
     entries: Vec<LockerEntry>,
+
+    #[cfg(test)]
+    pub clear_on_exit: bool,
 }
 
 impl Locker {
     pub fn new() -> Result<Self> {
         let mut l = Self {
             entries: Vec::with_capacity(20),
+
+            #[cfg(test)]
+            clear_on_exit: false,
         };
 
         l.read_locker_file()?;
@@ -334,6 +340,14 @@ impl Locker {
 
 impl Drop for Locker {
     fn drop(&mut self) {
+        #[cfg(test)]
+        {
+            if self.clear_on_exit {
+                self.clear_locks();
+                return;
+            }
+        }
+
         // If writing the locker file failed, exit immediately.
         // TODO: it may be prudent to delete the file if the file isn't locked.
         if self.write_locker_file().is_err() {

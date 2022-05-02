@@ -42,7 +42,7 @@ pub struct StegaV1 {
     /// invalid after 5 failed attempts to decode it.
     use_file_locker: bool,
     /// The file locker instance for this codec.
-    locker: Locker,
+    pub(crate) locker: Locker,
 }
 
 impl StegaV1 {
@@ -95,6 +95,11 @@ impl StegaV1 {
             self.data_cell_map.insert(i, id);
             i += 1;
         }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn clear_locker_on_drop(&mut self) {
+        self.locker.clear_on_exit = true;
     }
 
     /// Cipher the flag byte, for use when reading or writing the zTXt chunk of a PNG file.
@@ -805,6 +810,10 @@ impl Default for StegaV1 {
     }
 }
 
+impl Drop for StegaV1 {
+    fn drop(&mut self) {}
+}
+
 /// This structure will hold the decoded data.
 ///
 /// Note: this structure handles little Endian conversions
@@ -1003,7 +1012,7 @@ impl DataEncoder {
 
 #[cfg(test)]
 mod tests_encode_decode {
-    use crate::{codecs::codec::Codec, hashers, utils};
+    use crate::{codecs::codec::Codec, hashers, locker::Locker, utils};
 
     use path_absolutize::Absolutize;
     use rand::Rng;
@@ -1164,8 +1173,10 @@ mod tests_encode_decode {
         let ref_img_path = get_test_in_file_str("reference-valid.png");
         let enc_img_path = get_test_in_file_str("encoded-text.png");
 
-        // Attempt to decode the string.
+        // Attempt to decode the string, ensure the locker file is cleared on exit.
         let mut stega = StegaV1::default();
+        stega.clear_locker_on_drop();
+
         let r = stega
             .decode(&ref_img_path, KEY.to_string(), &enc_img_path)
             .expect("failed to decode string");
@@ -1179,8 +1190,10 @@ mod tests_encode_decode {
         let ref_img_path = get_test_in_file_str("reference-valid.png");
         let enc_img_path = get_test_in_file_str("encoded-text.png");
 
-        // Attempt to decode the string.
+        // Attempt to decode the string, ensure the locker file is cleared on exit.
         let mut stega = StegaV1::default();
+        stega.clear_locker_on_drop();
+
         let r = stega.decode(&ref_img_path, "A".to_string(), &enc_img_path);
 
         // Did we successfully decode the string?
@@ -1195,9 +1208,11 @@ mod tests_encode_decode {
         let ref_path = get_test_in_file_str("reference-invalid.png");
         let enc_path = get_test_in_file_str("encoded-text.png");
 
-        // Attempt to decode the string.
+        // Attempt to decode the string, ensure the locker file is cleared on exit.
         // The key is valid but the reference image is not.
         let mut stega = StegaV1::default();
+        stega.clear_locker_on_drop();
+
         let r = stega.decode(&ref_path, KEY.to_string(), &enc_path);
 
         // Did we successfully decode the string?
@@ -1216,8 +1231,10 @@ mod tests_encode_decode {
         let mut f = FileCleaner::new();
         f.add(&output_file_path);
 
-        // Attempt to decode the file.
+        // Attempt to decode the file, ensure the locker file is cleared on exit.
         let mut stega = StegaV1::default();
+        stega.clear_locker_on_drop();
+
         stega
             .decode_file(&ref_path, KEY.to_string(), &enc_path, &output_file_path)
             .expect("failed to decode string");
@@ -1248,8 +1265,10 @@ mod tests_encode_decode {
         let mut f = FileCleaner::new();
         f.add(&output_file_path);
 
-        // Attempt to decode the file.
+        // Attempt to decode the file, ensure the locker file is cleared on exit.
         let mut stega = StegaV1::default();
+        stega.clear_locker_on_drop();
+
         let r = stega.decode_file(&ref_path, "A".to_string(), &enc_path, &output_file_path);
 
         // Did we successfully decode the string?
@@ -1268,8 +1287,10 @@ mod tests_encode_decode {
         let mut f = FileCleaner::new();
         f.add(&output_file_path);
 
-        // Attempt to decode the file.
+        // Attempt to decode the file, ensure the locker file is cleared on exit.
         let mut stega = StegaV1::default();
+        stega.clear_locker_on_drop();
+
         let r = stega.decode_file(&ref_path, KEY.to_string(), &enc_path, &output_file_path);
 
         // Did we successfully decode the string?
@@ -1291,6 +1312,8 @@ mod tests_encode_decode {
 
         // Attempt to decode the file.
         let mut stega = StegaV1::default();
+        stega.clear_locker_on_drop();
+
         stega
             .decode_file(&ref_path, KEY.to_string(), &enc_path, &output_file_path)
             .expect("failed to decode string");
@@ -1322,6 +1345,8 @@ mod tests_encode_decode {
 
         // Attempt to encode the file.
         let mut stega = StegaV1::default();
+        stega.clear_locker_on_drop();
+
         let r = stega.encode(
             &input_path,
             KEY.to_string(),

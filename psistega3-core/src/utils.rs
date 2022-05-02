@@ -192,7 +192,7 @@ pub(crate) fn read_file_to_u8_vector(path: &str) -> Result<Vec<u8>> {
 ///
 /// * `path` - The path to the file.
 ///
-/// `Note:` This function assumes that the PNG file is valid and not malformed.
+/// `Note:` This function assumes that the PNG file is valid and not badly malformed.
 ///
 pub(crate) fn read_png_ztxt_chunk_data(path: &str) -> Option<Vec<u8>> {
     use memmap2::Mmap;
