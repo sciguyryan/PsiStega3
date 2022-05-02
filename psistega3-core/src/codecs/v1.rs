@@ -97,11 +97,6 @@ impl StegaV1 {
         }
     }
 
-    #[cfg(test)]
-    pub(crate) fn clear_locker_on_drop(&mut self) {
-        self.locker.clear_on_exit = true;
-    }
-
     /// Cipher the flag byte, for use when reading or writing the zTXt chunk of a PNG file.
     ///
     /// # Arguments
@@ -111,6 +106,60 @@ impl StegaV1 {
     ///
     fn cipher_flag_byte(flags: &mut u8, last: &u8) {
         *flags = !(*flags ^ !last)
+    }
+
+    /// Clear the lock on a file. Only used when use_file_locker is enabled.
+    ///
+    /// * `hash` - The hash of the file to be unlocked.
+    ///
+    fn clear_file_lock(&mut self, hash: &[u8]) {
+        if !self.use_file_locker {
+            return;
+        }
+
+        // The decryption was successful, we can remove any file locker
+        // attempts that might be present.
+        self.locker.clear_file_lock(hash);
+    }
+
+    /// Completely clear the locker file on drop.
+    ///
+    /// `Note:` this function is only build when running tests.
+    ///
+    #[cfg(test)]
+    pub(crate) fn clear_locker_on_drop(&mut self) {
+        self.locker.clear_on_exit = true;
+    }
+
+    /// Process the zTXt chunk of a PNG file, and apply any flags that may be present.
+    ///
+    /// * `path` - The path to the PNG file.
+    ///
+    pub fn process_ztxt_chunk(&mut self, path: &str) {
+        let chunk = utils::read_png_ztxt_chunk_data(path);
+        if chunk.is_none() {
+            return;
+        }
+
+        // We have a zTXt chunk to process!
+        let chunk = chunk.unwrap();
+        let len = chunk.len();
+
+        // The final byte in the sequence contains the encoded flags.
+        let mut flags = chunk[len - 1];
+
+        // The byte prior to the final byte is used to cipher the flags byte.
+        StegaV1::cipher_flag_byte(&mut flags, &chunk[len - 2]);
+
+        // Iterate over each bit in the byte to set the corresponding flags.
+        for i in 0..8 {
+            let state = utils::is_bit_set(&flags, i);
+            if i == 0 {
+                self.use_file_locker = state;
+            }
+
+            // The other bits are currently unused.
+        }
     }
 
     /// The internal implementation of the decoding algorithm.
@@ -125,17 +174,23 @@ impl StegaV1 {
         key: String,
         encoded_img_path: &str,
     ) -> Result<String> {
-        let enc_hash = unwrap_or_return_err!(
-            hashers::sha3_256_file(encoded_img_path),
-            Error::FileHashingError
-        );
+        // Process the zTXt chunk data, if present.
+        self.process_ztxt_chunk(encoded_img_path);
 
-        // The first thing we need to do is to check whether the file hash
-        // exists within the locker file index.
-        // If it does then we need to check whether the file is locked,
-        // if it is then we will not try to load the file.
-        if self.locker.is_file_locked(&enc_hash) {
-            return Err(Error::DecryptionFailed);
+        let mut enc_hash: Vec<u8> = vec![];
+        if self.use_file_locker {
+            enc_hash = unwrap_or_return_err!(
+                hashers::sha3_256_file(encoded_img_path),
+                Error::FileHashingError
+            );
+
+            // The first thing we need to do is to check whether the file hash
+            // exists within the locker file index.
+            // If it does then we need to check whether the file is already locked.
+            // if it is then we will not try to decode the file.
+            if self.locker.is_file_locked(&enc_hash) {
+                return Err(Error::DecryptionFailed);
+            }
         }
 
         let ref_image = StegaV1::load_image(original_img_path, true)?;
@@ -190,14 +245,14 @@ impl StegaV1 {
         */
         if total_cells_needed > u32::MAX as u64 {
             // This error counts as a failed decryption attempt.
-            self.locker.update_file_lock(encoded_img_path, &enc_hash);
+            self.update_file_lock(encoded_img_path, &enc_hash);
             return Err(Error::DataTooLarge);
         }
 
         // Do we have enough space within the image to decode the data?
         if total_cells_needed > StegaV1::get_total_cells(&enc_image) {
             // This error counts as a failed decryption attempt.
-            self.locker.update_file_lock(encoded_img_path, &enc_hash);
+            self.update_file_lock(encoded_img_path, &enc_hash);
             return Err(Error::ImageInsufficientSpace);
         }
 
@@ -257,14 +312,14 @@ impl StegaV1 {
             Ok(v) => v,
             Err(_) => {
                 // This error counts as a failed decryption attempt.
-                self.locker.update_file_lock(encoded_img_path, &enc_hash);
+                self.update_file_lock(encoded_img_path, &enc_hash);
                 return Err(Error::DecryptionFailed);
             }
         };
 
         // The decryption was successful, we can remove any file locker
         // attempts that might be present.
-        self.locker.clear_file_lock(&enc_hash);
+        self.clear_file_lock(&enc_hash);
 
         let str: String;
         unsafe {
@@ -446,7 +501,7 @@ impl StegaV1 {
     }
 
     /// Generate a zTXt chunk for our PNG. This chunk will hold information
-    /// about feature flags set while creating the file.
+    /// about feature flags set while encoding the file.
     ///
     fn generate_ztxt_chunk(&self) -> Vec<u8> {
         // zTXt chunk.
@@ -470,7 +525,9 @@ impl StegaV1 {
 
         // The 1st bit indicates whether file locking is enabled.
         // The 2nd to 8th bits are reserved for future use.
-        utils::set_bit_state(&mut flags, 0, self.use_file_locker);
+        utils::set_bit_state(&mut flags, 0, true);
+
+        println!("Flags = {}", flags);
 
         // Cipher the flag byte in order add some randomness to the value.
         StegaV1::cipher_flag_byte(&mut flags, chunk.last().unwrap());
@@ -618,6 +675,22 @@ impl StegaV1 {
         let arr = <[u8; 32]>::try_from(bytes).unwrap();
 
         R::from_seed(arr)
+    }
+
+    /// Update the attempts field for a given file. Only used when use_file_locker is enabled.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - The path to the image file.
+    /// * `hash` - The hash of the image file.
+    ///
+    fn update_file_lock(&mut self, path: &str, hash: &[u8]) {
+        if !self.use_file_locker {
+            return;
+        }
+
+        // This error counts as a failed decryption attempt.
+        self.locker.update_file_lock(path, hash);
     }
 
     /// Validate if the image can be used with our steganography algorithms.

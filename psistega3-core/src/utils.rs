@@ -186,7 +186,7 @@ pub(crate) fn read_file_to_u8_vector(path: &str) -> Result<Vec<u8>> {
     }
 }
 
-/// Attempts to read the ZTXT chunk of a PNG file.
+/// Attempts to read the zTXt chunk of a PNG file.
 ///
 /// # Arguments
 ///
@@ -197,20 +197,20 @@ pub(crate) fn read_file_to_u8_vector(path: &str) -> Result<Vec<u8>> {
 pub(crate) fn read_png_ztxt_chunk_data(path: &str) -> Option<Vec<u8>> {
     use memmap2::Mmap;
 
+    // If we have a zTXt chunk present then the index of
+    // the header will be returned.
+    let mut start = find_png_ztxt_chunk_start(path)?;
+
     let file = unwrap_or_return_val!(File::open(path), None);
 
     // Create a read-only memory map of the file as it should improve
     // the performance of this function.
     let mmap = unsafe { unwrap_or_return_val!(Mmap::map(&file), None) };
 
-    // If we have a zTXt chunk present then the index of
-    // the header will be returned.
-    let mut start = find_subsequence(&mmap, &ZTXT)?;
-
     // The start of a chunk is always four bytes behind the chunk type bytes.
     // The initial four bytes of the chunk indicate the length of the data
     // portion of the chunk.
-    let len_bytes = &mmap[start - 4..start];
+    let len_bytes = &mmap[start..start + 4];
     if len_bytes.len() < 4 {
         return None;
     }
@@ -219,7 +219,7 @@ pub(crate) fn read_png_ztxt_chunk_data(path: &str) -> Option<Vec<u8>> {
     let chunk_len = u32::from_be_bytes(chunk_len_arr);
 
     // We can also skip past the chunk type bytes.
-    start += 4;
+    start += 8;
 
     // The end of the chunk will be found at the new start index
     // plus the length of the chunk.
