@@ -24,7 +24,7 @@ pub enum Error {
     FileCreate,
     /// An error occurred while attempting to hash a file.
     FileHashingError,
-    /// Unable to get the file metadata.
+    /// Error reading or writing a file's metadata.
     FileMetadata,
     /// Error reading from a file.
     FileRead,
@@ -72,7 +72,7 @@ impl fmt::Display for Error {
             Error::File => "A generic file-related error occurred.",
             Error::FileCreate => "An error occurred when attempting to create a file.",
             Error::FileHashingError => "An error occurred when attempting to hash a file.",
-            Error::FileMetadata => "Unable to get the file metadata.",
+            Error::FileMetadata => "An error occured when attempting to read or write a file's metadata.",
             Error::FileRead => "An error occurred when attempting to read from a file.",
             Error::FileTruncate => "An error occurred when attempting to truncate a file.",
             Error::FileWrite => "An error occurred when attempting to write to a file.",

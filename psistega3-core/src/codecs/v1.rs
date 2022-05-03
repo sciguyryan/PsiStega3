@@ -1083,11 +1083,12 @@ impl DataEncoder {
 
 #[cfg(test)]
 mod tests_encode_decode {
-    use crate::{codecs::codec::Codec, hashers, utils};
-
-    use path_absolutize::Absolutize;
-    use rand::Rng;
-    use std::path::PathBuf;
+    use crate::{
+        codecs::codec::Codec,
+        hashers,
+        test_utils::{FileCleaner, TestUtils},
+        utils,
+    };
 
     use super::StegaV1;
 
@@ -1095,79 +1096,15 @@ mod tests_encode_decode {
     const KEY: &str = "ElPsyKongroo";
     // The generic text used to text encoding and decoding.
     const TEXT: &str = "3.1415926535";
-
-    /// This class will be used to automatically delete any
-    /// files generated with the tests.
-    struct FileCleaner {
-        files: Vec<String>,
-    }
-
-    impl FileCleaner {
-        pub fn new() -> Self {
-            Self { files: Vec::new() }
-        }
-
-        pub fn add(&mut self, path: &str) {
-            self.files.push(path.to_string());
-        }
-    }
-
-    impl Drop for FileCleaner {
-        fn drop(&mut self) {
-            for f in &self.files {
-                let _ = std::fs::remove_file(f);
-            }
-        }
-    }
-
-    /// Returns a [`PathBuf`] to the path for the test files.
-    fn test_base_path() -> PathBuf {
-        let mut path = utils::get_current_dir();
-        path.push("..");
-        path.push("tests");
-        path.push("assets");
-        path.push("encoding_decoding");
-
-        assert!(path.exists(), "testing file directory does not exist.");
-
-        path
-    }
-
-    /// Get the full path to a test file.
-    ///
-    /// `Note:` This path is normalized to avoid creating any issues
-    /// with relative paths.
-    ///
-    fn get_test_in_file_str(file: &str) -> String {
-        let mut path = test_base_path();
-        path.push(file);
-
-        assert!(path.exists(), "unable to find test file.");
-
-        let path = path.absolutize().unwrap();
-        path.to_str().unwrap().to_string()
-    }
-
-    /// Get the full path to a random output file path, with a given extension.
-    /// These files are created in the operating system's temp directory.
-    ///
-    /// `Note:` This path is normalized to avoid creating any issues
-    /// with relative paths.
-    ///
-    fn get_test_out_file_str(ext: &str) -> String {
-        let random: u128 = rand::thread_rng().gen();
-
-        let mut path = std::env::temp_dir();
-        path.push(format!("{}.{}", random, ext));
-
-        let path = path.absolutize().unwrap();
-        path.to_str().unwrap().to_string()
-    }
+    /// The sub directory to the test files.
+    const BASE: [&str; 1] = ["encoding_decoding"];
 
     #[test]
     fn test_encode_string() {
-        let input_path = get_test_in_file_str("reference-valid.png");
-        let output_img_path = get_test_out_file_str("png");
+        let tu = TestUtils::new(&BASE);
+
+        let input_path = tu.get_in_file("reference-valid.png");
+        let output_img_path = TestUtils::get_out_file("png");
 
         let mut f = FileCleaner::new();
         f.add(&output_img_path);
@@ -1187,9 +1124,11 @@ mod tests_encode_decode {
 
     #[test]
     fn test_encode_file() {
-        let input_path = get_test_in_file_str("reference-valid.png");
-        let input_file_path = get_test_in_file_str("text-file.txt");
-        let output_img_path = get_test_out_file_str("png");
+        let tu = TestUtils::new(&BASE);
+
+        let input_path = tu.get_in_file("reference-valid.png");
+        let input_file_path = tu.get_in_file("text-file.txt");
+        let output_img_path = TestUtils::get_out_file("png");
 
         let mut f = FileCleaner::new();
         f.add(&output_img_path);
@@ -1214,9 +1153,11 @@ mod tests_encode_decode {
 
     #[test]
     fn test_encode_file_binary() {
-        let input_path = get_test_in_file_str("reference-valid.png");
-        let input_file_path = get_test_in_file_str("binary-file.bin");
-        let output_img_path = get_test_out_file_str("png");
+        let tu = TestUtils::new(&BASE);
+
+        let input_path = tu.get_in_file("reference-valid.png");
+        let input_file_path = tu.get_in_file("binary-file.bin");
+        let output_img_path = TestUtils::get_out_file("png");
 
         let mut f = FileCleaner::new();
         f.add(&output_img_path);
@@ -1241,8 +1182,10 @@ mod tests_encode_decode {
 
     #[test]
     fn test_decode_string() {
-        let ref_img_path = get_test_in_file_str("reference-valid.png");
-        let enc_img_path = get_test_in_file_str("encoded-text.png");
+        let tu = TestUtils::new(&BASE);
+
+        let ref_img_path = tu.get_in_file("reference-valid.png");
+        let enc_img_path = tu.get_in_file("encoded-text.png");
 
         // Attempt to decode the string, ensure the locker file is cleared on exit.
         let mut stega = StegaV1::default();
@@ -1258,8 +1201,10 @@ mod tests_encode_decode {
 
     #[test]
     fn test_decode_string_invalid_key() {
-        let ref_img_path = get_test_in_file_str("reference-valid.png");
-        let enc_img_path = get_test_in_file_str("encoded-text.png");
+        let tu = TestUtils::new(&BASE);
+
+        let ref_img_path = tu.get_in_file("reference-valid.png");
+        let enc_img_path = tu.get_in_file("encoded-text.png");
 
         // Attempt to decode the string, ensure the locker file is cleared on exit.
         let mut stega = StegaV1::default();
@@ -1276,8 +1221,10 @@ mod tests_encode_decode {
 
     #[test]
     fn test_decode_string_wrong_ref_image() {
-        let ref_path = get_test_in_file_str("reference-invalid.png");
-        let enc_path = get_test_in_file_str("encoded-text.png");
+        let tu = TestUtils::new(&BASE);
+
+        let ref_path = tu.get_in_file("reference-invalid.png");
+        let enc_path = tu.get_in_file("encoded-text.png");
 
         // Attempt to decode the string, ensure the locker file is cleared on exit.
         // The key is valid but the reference image is not.
@@ -1295,9 +1242,11 @@ mod tests_encode_decode {
 
     #[test]
     fn test_decode_file() {
-        let ref_path = get_test_in_file_str("reference-valid.png");
-        let enc_path = get_test_in_file_str("encoded-file-text.png");
-        let output_file_path = get_test_out_file_str("png");
+        let tu = TestUtils::new(&BASE);
+
+        let ref_path = tu.get_in_file("reference-valid.png");
+        let enc_path = tu.get_in_file("encoded-file-text.png");
+        let output_file_path = TestUtils::get_out_file("png");
 
         let mut f = FileCleaner::new();
         f.add(&output_file_path);
@@ -1329,9 +1278,11 @@ mod tests_encode_decode {
 
     #[test]
     fn test_decode_file_invalid_key() {
-        let ref_path = get_test_in_file_str("reference-valid.png");
-        let enc_path = get_test_in_file_str("encoded-file-text.png");
-        let output_file_path = get_test_out_file_str("png");
+        let tu = TestUtils::new(&BASE);
+
+        let ref_path = tu.get_in_file("reference-valid.png");
+        let enc_path = tu.get_in_file("encoded-file-text.png");
+        let output_file_path = TestUtils::get_out_file("png");
 
         let mut f = FileCleaner::new();
         f.add(&output_file_path);
@@ -1351,9 +1302,11 @@ mod tests_encode_decode {
 
     #[test]
     fn test_decode_file_wrong_ref_image() {
-        let ref_path = get_test_in_file_str("reference-invalid.png");
-        let enc_path = get_test_in_file_str("encoded-file-text.png");
-        let output_file_path = get_test_out_file_str("png");
+        let tu = TestUtils::new(&BASE);
+
+        let ref_path = tu.get_in_file("reference-invalid.png");
+        let enc_path = tu.get_in_file("encoded-file-text.png");
+        let output_file_path = TestUtils::get_out_file("png");
 
         let mut f = FileCleaner::new();
         f.add(&output_file_path);
@@ -1373,10 +1326,12 @@ mod tests_encode_decode {
 
     #[test]
     fn test_decode_file_binary() {
-        let ref_path = get_test_in_file_str("reference-valid.png");
-        let enc_path = get_test_in_file_str("encoded-file-binary.png");
-        let original_file_path = get_test_in_file_str("binary-file.bin");
-        let output_file_path = get_test_out_file_str("bin");
+        let tu = TestUtils::new(&BASE);
+
+        let ref_path = tu.get_in_file("reference-valid.png");
+        let enc_path = tu.get_in_file("encoded-file-binary.png");
+        let original_file_path = tu.get_in_file("binary-file.bin");
+        let output_file_path = TestUtils::get_out_file("bin");
 
         let mut f = FileCleaner::new();
         f.add(&output_file_path);
@@ -1406,8 +1361,10 @@ mod tests_encode_decode {
 
     #[test]
     fn test_roundtrip_string_invalid_sequences() {
-        let input_path = get_test_in_file_str("reference-valid.png");
-        let output_img_path = get_test_out_file_str("png");
+        let tu = TestUtils::new(&BASE);
+
+        let input_path = tu.get_in_file("reference-valid.png");
+        let output_img_path = TestUtils::get_out_file("png");
 
         let mut f = FileCleaner::new();
         f.add(&output_img_path);
@@ -1450,14 +1407,15 @@ mod tests_encode_decode {
 
 #[cfg(test)]
 mod tests_encryption_decryption {
-    use std::path::PathBuf;
-
     use crate::{
         error::{Error, Result},
-        utils,
+        test_utils::TestUtils,
     };
 
     use super::StegaV1;
+
+    /// The sub directory to the test files.
+    const BASE: [&str; 1] = ["loading_and_validation"];
 
     struct TestEntry {
         pub file: String,
@@ -1487,16 +1445,6 @@ mod tests_encryption_decryption {
         }
     }
 
-    fn test_base_path() -> PathBuf {
-        let mut path = utils::get_current_dir();
-        path.push("../tests/assets/loading_and_validation");
-        if !path.exists() {
-            panic!("unable to find test file path!");
-        }
-
-        path.canonicalize().unwrap()
-    }
-
     #[test]
     fn image_loading_and_validation() {
         let tests = [
@@ -1517,13 +1465,10 @@ mod tests_encryption_decryption {
             ),
         ];
 
-        let path = test_base_path();
+        let tu = TestUtils::new(&BASE);
         for test in tests {
-            let mut full_path = path.clone();
-            full_path.push(&test.file);
-
-            let path_str = full_path.as_path().to_str().unwrap();
-            let result = match StegaV1::load_image(path_str, true) {
+            let path = tu.get_in_file_no_verify(&test.file);
+            let result = match StegaV1::load_image(&path, true) {
                 Ok(_) => Ok(()),
                 Err(e) => Err(e),
             };
@@ -1551,7 +1496,7 @@ mod tests_encoder_decoder {
         let mut encoder = DataEncoder::new(8);
         let mut decoder = DataDecoder::new(8);
 
-        let in_val: u8 = 0xAB;
+        let in_val: u8 = 0xab;
         encoder.push_u8(in_val);
 
         decoder.push_u8_slice(&encoder.bytes);
@@ -1567,7 +1512,7 @@ mod tests_encoder_decoder {
         let mut encoder = DataEncoder::new(2);
         let mut decoder = DataDecoder::new(2);
 
-        let in_val: u8 = 0xAB;
+        let in_val: u8 = 0xab;
         encoder.push_u8(in_val);
 
         decoder.push_u8_slice(&encoder.bytes);
@@ -1600,7 +1545,7 @@ mod tests_encoder_decoder {
         let mut encoder = DataEncoder::new(2);
         let mut decoder = DataDecoder::new(2);
 
-        let in_val: u8 = 0xAB;
+        let in_val: u8 = 0xab;
         encoder.push_u8(in_val);
         assert!(encoder.bytes.len() == 2);
 

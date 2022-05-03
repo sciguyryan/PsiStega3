@@ -9,3 +9,6 @@ mod logger;
 mod macros;
 pub mod utils;
 pub mod version;
+
+#[cfg(test)]
+mod test_utils;

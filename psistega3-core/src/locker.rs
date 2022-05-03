@@ -33,6 +33,13 @@ impl Locker {
         Ok(l)
     }
 
+    /// Cipher a u8 slice using a u8 value.
+    ///
+    /// # Arguments
+    ///
+    /// * `slice` - The slice to be ciphered.
+    /// * `xor` - The u8 value to be used as the cipher.
+    ///
     #[cfg(not(debug_assertions))]
     fn cipher_slice(slice: &mut [u8], xor: u8) {
         for b in slice.iter_mut() {
@@ -40,6 +47,8 @@ impl Locker {
         }
     }
 
+    /// An empty placeholder function for use when debugging.
+    ///
     #[cfg(debug_assertions)]
     fn cipher_slice(_: &mut [u8], _: u8) {}
 
@@ -80,6 +89,19 @@ impl Locker {
         // do anything here.
     }
 
+    fn get_binary_path() -> Result<String> {
+        let path = match std::env::current_exe() {
+            Ok(p) => p,
+            Err(_) => return Err(Error::LockerFilePath),
+        };
+
+        if let Some(p) = path.to_str() {
+            Ok(p.to_string())
+        } else {
+            Err(Error::LockerFilePath)
+        }
+    }
+
     fn get_entry_index_by_hash(&self, hash: &[u8]) -> Option<usize> {
         self.entries.iter().position(|e| e.hash == hash)
     }
@@ -92,28 +114,20 @@ impl Locker {
         self.entries.iter_mut().find(|e| e.hash == hash)
     }
 
-    fn get_executable_path() -> Result<PathBuf> {
-        match std::env::current_exe() {
-            Ok(p) => Ok(p),
-            Err(_) => Err(Error::LockerFilePath),
-        }
-    }
+    fn get_locker_file_path() -> Result<String> {
+        let bin_path = Locker::get_binary_path()?;
 
-    fn get_file_metadata(path: &PathBuf) -> Result<fs::Metadata> {
-        match fs::metadata(path) {
-            Ok(m) => Ok(m),
-            Err(_) => Err(Error::FileMetadata),
-        }
-    }
-
-    fn get_locker_file_path() -> Result<PathBuf> {
         // Build the path. Disregard the executable file name and append the
         // data file name.
-        let mut path = Locker::get_executable_path()?;
+        let mut path = PathBuf::from(bin_path);
         path.pop();
-        path.push("data.dat");
+        path.push("lock.dat");
 
-        Ok(path)
+        if let Some(p) = path.to_str() {
+            Ok(p.to_string())
+        } else {
+            Err(Error::LockerFilePath)
+        }
     }
 
     pub fn is_file_locked(&self, hash: &[u8]) -> bool {
@@ -133,60 +147,53 @@ impl Locker {
         }
     }
 
-    pub fn lock_file(&mut self, file_path: &str) -> bool {
+    pub fn lock_file(&mut self, path: &str) -> bool {
         use crate::image_wrapper::ImageWrapper;
 
         // If the path does not currently exist then we cannot lock it,
         // this means we shouldn't remove it from the list.
-        if !utils::path_exists(file_path) {
+        if !utils::path_exists(path) {
             return false;
         }
-
-        let path = PathBuf::from(file_path);
 
         // This should never happen, but if it does then
         // the entry should be removed from the list.
         // It isn't possible to lock a directory.
-        if path.is_dir() {
+        if std::path::Path::new(path).is_dir() {
             return true;
         }
 
-        // We do not want to lock the file after we are done with this
-        // section of the code. Rust will automatically close the file
-        // when the reference is dropped.
         let mut is_read_only = false;
-        let mtime: FileTime;
-        {
-            // Get the metadata for the file.
-            let metadata = unwrap_or_return_val!(Locker::get_file_metadata(&path), false);
 
-            // If the file is read only, then we need to unset that flag.
-            if metadata.permissions().readonly() {
-                metadata.permissions().set_readonly(false);
+        // If the file is read only, then we need to unset that flag.
+        if let Ok(state) = utils::get_file_read_only_state(path) {
+            if state {
+                let _ = utils::toggle_file_read_only_state(path);
                 is_read_only = true;
             }
-
-            mtime = FileTime::from_last_modification_time(&metadata);
         }
+
+        // Get the last modified date from the file's metadata.
+        let mtime = utils::get_file_last_modified_timestamp(path);
 
         // Now we need to ensure that the file can never be decoded.
         // This will happen regardless of whether the image ever contained
         // encoded data or not.
-        let mut img = unwrap_or_return_val!(ImageWrapper::load_from_file(file_path, false), false);
+        let mut img = unwrap_or_return_val!(ImageWrapper::load_from_file(path, false), false);
 
         // Scramble the image.
         img.scramble();
 
         // If the file was successfully scrambled then it can be removed from
         // the entry list, otherwise we will need to try again later.
-        let res = img.save(file_path);
+        let res = img.save(path);
 
         // Next, we need to remove the ZTXT chunk from the PNG file. This will
         // act to further camouflage the modifications.
-        if Locker::remove_ztxt_chunk(file_path) {
+        if utils::remove_ztxt_chunk(path) {
             // We need to add the IEND chunk back into the PNG file
             // in order for it to be considered valid.
-            let mut f = unwrap_or_return_val!(File::options().append(true).open(file_path), false);
+            let mut f = unwrap_or_return_val!(File::options().append(true).open(path), false);
 
             let end = utils::IEND.to_vec();
             let _wb = f.write(&end).unwrap();
@@ -194,11 +201,13 @@ impl Locker {
 
         // Spoof the file last modification time of the data file to make it
         // appear as though it were never changed.
-        _ = filetime::set_file_mtime(file_path, mtime);
+        if let Ok(time) = mtime {
+            let _ = filetime::set_file_mtime(path, time);
+        }
 
         // Toggle the read-only state again, if needed.
         if is_read_only {
-            Locker::toggle_read_only(file_path);
+            let _ = utils::toggle_file_read_only_state(path);
         }
 
         res.is_ok()
@@ -216,12 +225,12 @@ impl Locker {
         const ENTRY_SIZE: usize = 33;
 
         let path = Locker::get_locker_file_path()?;
-        if !path.exists() {
+        if !utils::path_exists(&path) {
             return Ok(());
         }
 
         // This will indicate a corrupted locker file.
-        let metadata = Locker::get_file_metadata(&path)?;
+        let metadata = utils::get_file_metadata(&path)?;
         if metadata.len() % (ENTRY_SIZE as u64) != 0 {
             return Err(Error::LockerFileRead);
         }
@@ -253,34 +262,6 @@ impl Locker {
         Ok(())
     }
 
-    fn remove_ztxt_chunk(path: &str) -> bool {
-        let index = utils::find_png_ztxt_chunk_start(path);
-        if index.is_none() {
-            return false;
-        }
-
-        // The new length should be the index of the ZTXT chunk less four bytes.
-        // The latter four bytes are the bytes that would indicate the ZTXT
-        // chunk length.
-        let new_len = index.unwrap() - 4;
-
-        // Truncate the file to the new length.
-        // Note that we are not appending the IEND chunk here,
-        // which must be done in order for the PNG file to be valid.
-        utils::truncate_file(path, new_len as u64).is_ok()
-    }
-
-    fn toggle_read_only(path: &str) {
-        let pb = PathBuf::from(path);
-
-        // Get the metadata for the file.
-        let metadata = unwrap_or_return!(Locker::get_file_metadata(&pb));
-
-        // If the file is read only, then we need to unset that flag.
-        let read_only = metadata.permissions().readonly();
-        metadata.permissions().set_readonly(!read_only);
-    }
-
     pub fn update_file_lock(&mut self, path: &str, hash: &[u8]) {
         // We need to update the locke entry, or add it if it
         // doesn't already exist.
@@ -300,11 +281,9 @@ impl Locker {
             // but hasn't been locked. We need to attempt to lock the file.
             // If successful then it can be removed from the list.
             if self.lock_file(path) {
-                println!("File successfully locked.");
                 self.force_clear_file_lock(hash);
             } else {
                 // TODO: figure out if anything should be done here.
-                println!("Failed to lock file.");
             }
         }
     }
@@ -349,28 +328,29 @@ impl Drop for Locker {
         }
 
         // If writing the locker file failed, exit immediately.
-        // TODO: it may be prudent to delete the file if the file isn't locked.
         if self.write_locker_file().is_err() {
+            if let Ok(path) = Locker::get_locker_file_path() {
+                _ = fs::remove_file(path);
+            }
             return;
         }
 
-        // Next, we need to set the data files modified
-        // date to be the same as the executable file.
-        // This will stop people who are not aware of
-        // what this tool is used for identifying the use
-        // of this file, which is to avoid the same people
+        // Next, we need to set the data files modified date to be the same
+        // as the executable file.
+        // This will stop people who are not aware of what this tool is used
+        // for identifying the use of this file, which is to avoid the same people
         // from repeatedly trying to break the passwords.
-        let exec_path = unwrap_or_return!(Locker::get_executable_path());
+        let bin_path = unwrap_or_return!(Locker::get_binary_path());
         let data_path = unwrap_or_return!(Locker::get_locker_file_path());
 
         // Set the file last modification time of the data file.
-        let metadata = unwrap_or_return!(Locker::get_file_metadata(&exec_path));
+        let metadata = unwrap_or_return!(utils::get_file_metadata(&bin_path));
         let mtime = FileTime::from_last_modification_time(&metadata);
-        _ = filetime::set_file_mtime(data_path, mtime);
+        let _ = utils::set_file_last_modified_timestamp(&data_path, mtime);
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 struct LockerEntry {
     hash: Vec<u8>,
     attempts: u8,
@@ -393,5 +373,230 @@ impl fmt::Display for LockerEntry {
             utils::u8_array_to_hex(&self.hash),
             self.attempts
         )
+    }
+}
+
+#[cfg(test)]
+mod tests_locker {
+    use crate::{
+        hashers,
+        test_utils::{FileCleaner, TestUtils},
+        utils,
+    };
+
+    use serial_test::serial;
+
+    use super::{Locker, LockerEntry};
+
+    /// The default entry for use when hashing.
+    const HASH_STR: &str = "ElPsyKongroo";
+    /// The sub directory to the test files.
+    const BASE: [&str; 1] = ["locker"];
+
+    /*
+     * Note that these tests should be run in serial mode as reading and
+     * writing from files can be flakey with threads.
+     */
+
+    /// Create a file locker instance, or panic if it fails.
+    fn create_locker_instance_or_assert() -> Locker {
+        let locker = Locker::new();
+        assert!(locker.is_ok(), "could not initialize locker instance");
+
+        locker.unwrap()
+    }
+
+    #[test]
+    #[serial]
+    fn test_is_file_locked() {
+        let hash = hashers::sha3_256_string(HASH_STR);
+
+        let mut locker = create_locker_instance_or_assert();
+        locker.clear_on_exit = true;
+
+        // No locker entry for the hash should exist.
+        assert!(
+            !locker.is_file_locked(&hash),
+            "locker entry exists, without it being added."
+        );
+
+        locker.entries.push(LockerEntry::new(&hash, 3));
+
+        // A locker entry for the hash should exist, but there are not enough attempts for the entry to be locked.
+        assert!(
+            !locker.is_file_locked(&hash),
+            "entry is marked as locked, despite there being insufficient attempts"
+        );
+
+        // This attempt value should be the threshold for entry to be locked.
+        locker.entries[0].attempts = 4;
+        assert!(
+            locker.is_file_locked(&hash),
+            "entry is not marked as locked, despite there being sufficient attempts"
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn test_read_write_locker_file() {
+        let hash = hashers::sha3_256_string(HASH_STR);
+        let entry = LockerEntry::new(&hash, 3);
+
+        // The locker instance should save the entries when goes out of scope.
+        {
+            let mut locker = create_locker_instance_or_assert();
+            locker.entries.clear();
+            locker.entries.push(entry.clone());
+        }
+
+        // The new locker instance should read the prior list of entries upon creation.
+        let locker = create_locker_instance_or_assert();
+
+        assert!(
+            !locker.entries.is_empty(),
+            "incorrect number of locker entries present upon loads"
+        );
+
+        // The entry should exist within the data loaded by the file locker instance.
+        let entry2 = locker.get_entry_by_hash(&hash);
+        assert!(
+            entry2.is_some(),
+            "entry was not found upon loading the locker instance"
+        );
+
+        // The entry should be identical to the original entry that was added.
+        assert!(
+            *entry2.unwrap() == entry,
+            "entry was not the same after unloading and reloading"
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn test_update_access_attempts() {
+        let tu = TestUtils::new(&BASE);
+
+        let original_path = tu.get_in_file("dummy.png");
+        let hash = if let Ok(h) = hashers::sha3_256_file(&original_path) {
+            h
+        } else {
+            panic!("failed to create file hash");
+        };
+
+        let mut locker = create_locker_instance_or_assert();
+        locker.clear_on_exit = true;
+
+        // The file hash should not be in the entries list.
+        let entry = locker.get_entry_by_hash(&hash);
+        assert!(
+            entry.is_none(),
+            "entry was found in the entries list, and should not be"
+        );
+
+        locker.update_file_lock(&original_path, &hash);
+
+        // The entry should now be present in the entries list, with a default attempts value of zero.
+        let entry = locker.get_entry_by_hash(&hash);
+        assert!(
+            entry.is_some(),
+            "entry was found in the entries list, and should not be"
+        );
+        assert!(
+            entry.unwrap().attempts == 0,
+            "entry was found in the entries list, but the attempts field was invalid"
+        );
+
+        // Next we need to test of the entry correctly updates.
+        locker.update_file_lock(&original_path, &hash);
+        let entry = locker.get_entry_by_hash(&hash);
+        assert!(
+            entry.unwrap().attempts == 1,
+            "entry was found in the entries list, but the attempts field was invalid"
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn test_file_lock() {
+        let tu = TestUtils::new(&BASE);
+
+        let old_path = tu.get_in_file("dummy.png");
+        let copy_path = tu.copy_in_file_to_random_out("dummy.png", "png");
+
+        let mut f = FileCleaner::new();
+        f.add(&copy_path);
+
+        // Set the copy file as read-only.
+        if let Err(_e) = utils::toggle_file_read_only_state(&copy_path) {
+            panic!("Failed to set the read-only state of the copied file");
+        }
+
+        // Get the last modified timestamp of the original file.
+        let old_timestamp = if let Ok(ft) = utils::get_file_last_modified_timestamp(&old_path) {
+            ft
+        } else {
+            panic!("Failed to get the timestamp of the original file");
+        };
+
+        // Compute the hash of the original file.
+        let old_hash = if let Ok(h) = hashers::sha3_256_file(&old_path) {
+            h
+        } else {
+            panic!("failed to create file hash");
+        };
+
+        let mut locker = create_locker_instance_or_assert();
+        locker.clear_on_exit = true;
+
+        // Add the entry with 4 (0th is the first attempt) attempts. The next failed attempt will lock the file.
+        locker.entries.push(LockerEntry::new(&old_hash, 3));
+        locker.update_file_lock(&copy_path, &old_hash);
+
+        // The file hash should have changed.
+        let new_hash = if let Ok(h) = hashers::sha3_256_file(&copy_path) {
+            h
+        } else {
+            panic!("failed to create file hash");
+        };
+        assert!(
+            new_hash != old_hash,
+            "the hash of the copy and original file are the same, no file locking took place"
+        );
+
+        // The (old) file hash should no longer be in the entries list.
+        let entry = locker.get_entry_by_hash(&old_hash);
+        assert!(
+            entry.is_none(),
+            "entry was found in the entries list, after it should have been removed"
+        );
+
+        // The file should also no longer contain a zTXt chunk.
+        let ztxt_start = utils::find_png_ztxt_chunk_start(&copy_path);
+        assert!(
+            ztxt_start.is_none(),
+            "a zTXt chunk was found in the locked PNG file, it should have been removed"
+        );
+
+        let locked_read_only = utils::get_file_read_only_state(&copy_path);
+        assert!(
+            locked_read_only.is_ok(),
+            "failed to read the read-only state of the locked file"
+        );
+        assert!(
+            locked_read_only.unwrap(),
+            "the read-only state of the file was not restored after locking"
+        );
+
+        // Get the last modified timestamp of the copied file.
+        let copy_timestamp = if let Ok(ft) = utils::get_file_last_modified_timestamp(&copy_path) {
+            ft
+        } else {
+            panic!("Failed to get the timestamp of the original file");
+        };
+
+        assert!(
+            copy_timestamp == old_timestamp,
+            "the timestamp of the copied file is different than that of the original file"
+        );
     }
 }

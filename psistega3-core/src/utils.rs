@@ -2,12 +2,11 @@ use crate::error::{Error, Result};
 use crate::macros::*;
 
 use core::fmt::Write;
+use filetime::FileTime;
 use rand::Rng;
 use rand_core::{OsRng, RngCore};
-use std::{
-    fs::File,
-    path::{Path, PathBuf},
-};
+use std::fs::Metadata;
+use std::{fs::File, path::Path};
 
 /// The IEND chunk of a PNG file.
 pub(crate) const IEND: [u8; 12] = [0, 0, 0, 0, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82];
@@ -152,13 +151,53 @@ pub(crate) fn find_subsequence(haystack: &[u8], needle: &[u8]) -> Option<usize> 
         .position(|window| window == needle)
 }
 
-/// Get the path to the current execution directory.
-#[allow(dead_code)]
-pub(crate) fn get_current_dir() -> PathBuf {
-    std::env::current_dir().unwrap()
+/// Get the last modified timestamp as a [`FileTime`] instance.
+///
+/// # Arguments
+///
+/// * `path` - The path to the file.
+///
+pub(crate) fn get_file_last_modified_timestamp(path: &str) -> Result<FileTime> {
+    let meta = get_file_metadata(path)?;
+
+    Ok(FileTime::from_last_modification_time(&meta))
+}
+
+/// Get the metadata for a file.
+///
+/// # Arguments
+///
+/// * `path` - The path to the file.
+///
+pub(crate) fn get_file_metadata(path: &str) -> Result<Metadata> {
+    let p = Path::new(&path);
+
+    if !p.exists() || !p.is_file() {
+        return Err(Error::FileMetadata);
+    }
+
+    if let Ok(meta) = p.metadata() {
+        Ok(meta)
+    } else {
+        Err(Error::FileMetadata)
+    }
+}
+
+/// Get the read-only state of a file.
+///
+/// # Arguments
+///
+/// * `path` - The path to the file.
+///
+pub(crate) fn get_file_read_only_state(path: &str) -> Result<bool> {
+    let meta = get_file_metadata(path)?;
+
+    Ok(meta.permissions().readonly())
 }
 
 /// Check if the specified path is valid and exists.
+///
+/// # Arguments
 ///
 /// * `path` - The path to be checked.
 ///
@@ -168,6 +207,8 @@ pub(crate) fn path_exists(path: &str) -> bool {
 }
 
 /// Read a file into a u8 vector.
+///
+/// # Arguments
 ///
 /// * `path` - The path to the file.
 ///
@@ -229,6 +270,31 @@ pub(crate) fn read_png_ztxt_chunk_data(path: &str) -> Option<Vec<u8>> {
     Some(mmap[start..end].to_vec())
 }
 
+/// Attempts to remove a zTXt chunk from a PNG file.
+///
+/// # Arguments
+///
+/// * `path` - The path to the file.
+///
+/// `Note:` This function assumes that the PNG file is valid and not badly malformed.
+///
+pub(crate) fn remove_ztxt_chunk(path: &str) -> bool {
+    let index = find_png_ztxt_chunk_start(path);
+    if index.is_none() {
+        return false;
+    }
+
+    // The new length should be the index of the ZTXT chunk less four bytes.
+    // The latter four bytes are the bytes that would indicate the ZTXT
+    // chunk length.
+    let new_len = index.unwrap() - 4;
+
+    // Truncate the file to the new length.
+    // Note that we are not appending the IEND chunk here,
+    // which must be done in order for the PNG file to be valid.
+    truncate_file(path, new_len as u64).is_ok()
+}
+
 /// Set the state of a bit in a u8 value.
 ///
 /// # Arguments
@@ -240,6 +306,20 @@ pub(crate) fn read_png_ztxt_chunk_data(path: &str) -> Option<Vec<u8>> {
 #[inline]
 pub(crate) fn set_bit_state(value: &mut u8, index: usize, state: bool) {
     *value = (*value & !(1 << index)) | ((state as u8) << index)
+}
+
+/// Sets the last modified timestamp of a file.
+///
+/// # Arguments
+///
+/// * `path` - The path to the file.
+///
+pub(crate) fn set_file_last_modified_timestamp(path: &str, timestamp: FileTime) -> Result<()> {
+    if filetime::set_file_mtime(path, timestamp).is_ok() {
+        Ok(())
+    } else {
+        Err(Error::FileMetadata)
+    }
 }
 
 /// Attempt to truncate a set number of bytes from the end of a file.
@@ -264,22 +344,25 @@ pub(crate) fn truncate_file(path: &str, bytes_to_trim: u64) -> Result<()> {
     Ok(())
 }
 
-/// Convert a u8 slice into its hexadecimal representation.
+/// Toggles the read-only state of a file.
 ///
 /// # Arguments
 ///
-/// * `arr` - The u8 slice to be converted.
+/// * `path` - The path to the file.
 ///
-/// `Note:` we ignore the error condition from write! as this is
-///  completely internal and is designed for use with debug code.
-///
-#[allow(unused_must_use)]
-pub(crate) fn u8_array_to_hex(arr: &[u8]) -> String {
-    let mut str = String::with_capacity(2 * arr.len());
-    arr.iter().for_each(|byte| {
-        write!(str, "{:02X}", byte);
-    });
-    str
+pub(crate) fn toggle_file_read_only_state(path: &str) -> Result<()> {
+    // Get the metadata for the file.
+    let metadata = get_file_metadata(path)?;
+
+    // If the file is read only, then we need to unset that flag.
+    let mut permissions = metadata.permissions();
+    permissions.set_readonly(!permissions.readonly());
+
+    // Update the file system.
+    match std::fs::set_permissions(path, permissions) {
+        Ok(_) => Ok(()),
+        Err(_) => Err(Error::FileMetadata),
+    }
 }
 
 /// Convert a u8 slice to a base64 string.
@@ -305,6 +388,24 @@ pub(crate) fn u8_slice_to_base64_string(bytes: &[u8]) -> String {
 pub(crate) fn u8_to_binary(byte: &u8) -> String {
     let mut str = String::with_capacity(8);
     write!(str, "{:08b}", byte);
+    str
+}
+
+/// Convert a u8 slice into its hexadecimal representation.
+///
+/// # Arguments
+///
+/// * `arr` - The u8 slice to be converted.
+///
+/// `Note:` we ignore the error condition from write! as this is
+///  completely internal and is designed for use with debug code.
+///
+#[allow(unused_must_use)]
+pub(crate) fn u8_array_to_hex(arr: &[u8]) -> String {
+    let mut str = String::with_capacity(2 * arr.len());
+    arr.iter().for_each(|byte| {
+        write!(str, "{:02X}", byte);
+    });
     str
 }
 
