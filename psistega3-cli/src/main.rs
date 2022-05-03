@@ -15,6 +15,13 @@ const CONFIRM_PROMPT: &str = "Are you sure you wish to enable this feature?";
 
 //ooneporlygs
 
+#[derive(PartialEq)]
+enum ActionType {
+    Decode,
+    Encode,
+    None,
+}
+
 fn main() {
     SimpleLogger::new().init().unwrap();
 
@@ -31,18 +38,40 @@ fn main() {
         }
     }
 
+    // Should we enable unattended mode?
+    let last = args.last();
+    let unattended = last.is_some() && args.last().unwrap() == "-unattended";
+
     // The action argument.
     let action = &args[1];
+    let mut action_type = ActionType::None;
 
-    // There must be at least 6 arguments in most circumstances.
     let mut needs_codec = true;
     match action.as_str() {
-        "-e" | "-encrypt" | "-d" | "-decrypt" | "-ef" | "-encrypt-file" | "-df"
-        | "-decrypt-file" => {
+        "-e" | "-encrypt" | "-ef" | "-encrypt-file" => {
+            // [-e] Version, version number, input image, output image, text.
+            // [-ef] Version, version number, input image, output image, input file path.
+            if args.len() < 7 {
+                show_abort_message(Error::InsufficientArguments);
+                return;
+            }
+            action_type = ActionType::Encode;
+        }
+        "-df" | "-decrypt-file" => {
+            // [-df] Version, version number, input image, output image, output file path.
+            if args.len() < 7 {
+                show_abort_message(Error::InsufficientArguments);
+                return;
+            }
+            action_type = ActionType::Decode;
+        }
+        "-d" | "-decrypt" => {
+            // [-d] Version, version number, original image, encoded image.
             if args.len() < 6 {
                 show_abort_message(Error::InsufficientArguments);
                 return;
             }
+            action_type = ActionType::Decode;
         }
         _ => {
             needs_codec = false;
@@ -50,8 +79,8 @@ fn main() {
     }
 
     // Attempt to extract the codec version number.
-    // No default codec needs to be implemented here, the if statement
-    // below will always yield a valid codec.
+    // No default codec needs to be implemented here as the statement below
+    // will always yield a valid codec.
     let mut codec: Box<dyn Codec>;
     if needs_codec {
         let mut codec_version: Option<Version> = None;
@@ -74,7 +103,7 @@ fn main() {
         codec = get_codec_by_version(codec_version.unwrap());
 
         // Apply any settings that might have been specified.
-        apply_codec_settings(&mut codec, &args[4..]);
+        apply_codec_settings(&mut codec, &args[4..], action_type, unattended);
     } else {
         codec = Box::new(StegaV1::default());
     }
@@ -101,44 +130,58 @@ fn main() {
         return;
     }
 
-    if args.last().unwrap() != "-unattended" {
-        // Wait for user input.
+    // Wait for user input before exiting, unless unattended mode is enabled.
+    if !unattended {
         read_from_stdin();
     }
 }
 
-/// Apply any specified coded settings.
+/// Apply any specified codec settings.
 ///
 /// # Arguments
 ///
 /// * `codec` - The instance of the [`Codec`] to be used for this command.
 /// * `args` - A list of arguments relevant for this command.
+/// * `action_type` - The type of codec action to be applied.
+/// * `unattended` - Is unattended mode enabled?
 ///
-fn apply_codec_settings(codec: &mut Box<dyn Codec>, args: &[String]) {
-    if args.contains(&String::from("--fv")) || args.contains(&String::from("--fast-variance")) {
-        codec.set_config_state(Config::FastVariance, true);
-    }
-
-    if args.contains(&String::from("--l")) || args.contains(&String::from("--locker")) {
-        // We want to warn the user that enabling this option
-        // render the data unrecoverable.
-        let mut enabled = true;
-        if args.last().unwrap() != "-unattended" {
-            print!("WARNING: the file locker will render the encoded data unrecoverable if 5 or more attempts to decode the data are unsuccessful. ");
-            enabled = read_confirm_from_stdin(CONFIRM_PROMPT);
+/// `Note:` Any codec settings that are not applicable to the codec action type will be ignored.
+///
+fn apply_codec_settings(
+    codec: &mut Box<dyn Codec>,
+    args: &[String],
+    action_type: ActionType,
+    unattended: bool,
+) {
+    if action_type == ActionType::Encode {
+        // Only applicable to encoding.
+        if args.contains(&String::from("--fv")) || args.contains(&String::from("--fast-variance")) {
+            codec.set_config_state(Config::FastVariance, true);
         }
 
-        codec.set_config_state(Config::Locker, enabled);
+        if args.contains(&String::from("--l")) || args.contains(&String::from("--locker")) {
+            // We want to warn the user that enabling this option
+            // render the data unrecoverable.
+            let mut enabled = true;
+            if !unattended {
+                print!("WARNING: the file locker will render the encoded data unrecoverable if 5 or more attempts to decode the data are unsuccessful. ");
+                enabled = read_confirm_from_stdin(CONFIRM_PROMPT);
+            }
+
+            codec.set_config_state(Config::Locker, enabled);
+        }
+
+        if args.contains(&String::from("--nn")) || args.contains(&String::from("--no-noise")) {
+            codec.set_config_state(Config::NoiseLayer, false);
+        }
     }
 
+    // Applicable to encoding and decoding.
     if args.contains(&String::from("--nf")) || args.contains(&String::from("--no-files")) {
         codec.set_config_state(Config::OutputFiles, false);
     }
 
-    if args.contains(&String::from("--nn")) || args.contains(&String::from("--no-noise")) {
-        codec.set_config_state(Config::NoiseLayer, false);
-    }
-
+    // Applicable to encoding and decoding.
     if args.contains(&String::from("--verbose")) {
         codec.set_config_state(Config::Verbose, true);
     }
@@ -300,6 +343,11 @@ fn read_from_stdin() -> String {
 
 /// Read a password.
 /// This function will check the argument list first, then if no password was supplied a prompt will be offered.
+///
+/// # Arguments
+///
+/// * `args` - A list of supplied arguments.
+///
 fn read_password(args: &[String]) -> Result<String> {
     // First, attempt to read the password from the supplied arguments.
     // If none was supplied, then we will offer a password input prompt.
@@ -319,6 +367,11 @@ fn read_password(args: &[String]) -> Result<String> {
 }
 
 /// Read a yes/no confirmation from a stdin prompt.
+///
+/// # Arguments
+///
+/// * `prompt` - The question prompt to be supplied to the user.
+///
 fn read_confirm_from_stdin(prompt: &str) -> bool {
     println!("{}", prompt);
     let mut input_string = String::new();
@@ -356,6 +409,11 @@ fn read_password_args(args: &[String]) -> Option<String> {
 
 /// Read a password, with verification.
 /// This function will check the argument list first, then if no password was supplied a prompt will be offered.
+///
+/// # Arguments
+///
+/// * `args` - A list of supplied arguments.
+///
 fn read_password_with_verify(args: &[String]) -> Result<String> {
     // First, attempt to read the password from the supplied arguments.
     // If none was supplied, then we will offer a password input prompt.
