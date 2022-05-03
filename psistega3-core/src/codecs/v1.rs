@@ -2,7 +2,7 @@ use crate::codecs::codec::Codec;
 use crate::error::{Error, Result};
 use crate::image_wrapper::ImageWrapper;
 use crate::locker::Locker;
-use crate::{hashers, logger, macros::*, utils};
+use crate::{hashers, logger, macros::*, utilities::*};
 
 use aes_gcm::{
     aead::{Aead, NewAead},
@@ -83,7 +83,7 @@ impl StegaV1 {
         // Create and fill our vector with sequential values, one
         // for each cell ID.
         let mut cell_list = Vec::with_capacity(total_cells);
-        utils::fill_vector_sequential(&mut cell_list);
+        misc_utils::fill_vector_sequential(&mut cell_list);
 
         // Randomize the order of the cell IDs.
         cell_list.shuffle(&mut rng);
@@ -136,7 +136,7 @@ impl StegaV1 {
     /// * `path` - The path to the PNG file.
     ///
     pub fn process_ztxt_chunk(&mut self, path: &str) {
-        let chunk = utils::read_png_ztxt_chunk_data(path);
+        let chunk = file_utils::read_png_ztxt_chunk_data(path);
         if chunk.is_none() {
             return;
         }
@@ -153,7 +153,7 @@ impl StegaV1 {
 
         // Iterate over each bit in the byte to set the corresponding flags.
         for i in 0..8 {
-            let state = utils::is_bit_set(&flags, i);
+            let state = misc_utils::is_bit_set(&flags, i);
             if i == 0 {
                 self.use_file_locker = state;
             }
@@ -202,7 +202,7 @@ impl StegaV1 {
         }
 
         let file_hash_bytes = hashers::sha3_512_file(original_img_path)?;
-        let file_hash_string = utils::u8_array_to_hex(&file_hash_bytes);
+        let file_hash_string = misc_utils::u8_slice_to_hex(&file_hash_bytes);
 
         // The key for the encryption is the SHA3-512 hash of the input image file
         // combined with the plaintext key.
@@ -352,7 +352,7 @@ impl StegaV1 {
         let mut img = StegaV1::load_image(original_img_path, false)?;
 
         let file_hash_bytes = hashers::sha3_512_file(original_img_path)?;
-        let file_hash_string = utils::u8_array_to_hex(&file_hash_bytes);
+        let file_hash_string = misc_utils::u8_slice_to_hex(&file_hash_bytes);
 
         /*
           The key for the encryption is the SHA3-512 hash of the input image file
@@ -365,7 +365,7 @@ impl StegaV1 {
         composite_key.push_str(&file_hash_string);
 
         // Generate a random salt for the Argon2 hashing function.
-        let salt_bytes: [u8; 12] = utils::secure_random_bytes();
+        let salt_bytes: [u8; 12] = misc_utils::secure_random_bytes();
         let key_bytes_full = hashers::argon2_string(
             &composite_key,
             salt_bytes,
@@ -382,11 +382,11 @@ impl StegaV1 {
         let cipher = Aes256Gcm::new(key);
 
         // Generate a unique random 96-bit (12 byte) nonce (IV).
-        let nonce_bytes: [u8; 12] = utils::secure_random_bytes();
+        let nonce_bytes: [u8; 12] = misc_utils::secure_random_bytes();
         let nonce = Nonce::from_slice(&nonce_bytes);
 
         // We will convert the input data byte vector into a base64 string.
-        let plaintext = utils::u8_slice_to_base64_string(data);
+        let plaintext = misc_utils::u8_slice_to_base64_string(data);
         let pt_bytes = plaintext.as_bytes();
         let ct_bytes = match cipher.encrypt(nonce, pt_bytes.as_ref()) {
             Ok(v) => v,
@@ -502,22 +502,16 @@ impl StegaV1 {
 
     /// Generate a zTXt chunk for our PNG. This chunk will hold information
     /// about feature flags set while encoding the file.
-    ///
     fn generate_ztxt_chunk(&self) -> Vec<u8> {
-        // zTXt chunk.
-        // See: http://www.libpng.org/pub/png/spec/1.2/PNG-Structure.html
-        // The first four bytes will hold the length, which will be updated
-        // below.
-        let mut chunk: Vec<u8> = vec![0, 0, 0, 0];
-        chunk.append(&mut String::from("zTXt").into_bytes());
-        chunk.append(&mut String::from("Comment").into_bytes());
-        chunk.push(0); // Separator. Must be a null byte.
-        chunk.push(0); // Compression method. Only zero is valid here.
+        let junk_bytes = thread_rng().gen_range(122..=176);
+
+        let key = "Comment".to_string();
+        let mut data_bytes: Vec<u8> = Vec::with_capacity(junk_bytes * 2);
 
         // Junk data.
-        for _ in 0..=thread_rng().gen_range(122..=176) {
+        for _ in 0..=junk_bytes {
             let b = thread_rng().gen_range(1..=255);
-            chunk.push(b);
+            data_bytes.push(b);
         }
 
         // The flag data byte.
@@ -525,28 +519,16 @@ impl StegaV1 {
 
         // The 1st bit indicates whether file locking is enabled.
         // The 2nd to 8th bits are reserved for future use.
-        utils::set_bit_state(&mut flags, 0, true);
+        misc_utils::set_bit_state(&mut flags, 0, true);
 
         // Cipher the flag byte in order add some randomness to the value.
-        StegaV1::cipher_flag_byte(&mut flags, chunk.last().unwrap());
+        StegaV1::cipher_flag_byte(&mut flags, data_bytes.last().unwrap());
 
         // Push the flag byte into the vector.
-        chunk.push(flags);
+        data_bytes.push(flags);
 
-        // Update the chunk length data. This excludes the length
-        // of the chunk (4 bytes) and the chunk type label (4 bytes).
-        let chunk_len = (chunk.len() - 8) as u32;
-        for (i, b) in chunk_len.to_be_bytes().iter().enumerate() {
-            chunk[i] = *b;
-        }
-
-        // Write the CRC for the chunk. This must exclude the bytes indicating
-        // the length of the chunk.
-        let crc = hashers::crc32_slice(&chunk[4..]);
-        let mut crc_bytes = crc.to_be_bytes().to_vec();
-        chunk.append(&mut crc_bytes);
-
-        chunk
+        // Generate the zTXt chunk from the data.
+        file_utils::generate_ztxt_chunk(&[key], &[data_bytes])
     }
 
     /// Loads an image from file and validates that the image is suitable for steganography.
@@ -554,7 +536,7 @@ impl StegaV1 {
     /// # Arguments
     ///
     /// * `file_path` - The path to the image file.
-    /// * `read_only` - The read-only state of the image.
+    /// * `read_only` - The whether the image should be opened in a read-only state.
     ///
     /// # Returns
     ///
@@ -581,7 +563,7 @@ impl StegaV1 {
         use std::{fs::File, io::Write};
 
         // Truncate the IEND chunk from the file.
-        utils::truncate_file(file_path, 12)?;
+        file_utils::truncate_file(file_path, 12)?;
 
         let mut f =
             unwrap_or_return_err!(File::options().append(true).open(file_path), Error::File);
@@ -592,7 +574,7 @@ impl StegaV1 {
 
         // Now we can write the IEND chunk, which indicated the end of the PNG file data.
         // This chunk is always the same, so it can be hardcoded.
-        let end = utils::IEND.to_vec();
+        let end = file_utils::IEND.to_vec();
         let _wb = f.write(&end).unwrap();
 
         Ok(())
@@ -627,7 +609,7 @@ impl StegaV1 {
                 }
             }
 
-            utils::set_bit_state(&mut byte, i, true);
+            misc_utils::set_bit_state(&mut byte, i, true);
         }
 
         byte
@@ -731,7 +713,7 @@ impl StegaV1 {
         // Get the image bytes relevant to this cell.
         let bytes = img.get_subcells_from_index_mut(cell_start, 2);
         for (i, b) in bytes.iter_mut().enumerate() {
-            if !utils::is_bit_set(data, i) {
+            if !misc_utils::is_bit_set(data, i) {
                 continue;
             }
 
@@ -805,12 +787,12 @@ impl Codec for StegaV1 {
         input_file_path: &str,
         encoded_img_path: &str,
     ) -> Result<()> {
-        if !utils::path_exists(input_file_path) {
+        if !file_utils::path_exists(input_file_path) {
             return Err(Error::PathInvalid);
         }
 
         // Convert the file into a byte vector.
-        let bytes = utils::read_file_to_u8_vector(input_file_path)?;
+        let bytes = file_utils::read_file_to_u8_vector(input_file_path)?;
 
         // Encode the information into the target image.
         self.encode_internal(original_img_path, key, &bytes, encoded_img_path)
@@ -826,7 +808,7 @@ impl Codec for StegaV1 {
         let b64_str = self.decode_internal(original_img_path, key, encoded_img_path)?;
 
         // Decode the base64 string into the raw bytes.
-        let bytes = utils::base64_string_to_vector(&b64_str)?;
+        let bytes = misc_utils::base64_string_to_vec(&b64_str)?;
 
         // Convert the raw bytes back into a string. This is done lossy
         // to ensure that any invalid sequences are handled.
@@ -844,11 +826,11 @@ impl Codec for StegaV1 {
         let b64_str = self.decode_internal(original_img_path, key, encoded_img_path)?;
 
         // Decode the base64 string into the raw bytes.
-        let bytes = utils::base64_string_to_vector(&b64_str)?;
+        let bytes = misc_utils::base64_string_to_vec(&b64_str)?;
 
         // Write the raw bytes directly to the output file.
         if self.output_files {
-            utils::write_u8_slice_to_file(output_file_path, &bytes)
+            file_utils::write_u8_slice_to_file(output_file_path, &bytes)
         } else {
             Ok(())
         }
@@ -1021,7 +1003,7 @@ impl DataEncoder {
 
     /// Fill any unused slots in the byte list with random byte data.
     pub fn fill_empty_bytes(&mut self) {
-        utils::fast_fill_vec_random(&mut self.bytes, &mut self.rng);
+        misc_utils::fast_fill_vec_random(&mut self.bytes, &mut self.rng);
     }
 
     /// Add a byte of data into the byte list.
@@ -1032,6 +1014,7 @@ impl DataEncoder {
     ///
     /// `Note:` This method cannot be called outside of the [`DataEncoder`]
     /// class to avoid confusion as it does not XOR encode the byte.
+    ///
     fn push_u8_direct(&mut self, value: u8) {
         self.bytes.push(value);
     }
@@ -1086,8 +1069,7 @@ mod tests_encode_decode {
     use crate::{
         codecs::codec::Codec,
         hashers,
-        test_utils::{FileCleaner, TestUtils},
-        utils,
+        utilities::{file_utils, test_utils::*},
     };
 
     use super::StegaV1;
@@ -1114,7 +1096,7 @@ mod tests_encode_decode {
         let r = stega.encode(&input_path, KEY.to_string(), TEXT, &output_img_path);
 
         assert!(
-            utils::path_exists(&output_img_path),
+            file_utils::path_exists(&output_img_path),
             "file not written to disk."
         );
 
@@ -1143,7 +1125,7 @@ mod tests_encode_decode {
         );
 
         assert!(
-            utils::path_exists(&output_img_path),
+            file_utils::path_exists(&output_img_path),
             "file not written to disk."
         );
 
@@ -1172,7 +1154,7 @@ mod tests_encode_decode {
         );
 
         assert!(
-            utils::path_exists(&output_img_path),
+            file_utils::path_exists(&output_img_path),
             "file not written to disk."
         );
 
@@ -1261,7 +1243,7 @@ mod tests_encode_decode {
 
         // Did we successfully decode a file?
         assert!(
-            utils::path_exists(&output_file_path),
+            file_utils::path_exists(&output_file_path),
             "file not written to disk."
         );
 
@@ -1346,7 +1328,7 @@ mod tests_encode_decode {
 
         // Did we successfully decode a file?
         assert!(
-            utils::path_exists(&output_file_path),
+            file_utils::path_exists(&output_file_path),
             "file not written to disk."
         );
 
@@ -1383,7 +1365,7 @@ mod tests_encode_decode {
         );
 
         assert!(
-            utils::path_exists(&output_img_path),
+            file_utils::path_exists(&output_img_path),
             "file not written to disk."
         );
 
@@ -1409,7 +1391,7 @@ mod tests_encode_decode {
 mod tests_encryption_decryption {
     use crate::{
         error::{Error, Result},
-        test_utils::TestUtils,
+        utilities::test_utils::TestUtils,
     };
 
     use super::StegaV1;

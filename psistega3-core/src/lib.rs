@@ -2,13 +2,10 @@
 
 pub mod codecs;
 pub mod error;
-pub mod hashers;
+mod hashers;
 mod image_wrapper;
-pub mod locker;
+mod locker;
 mod logger;
 mod macros;
-pub mod utils;
+pub mod utilities;
 pub mod version;
-
-#[cfg(test)]
-mod test_utils;

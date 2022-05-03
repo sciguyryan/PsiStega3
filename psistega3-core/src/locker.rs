@@ -1,10 +1,14 @@
-use crate::{error::*, macros::*, utils};
+use crate::{
+    error::*,
+    macros::*,
+    utilities::{file_utils, misc_utils},
+};
 
 use filetime::FileTime;
 use rand::prelude::SliceRandom;
 use std::{
     fmt,
-    fs::{self, File},
+    fs::File,
     io::{Read, Write},
     path::PathBuf,
 };
@@ -150,31 +154,33 @@ impl Locker {
     pub fn lock_file(&mut self, path: &str) -> bool {
         use crate::image_wrapper::ImageWrapper;
 
+        use std::path::Path;
+
         // If the path does not currently exist then we cannot lock it,
         // this means we shouldn't remove it from the list.
-        if !utils::path_exists(path) {
+        if !file_utils::path_exists(path) {
             return false;
         }
 
         // This should never happen, but if it does then
         // the entry should be removed from the list.
         // It isn't possible to lock a directory.
-        if std::path::Path::new(path).is_dir() {
+        if Path::new(path).is_dir() {
             return true;
         }
 
         let mut is_read_only = false;
 
         // If the file is read only, then we need to unset that flag.
-        if let Ok(state) = utils::get_file_read_only_state(path) {
+        if let Ok(state) = file_utils::get_file_read_only_state(path) {
             if state {
-                let _ = utils::toggle_file_read_only_state(path);
+                let _ = file_utils::toggle_file_read_only_state(path);
                 is_read_only = true;
             }
         }
 
         // Get the last modified date from the file's metadata.
-        let mtime = utils::get_file_last_modified_timestamp(path);
+        let mtime = file_utils::get_file_last_modified_timestamp(path);
 
         // Now we need to ensure that the file can never be decoded.
         // This will happen regardless of whether the image ever contained
@@ -190,12 +196,12 @@ impl Locker {
 
         // Next, we need to remove the ZTXT chunk from the PNG file. This will
         // act to further camouflage the modifications.
-        if utils::remove_ztxt_chunk(path) {
+        if file_utils::remove_ztxt_chunk(path) {
             // We need to add the IEND chunk back into the PNG file
             // in order for it to be considered valid.
             let mut f = unwrap_or_return_val!(File::options().append(true).open(path), false);
 
-            let end = utils::IEND.to_vec();
+            let end = file_utils::IEND.to_vec();
             let _wb = f.write(&end).unwrap();
         }
 
@@ -207,7 +213,7 @@ impl Locker {
 
         // Toggle the read-only state again, if needed.
         if is_read_only {
-            let _ = utils::toggle_file_read_only_state(path);
+            let _ = file_utils::toggle_file_read_only_state(path);
         }
 
         res.is_ok()
@@ -225,12 +231,12 @@ impl Locker {
         const ENTRY_SIZE: usize = 33;
 
         let path = Locker::get_locker_file_path()?;
-        if !utils::path_exists(&path) {
+        if !file_utils::path_exists(&path) {
             return Ok(());
         }
 
         // This will indicate a corrupted locker file.
-        let metadata = utils::get_file_metadata(&path)?;
+        let metadata = file_utils::get_file_metadata(&path)?;
         if metadata.len() % (ENTRY_SIZE as u64) != 0 {
             return Err(Error::LockerFileRead);
         }
@@ -330,7 +336,7 @@ impl Drop for Locker {
         // If writing the locker file failed, exit immediately.
         if self.write_locker_file().is_err() {
             if let Ok(path) = Locker::get_locker_file_path() {
-                _ = fs::remove_file(path);
+                _ = std::fs::remove_file(path);
             }
             return;
         }
@@ -344,9 +350,9 @@ impl Drop for Locker {
         let data_path = unwrap_or_return!(Locker::get_locker_file_path());
 
         // Set the file last modification time of the data file.
-        let metadata = unwrap_or_return!(utils::get_file_metadata(&bin_path));
+        let metadata = unwrap_or_return!(file_utils::get_file_metadata(&bin_path));
         let mtime = FileTime::from_last_modification_time(&metadata);
-        let _ = utils::set_file_last_modified_timestamp(&data_path, mtime);
+        let _ = file_utils::set_file_last_modified_timestamp(&data_path, mtime);
     }
 }
 
@@ -370,7 +376,7 @@ impl fmt::Display for LockerEntry {
         write!(
             f,
             "Hash: {}, Attempts: {}",
-            utils::u8_array_to_hex(&self.hash),
+            misc_utils::u8_slice_to_hex(&self.hash),
             self.attempts
         )
     }
@@ -380,8 +386,7 @@ impl fmt::Display for LockerEntry {
 mod tests_locker {
     use crate::{
         hashers,
-        test_utils::{FileCleaner, TestUtils},
-        utils,
+        utilities::{file_utils, test_utils::*},
     };
 
     use serial_test::serial;
@@ -527,12 +532,13 @@ mod tests_locker {
         f.add(&copy_path);
 
         // Set the copy file as read-only.
-        if let Err(_e) = utils::toggle_file_read_only_state(&copy_path) {
+        if let Err(_e) = file_utils::toggle_file_read_only_state(&copy_path) {
             panic!("Failed to set the read-only state of the copied file");
         }
 
         // Get the last modified timestamp of the original file.
-        let old_timestamp = if let Ok(ft) = utils::get_file_last_modified_timestamp(&old_path) {
+        let old_timestamp = if let Ok(ft) = file_utils::get_file_last_modified_timestamp(&old_path)
+        {
             ft
         } else {
             panic!("Failed to get the timestamp of the original file");
@@ -571,13 +577,13 @@ mod tests_locker {
         );
 
         // The file should also no longer contain a zTXt chunk.
-        let ztxt_start = utils::find_png_ztxt_chunk_start(&copy_path);
+        let ztxt_start = file_utils::find_png_ztxt_chunk_start(&copy_path);
         assert!(
             ztxt_start.is_none(),
             "a zTXt chunk was found in the locked PNG file, it should have been removed"
         );
 
-        let locked_read_only = utils::get_file_read_only_state(&copy_path);
+        let locked_read_only = file_utils::get_file_read_only_state(&copy_path);
         assert!(
             locked_read_only.is_ok(),
             "failed to read the read-only state of the locked file"
@@ -588,11 +594,12 @@ mod tests_locker {
         );
 
         // Get the last modified timestamp of the copied file.
-        let copy_timestamp = if let Ok(ft) = utils::get_file_last_modified_timestamp(&copy_path) {
-            ft
-        } else {
-            panic!("Failed to get the timestamp of the original file");
-        };
+        let copy_timestamp =
+            if let Ok(ft) = file_utils::get_file_last_modified_timestamp(&copy_path) {
+                ft
+            } else {
+                panic!("Failed to get the timestamp of the original file");
+            };
 
         assert!(
             copy_timestamp == old_timestamp,
