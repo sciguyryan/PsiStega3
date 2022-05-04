@@ -1,10 +1,13 @@
-use crate::image_wrapper::ImageWrapper;
-use crate::locker::Locker;
 use crate::{
     codecs::codec::Codec,
     error::{Error, Result},
+    hashers,
+    image_wrapper::ImageWrapper,
+    locker::Locker,
+    logger::Logger,
+    macros::*,
+    utilities::*,
 };
-use crate::{hashers, logger, macros::*, utilities::*};
 
 use aes_gcm::{
     aead::{Aead, NewAead},
@@ -12,8 +15,10 @@ use aes_gcm::{
 };
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
-use std::collections::{HashMap, VecDeque};
-use std::convert::{TryFrom, TryInto};
+use std::{
+    collections::{HashMap, VecDeque},
+    convert::{TryFrom, TryInto},
+};
 
 use super::codec::Config;
 
@@ -28,7 +33,7 @@ const ARGON_VER: argon2::Version = argon2::Version::V0x13;
 
 pub struct StegaV1 {
     /// The application name.
-    pub(crate) application_name: String,
+    application_name: String,
     /// The data index to cell ID map.
     data_cell_map: HashMap<usize, usize>,
     /// If the noise layer should be applied to the output image.
@@ -47,6 +52,8 @@ pub struct StegaV1 {
     use_file_locker: bool,
     /// The file locker instance for this codec.
     pub(crate) locker: Locker,
+    /// The logger instance for this codec.
+    logger: Logger,
 }
 
 impl StegaV1 {
@@ -71,6 +78,7 @@ impl StegaV1 {
             fast_variance: false,
             use_file_locker: false,
             locker,
+            logger: Logger::new(false),
         }
     }
 
@@ -866,7 +874,7 @@ impl Codec for StegaV1 {
                 self.fast_variance = state;
             }
             Config::Verbose => {
-                logger::enable_verbose_mode();
+                self.logger.enable_verbose_mode();
             }
             Config::OutputFiles => {
                 self.output_files = state;

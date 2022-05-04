@@ -1,7 +1,7 @@
-use crate::utilities::misc_utils;
 use crate::{
     error::{Error, Result},
     macros::*,
+    utilities::misc_utils,
 };
 
 use filetime::FileTime;
