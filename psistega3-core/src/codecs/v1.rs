@@ -1,7 +1,9 @@
-use crate::codecs::codec::Codec;
-use crate::error::{Error, Result};
 use crate::image_wrapper::ImageWrapper;
 use crate::locker::Locker;
+use crate::{
+    codecs::codec::Codec,
+    error::{Error, Result},
+};
 use crate::{hashers, logger, macros::*, utilities::*};
 
 use aes_gcm::{

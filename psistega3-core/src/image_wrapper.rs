@@ -1,5 +1,7 @@
-use crate::error::{Error, Result};
-use crate::macros::*;
+use crate::{
+    error::{Error, Result},
+    macros::*,
+};
 
 use image::{ColorType, ImageFormat};
 

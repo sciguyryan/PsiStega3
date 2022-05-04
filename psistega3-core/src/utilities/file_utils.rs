@@ -1,6 +1,8 @@
-use crate::error::{Error, Result};
-use crate::macros::*;
 use crate::utilities::misc_utils;
+use crate::{
+    error::{Error, Result},
+    macros::*,
+};
 
 use filetime::FileTime;
 use std::{
