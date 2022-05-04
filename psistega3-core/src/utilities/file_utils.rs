@@ -31,7 +31,7 @@ pub(crate) fn find_png_ztxt_chunk_start(path: &str) -> Option<usize> {
     // the performance of this function.
     let mmap = unsafe { unwrap_or_return_val!(Mmap::map(&file), None) };
 
-    // If we have a ZTXT chunk present then the index of
+    // If we have a zTXt chunk present then the index of
     // the header will be returned.
     let index = misc_utils::find_subsequence(&mmap, &ZTXT)?;
 
@@ -42,7 +42,7 @@ pub(crate) fn find_png_ztxt_chunk_start(path: &str) -> Option<usize> {
 
 /// Generate a zTXt chunk for a PNG.
 ///
-pub(crate) fn generate_ztxt_chunk(keys: &[String], data: &[Vec<u8>]) -> Vec<u8> {
+pub(crate) fn generate_png_ztxt_chunk(keys: &[String], data: &[Vec<u8>]) -> Vec<u8> {
     assert!(
         keys.len() == data.len(),
         "the key and data vectors must be the same length"

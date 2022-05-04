@@ -117,20 +117,21 @@ impl Locker {
     }
 
     fn get_locker_directory(&self) -> Result<PathBuf> {
-        let mut path = if cfg!(test) {
-            std::env::temp_dir()
-        } else {
-            dirs::data_dir().unwrap()
-        };
-
         /*
           The locker directory will start from the data directory
             (or temp directory for tests).
           The locker files will be found in a subdirectory containing
-            the name of the application.
+            the name of the application, if not running tests.
         */
 
-        path.push(&self.application_name);
+        let mut path: PathBuf;
+        if cfg!(test) {
+            path = std::env::temp_dir();
+        } else {
+            path = dirs::data_dir().unwrap();
+
+            path.push(&self.application_name);
+        };
 
         Ok(path)
     }

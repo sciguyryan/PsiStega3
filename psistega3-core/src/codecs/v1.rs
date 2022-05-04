@@ -46,10 +46,10 @@ pub struct StegaV1 {
     /// This method will not use randomness to determine the pixel value variance
     /// and will instead alternate between adding and subtracting 1.
     fast_variance: bool,
-    /// If the file locker should be used for this file.
-    /// If file locking is enabled then the file will be rendered
-    /// invalid after 5 failed attempts to decode it.
-    use_file_locker: bool,
+    /// Flags for use when encoding and decoding.
+    /// Bit 0 indicates that the file locker is to be used with this file.
+    /// Bits 1 to 7 are reserved for future use.
+    flags: u8,
     /// The file locker instance for this codec.
     pub(crate) locker: Locker,
     /// The logger instance for this codec.
@@ -76,7 +76,7 @@ impl StegaV1 {
             noise_layer: true,
             output_files: true,
             fast_variance: false,
-            use_file_locker: false,
+            flags: 0,
             locker,
             logger: Logger::new(false),
         }
@@ -135,44 +135,13 @@ impl StegaV1 {
     /// * `hash` - The hash of the file to be unlocked.
     ///
     fn clear_file_lock(&mut self, hash: &[u8]) {
-        if !self.use_file_locker {
+        if !self.is_file_locker_enabled() {
             return;
         }
 
         // The decryption was successful, we can remove any file locker
         // attempts that might be present.
         self.locker.clear_file_lock(hash);
-    }
-
-    /// Process the zTXt chunk of a PNG file, and apply any flags that may be present.
-    ///
-    /// * `path` - The path to the PNG file.
-    ///
-    pub fn process_ztxt_chunk(&mut self, path: &str) {
-        let chunk = file_utils::read_png_ztxt_chunk_data(path);
-        if chunk.is_none() {
-            return;
-        }
-
-        // We have a zTXt chunk to process!
-        let chunk = chunk.unwrap();
-        let len = chunk.len();
-
-        // The final byte in the sequence contains the encoded flags.
-        let mut flags = chunk[len - 1];
-
-        // The byte prior to the final byte is used to cipher the flags byte.
-        StegaV1::cipher_flag_byte(&mut flags, &chunk[len - 2]);
-
-        // Iterate over each bit in the byte to set the corresponding flags.
-        for i in 0..8 {
-            let state = misc_utils::is_bit_set(&flags, i);
-            if i == 0 {
-                self.use_file_locker = state;
-            }
-
-            // The other bits are currently unused.
-        }
     }
 
     /// The internal implementation of the decoding algorithm.
@@ -191,7 +160,7 @@ impl StegaV1 {
         self.process_ztxt_chunk(encoded_img_path);
 
         let mut enc_hash: Vec<u8> = vec![];
-        if self.use_file_locker {
+        if self.is_file_locker_enabled() {
             enc_hash = unwrap_or_return_err!(
                 hashers::sha3_256_file(encoded_img_path),
                 Error::FileHashingError
@@ -553,7 +522,13 @@ impl StegaV1 {
         data_bytes.push(flags);
 
         // Generate the zTXt chunk from the data.
-        file_utils::generate_ztxt_chunk(&[key], &[data_bytes])
+        file_utils::generate_png_ztxt_chunk(&[key], &[data_bytes])
+    }
+
+    /// Is the file locker enabled for this file?
+    #[inline]
+    fn is_file_locker_enabled(&self) -> bool {
+        misc_utils::is_bit_set(&self.flags, 0)
     }
 
     /// Loads an image from file and validates that the image is suitable for steganography.
@@ -603,6 +578,29 @@ impl StegaV1 {
         let _wb = f.write(&end).unwrap();
 
         Ok(())
+    }
+
+    /// Process the zTXt chunk of a PNG file, and apply any flags that may be present.
+    ///
+    /// * `path` - The path to the PNG file.
+    ///
+    pub fn process_ztxt_chunk(&mut self, path: &str) {
+        let chunk = file_utils::read_png_ztxt_chunk_data(path);
+        if chunk.is_none() {
+            return;
+        }
+
+        // We have a zTXt chunk to process!
+        let chunk = chunk.unwrap();
+        let len = chunk.len();
+
+        // The final byte in the sequence contains the encoded flags.
+        let mut flags = chunk[len - 1];
+
+        // The byte prior to the final byte is used to cipher the flags byte.
+        StegaV1::cipher_flag_byte(&mut flags, &chunk[len - 2]);
+
+        self.flags = flags;
     }
 
     /// Read a byte of encoded data, starting at a specified index.
@@ -666,6 +664,18 @@ impl StegaV1 {
         self.read_u8(ref_img, enc_img, start_index)
     }
 
+    /// Set the state a feature flag.
+    ///
+    /// # Arguments
+    ///
+    /// * `index` - The index of the flag.
+    /// * `state` - The intended state of the flag.
+    ///
+    #[inline]
+    fn set_feature_flag_state(&mut self, index: usize, state: bool) {
+        misc_utils::set_bit_state(&mut self.flags, index, state)
+    }
+
     /// Create a seedable RNG object with a defined 32-byte seed.
     ///
     /// # Arguments
@@ -690,7 +700,7 @@ impl StegaV1 {
     /// * `hash` - The hash of the image file.
     ///
     fn update_file_lock(&mut self, path: &str, hash: &[u8]) {
-        if !self.use_file_locker {
+        if !self.is_file_locker_enabled() {
             return;
         }
 
@@ -880,7 +890,7 @@ impl Codec for StegaV1 {
                 self.output_files = state;
             }
             Config::Locker => {
-                self.use_file_locker = state;
+                self.set_feature_flag_state(0, state);
             }
         }
     }
@@ -1096,7 +1106,7 @@ impl DataEncoder {
 #[cfg(test)]
 mod tests_encode_decode {
     use crate::{
-        codecs::codec::Codec,
+        codecs::codec::{Codec, Config},
         hashers,
         utilities::{file_utils, test_utils::*},
     };
@@ -1154,7 +1164,7 @@ mod tests_encode_decode {
         );
 
         // Did we successfully encode the string?
-        assert_eq!(r, Ok(()), "failed to encode data into image file.");
+        assert_eq!(r, Ok(()), "failed to encode data into image file");
     }
 
     #[test]
@@ -1176,11 +1186,11 @@ mod tests_encode_decode {
 
         assert!(
             file_utils::path_exists(&output_img_path),
-            "file not written to disk."
+            "file not written to disk"
         );
 
         // Did we successfully encode the file?
-        assert_eq!(r, Ok(()), "failed to encode data into image file.");
+        assert_eq!(r, Ok(()), "failed to encode data into image file");
     }
 
     #[test]
@@ -1206,7 +1216,58 @@ mod tests_encode_decode {
         );
 
         // Did we successfully encode the file?
-        assert_eq!(r, Ok(()), "failed to encode data into image file.");
+        assert_eq!(r, Ok(()), "failed to encode data into image file");
+    }
+
+    #[test]
+    fn test_encode_decode_locker_enabled() {
+        let mut tu = TestUtils::new(&BASE);
+
+        let input_path = tu.get_in_file("reference-valid.png");
+        let output_img_path = tu.get_out_file("png", true);
+
+        // Attempt to encode the file.
+        let mut stega = create_instance();
+
+        // We want to enable the file locker system here.
+        stega.set_config_state(Config::Locker, true);
+
+        stega
+            .encode(&input_path, KEY.to_string(), TEXT, &output_img_path)
+            .expect("failed to encode the data");
+
+        // Disable the file locker system again.
+        stega.set_config_state(Config::Locker, false);
+
+        // Attempt to decode the string.
+        stega
+            .decode(&input_path, KEY.to_string(), &output_img_path)
+            .expect("failed to decode the data");
+
+        // Was the file locker enabled upon decoding?
+        assert!(
+            stega.is_file_locker_enabled(),
+            "file locker was not enabled after decoding the file"
+        );
+    }
+
+    #[test]
+    fn test_encode_ztxt_chunk() {
+        let mut tu = TestUtils::new(&BASE);
+
+        let input_path = tu.get_in_file("reference-valid.png");
+        let output_img_path = tu.get_out_file("png", true);
+
+        // Attempt to encode the file.
+        let mut stega = create_instance();
+        stega
+            .encode(&input_path, KEY.to_string(), TEXT, &output_img_path)
+            .expect("failed to encode the data");
+
+        assert!(
+            file_utils::find_png_ztxt_chunk_start(&output_img_path).is_some(),
+            "zTXt chunk was not written to the PNG file"
+        );
     }
 
     #[test]
@@ -1224,7 +1285,7 @@ mod tests_encode_decode {
             .expect("failed to decode string");
 
         // Did we successfully decode the string?
-        assert_eq!(r, TEXT, "decrypted information does not match input.");
+        assert_eq!(r, TEXT, "decrypted information does not match input");
     }
 
     #[test]
@@ -1294,7 +1355,7 @@ mod tests_encode_decode {
 
         assert_eq!(
             hash_original, hash_new,
-            "decoded file is not the same as the original."
+            "decoded file is not the same as the original"
         );
     }
 
@@ -1365,7 +1426,7 @@ mod tests_encode_decode {
         assert_eq!(
             hashers::sha3_512_file(&original_file_path),
             hashers::sha3_512_file(&output_file_path),
-            "decoded file is not the same as the original."
+            "decoded file is not the same as the original"
         );
     }
 
@@ -1390,11 +1451,11 @@ mod tests_encode_decode {
 
         assert!(
             file_utils::path_exists(&output_img_path),
-            "file not written to disk."
+            "file not written to disk"
         );
 
         // Did we successfully encode the string?
-        assert_eq!(r, Ok(()), "failed to encode data into image file.");
+        assert_eq!(r, Ok(()), "failed to encode data into image file");
 
         // Now we will attempt to decode the string.
         let str = stega
@@ -1406,7 +1467,7 @@ mod tests_encode_decode {
         // during the decode cycle.
         assert_eq!(
             str, "A���A",
-            "invalid sequences not removed during encode-decode cycle."
+            "invalid sequences not removed during encode-decode cycle"
         );
     }
 }
