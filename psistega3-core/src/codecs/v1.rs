@@ -25,6 +25,8 @@ const M_COST: u32 = 65536;
 const ARGON_VER: argon2::Version = argon2::Version::V0x13;
 
 pub struct StegaV1 {
+    /// The application name.
+    pub(crate) application_name: String,
     /// The data index to cell ID map.
     data_cell_map: HashMap<usize, usize>,
     /// If the noise layer should be applied to the output image.
@@ -47,16 +49,17 @@ pub struct StegaV1 {
 
 impl StegaV1 {
     pub fn new() -> Self {
-        let locker = Locker::new();
-        assert!(locker.is_ok(), "Could not initialize the file locker.");
+        let application_name = "PsiStega3".to_string();
+        let locker = Locker::new(&application_name).expect("could not initialize the file locker");
 
         Self {
+            application_name,
             data_cell_map: HashMap::with_capacity(1),
             noise_layer: true,
             output_files: true,
             fast_variance: false,
             use_file_locker: false,
-            locker: locker.unwrap(),
+            locker,
         }
     }
 
@@ -846,6 +849,10 @@ impl Codec for StegaV1 {
         } else {
             Ok(())
         }
+    }
+
+    fn set_application_name(&mut self, name: String) {
+        self.application_name = name;
     }
 
     fn set_config_state(&mut self, config: Config, state: bool) {

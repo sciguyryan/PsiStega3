@@ -10,11 +10,12 @@ use std::{
     fmt,
     fs::File,
     io::{Read, Write},
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 
 #[derive(Debug)]
 pub(crate) struct Locker {
+    application_name: String,
     entries: Vec<LockerEntry>,
 
     #[cfg(test)]
@@ -22,8 +23,9 @@ pub(crate) struct Locker {
 }
 
 impl Locker {
-    pub fn new() -> Result<Self> {
+    pub fn new(application_name: &str) -> Result<Self> {
         let mut l = Self {
+            application_name: application_name.to_string(),
             entries: Vec::with_capacity(20),
 
             #[cfg(test)]
@@ -75,7 +77,13 @@ impl Locker {
     }
 
     fn create_locker_file(&mut self) -> Result<File> {
-        let path = unwrap_or_return_err!(Locker::get_locker_file_path(), Error::LockerFilePath);
+        // Attempt to create the path to the directory, if it doesn't already exist.
+        let locker_dir = self.get_locker_directory()?;
+        if std::fs::create_dir_all(&locker_dir).is_err() {
+            return Err(Error::LockerFileCreation);
+        }
+
+        let path = self.get_locker_file_path()?;
 
         match File::create(path) {
             Ok(f) => Ok(f),
@@ -118,13 +126,22 @@ impl Locker {
         self.entries.iter_mut().find(|e| e.hash == hash)
     }
 
-    fn get_locker_file_path() -> Result<String> {
-        let bin_path = Locker::get_binary_path()?;
+    fn get_locker_directory(&self) -> Result<PathBuf> {
+        // The locker directory will start from the data directory, with a subdirectory
+        //   containing the name of the application.
+        let mut path = if let Some(p) = dirs::data_dir() {
+            p
+        } else {
+            return Err(Error::LockerFilePath);
+        };
 
-        // Build the path. Disregard the executable file name and append the
-        // data file name.
-        let mut path = PathBuf::from(bin_path);
-        path.pop();
+        path.push(&self.application_name);
+
+        Ok(path)
+    }
+
+    fn get_locker_file_path(&self) -> Result<String> {
+        let mut path = self.get_locker_directory()?;
         path.push("lock.dat");
 
         if let Some(p) = path.to_str() {
@@ -154,8 +171,6 @@ impl Locker {
     pub fn lock_file(&mut self, path: &str) -> bool {
         use crate::image_wrapper::ImageWrapper;
 
-        use std::path::Path;
-
         // If the path does not currently exist then we cannot lock it,
         // this means we shouldn't remove it from the list.
         if !file_utils::path_exists(path) {
@@ -180,7 +195,7 @@ impl Locker {
         }
 
         // Get the last modified date from the file's metadata.
-        let mtime = file_utils::get_file_last_modified_timestamp(path);
+        let mtime = file_utils::get_file_last_modified(path);
 
         // Now we need to ensure that the file can never be decoded.
         // This will happen regardless of whether the image ever contained
@@ -230,7 +245,7 @@ impl Locker {
     fn read_locker_file(&mut self) -> Result<()> {
         const ENTRY_SIZE: usize = 33;
 
-        let path = Locker::get_locker_file_path()?;
+        let path = self.get_locker_file_path()?;
         if !file_utils::path_exists(&path) {
             return Ok(());
         }
@@ -335,7 +350,7 @@ impl Drop for Locker {
 
         // If writing the locker file failed, exit immediately.
         if self.write_locker_file().is_err() {
-            if let Ok(path) = Locker::get_locker_file_path() {
+            if let Ok(path) = self.get_locker_file_path() {
                 _ = std::fs::remove_file(path);
             }
             return;
@@ -347,12 +362,12 @@ impl Drop for Locker {
         // for identifying the use of this file, which is to avoid the same people
         // from repeatedly trying to break the passwords.
         let bin_path = unwrap_or_return!(Locker::get_binary_path());
-        let data_path = unwrap_or_return!(Locker::get_locker_file_path());
+        let data_path = unwrap_or_return!(self.get_locker_file_path());
 
         // Set the file last modification time of the data file.
         let meta = unwrap_or_return!(file_utils::get_file_metadata(&bin_path));
         let mtime = FileTime::from_last_modification_time(&meta);
-        let _ = file_utils::set_file_last_modified_timestamp(&data_path, mtime);
+        let _ = file_utils::set_file_last_modified(&data_path, mtime);
     }
 }
 
@@ -400,12 +415,12 @@ mod tests_locker {
 
     /*
      * Note that these tests should be run in serial mode as reading and
-     * writing from files can be flakey with threads.
+     *   writing from files can be flakey with threads.
      */
 
     /// Create a file locker instance, or panic if it fails.
     fn create_locker_instance_or_assert() -> Locker {
-        Locker::new().expect("could not initialize locker instance")
+        Locker::new("PsiStega3-Tests").expect("could not initialize locker instance")
     }
 
     #[test]
@@ -467,8 +482,9 @@ mod tests_locker {
         );
 
         // The entry should be identical to the original entry that was added.
-        assert!(
-            *entry2.unwrap() == entry,
+        assert_eq!(
+            *entry2.unwrap(),
+            entry,
             "entry was not the same after unloading and reloading"
         );
     }
@@ -528,7 +544,7 @@ mod tests_locker {
             .expect("failed to set the read-only state of the copied file");
 
         // Get the last modified timestamp of the original file.
-        let old_timestamp = file_utils::get_file_last_modified_timestamp(&old_path)
+        let old_timestamp = file_utils::get_file_last_modified(&old_path)
             .expect("failed to get the timestamp of the original file");
 
         // Compute the hash of the original file.
@@ -573,7 +589,7 @@ mod tests_locker {
         );
 
         // Get the last modified timestamp of the copied file.
-        let copy_timestamp = file_utils::get_file_last_modified_timestamp(&copy_path)
+        let copy_timestamp = file_utils::get_file_last_modified(&copy_path)
             .expect("Failed to get the timestamp of the original file");
 
         assert_eq!(

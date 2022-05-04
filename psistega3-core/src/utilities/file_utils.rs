@@ -82,7 +82,7 @@ pub(crate) fn generate_ztxt_chunk(keys: &[String], data: &[Vec<u8>]) -> Vec<u8> 
 ///
 /// * `path` - The path to the file.
 ///
-pub(crate) fn get_file_last_modified_timestamp(path: &str) -> Result<FileTime> {
+pub(crate) fn get_file_last_modified(path: &str) -> Result<FileTime> {
     let meta = get_file_metadata(path)?;
 
     Ok(FileTime::from_last_modification_time(&meta))
@@ -226,7 +226,7 @@ pub(crate) fn remove_ztxt_chunk(path: &str) -> bool {
 ///
 /// * `path` - The path to the file.
 ///
-pub(crate) fn set_file_last_modified_timestamp(path: &str, timestamp: FileTime) -> Result<()> {
+pub(crate) fn set_file_last_modified(path: &str, timestamp: FileTime) -> Result<()> {
     if filetime::set_file_mtime(path, timestamp).is_ok() {
         Ok(())
     } else {

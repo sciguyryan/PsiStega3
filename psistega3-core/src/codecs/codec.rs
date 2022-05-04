@@ -65,6 +65,16 @@ pub trait Codec {
         output_file_path: &str,
     ) -> Result<()>;
 
+    /// Set the name of the application.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - A string containing the name of the application.
+    ///
+    /// `Note:` this is intended for custom applications that make use of the PsiStega3 crate.
+    ///
+    fn set_application_name(&mut self, name: String);
+
     /// Enable or disable a specific configuration.
     ///
     /// # Arguments
