@@ -48,12 +48,21 @@ pub struct StegaV1 {
 }
 
 impl StegaV1 {
-    pub fn new() -> Self {
-        let application_name = "PsiStega3".to_string();
-        let locker = Locker::new(&application_name).expect("could not initialize the file locker");
+    pub fn new(application_name: &str) -> Self {
+        let mut application_name = application_name;
+        if application_name.is_empty() {
+            application_name = "PsiStega3"
+        }
+
+        #[cfg(test)]
+        let locker =
+            Locker::new(application_name, "").expect("could not initialize the file locker");
+
+        #[cfg(not(test))]
+        let locker = Locker::new(application_name).expect("could not initialize the file locker");
 
         Self {
-            application_name,
+            application_name: application_name.to_string(),
             data_cell_map: HashMap::with_capacity(1),
             noise_layer: true,
             output_files: true,
@@ -123,15 +132,6 @@ impl StegaV1 {
         // The decryption was successful, we can remove any file locker
         // attempts that might be present.
         self.locker.clear_file_lock(hash);
-    }
-
-    /// Completely clear the locker file on drop.
-    ///
-    /// `Note:` this function is only build when running tests.
-    ///
-    #[cfg(test)]
-    pub(crate) fn clear_locker_on_drop(&mut self) {
-        self.locker.clear_on_exit = true;
     }
 
     /// Process the zTXt chunk of a PNG file, and apply any flags that may be present.
@@ -878,7 +878,7 @@ impl Codec for StegaV1 {
 
 impl Default for StegaV1 {
     fn default() -> Self {
-        Self::new()
+        Self::new("")
     }
 }
 
@@ -1100,6 +1100,11 @@ mod tests_encode_decode {
     /// The sub directory to the test files.
     const BASE: [&str; 1] = ["encoding_decoding"];
 
+    /// Create a StegaV1 instance.
+    fn create_instance() -> StegaV1 {
+        StegaV1::new("PsiStega3-Tests")
+    }
+
     #[test]
     fn test_composite_string_generation() {
         let tu = TestUtils::new(&BASE);
@@ -1130,7 +1135,7 @@ mod tests_encode_decode {
         let output_img_path = tu.get_out_file("png", true);
 
         // Attempt to encode the file.
-        let mut stega = StegaV1::default();
+        let mut stega = create_instance();
         let r = stega.encode(&input_path, KEY.to_string(), TEXT, &output_img_path);
 
         assert!(
@@ -1151,7 +1156,7 @@ mod tests_encode_decode {
         let output_img_path = tu.get_out_file("png", true);
 
         // Attempt to encode the file.
-        let mut stega = StegaV1::default();
+        let mut stega = create_instance();
         let r = stega.encode_file(
             &input_path,
             KEY.to_string(),
@@ -1177,7 +1182,7 @@ mod tests_encode_decode {
         let output_img_path = tu.get_out_file("png", true);
 
         // Attempt to encode the file.
-        let mut stega = StegaV1::default();
+        let mut stega = create_instance();
         let r = stega.encode_file(
             &input_path,
             KEY.to_string(),
@@ -1202,8 +1207,7 @@ mod tests_encode_decode {
         let enc_img_path = tu.get_in_file("encoded-text.png");
 
         // Attempt to decode the string, ensure the locker file is cleared on exit.
-        let mut stega = StegaV1::default();
-        stega.clear_locker_on_drop();
+        let mut stega = create_instance();
 
         let r = stega
             .decode(&ref_img_path, KEY.to_string(), &enc_img_path)
@@ -1221,8 +1225,7 @@ mod tests_encode_decode {
         let enc_img_path = tu.get_in_file("encoded-text.png");
 
         // Attempt to decode the string, ensure the locker file is cleared on exit.
-        let mut stega = StegaV1::default();
-        stega.clear_locker_on_drop();
+        let mut stega = create_instance();
 
         let r = stega.decode(&ref_img_path, "A".to_string(), &enc_img_path);
 
@@ -1242,8 +1245,7 @@ mod tests_encode_decode {
 
         // Attempt to decode the string, ensure the locker file is cleared on exit.
         // The key is valid but the reference image is not.
-        let mut stega = StegaV1::default();
-        stega.clear_locker_on_drop();
+        let mut stega = create_instance();
 
         let r = stega.decode(&ref_path, KEY.to_string(), &enc_path);
 
@@ -1263,8 +1265,7 @@ mod tests_encode_decode {
         let output_file_path = tu.get_out_file("png", true);
 
         // Attempt to decode the file, ensure the locker file is cleared on exit.
-        let mut stega = StegaV1::default();
-        stega.clear_locker_on_drop();
+        let mut stega = create_instance();
 
         stega
             .decode_file(&ref_path, KEY.to_string(), &enc_path, &output_file_path)
@@ -1296,8 +1297,7 @@ mod tests_encode_decode {
         let output_file_path = tu.get_out_file("png", true);
 
         // Attempt to decode the file, ensure the locker file is cleared on exit.
-        let mut stega = StegaV1::default();
-        stega.clear_locker_on_drop();
+        let mut stega = create_instance();
 
         let r = stega.decode_file(&ref_path, "A".to_string(), &enc_path, &output_file_path);
 
@@ -1317,8 +1317,7 @@ mod tests_encode_decode {
         let output_file_path = tu.get_out_file("png", true);
 
         // Attempt to decode the file, ensure the locker file is cleared on exit.
-        let mut stega = StegaV1::default();
-        stega.clear_locker_on_drop();
+        let mut stega = create_instance();
 
         let r = stega.decode_file(&ref_path, KEY.to_string(), &enc_path, &output_file_path);
 
@@ -1339,8 +1338,7 @@ mod tests_encode_decode {
         let output_file_path = tu.get_out_file("bin", true);
 
         // Attempt to decode the file.
-        let mut stega = StegaV1::default();
-        stega.clear_locker_on_drop();
+        let mut stega = create_instance();
 
         stega
             .decode_file(&ref_path, KEY.to_string(), &enc_path, &output_file_path)
@@ -1371,8 +1369,7 @@ mod tests_encode_decode {
         let invalid_utf8 = unsafe { String::from_utf8_unchecked(vec![65, 159, 146, 150, 65]) };
 
         // Attempt to encode the file.
-        let mut stega = StegaV1::default();
-        stega.clear_locker_on_drop();
+        let mut stega = create_instance();
 
         let r = stega.encode(
             &input_path,

@@ -2,6 +2,8 @@ use path_absolutize::Absolutize;
 use rand::Rng;
 use std::path::PathBuf;
 
+const FILE_CHARS: &str = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890";
+
 pub(crate) struct TestUtils {
     /// The base folder path for the test files.
     test_base_path: PathBuf,
@@ -27,33 +29,55 @@ impl TestUtils {
         self.auto_clear_files.push(path.to_string());
     }
 
-    /// Get the path to the current execution directory.
-    fn get_current_dir() -> PathBuf {
-        std::env::current_dir().unwrap()
-    }
-
-    /// Compute the base path to the tests directory.
+    /// Get a test file and copy it to a random output path.
     ///
     /// # Arguments
     ///
-    /// * `sub_paths` - A slice of string slices representing the path to the tests.
+    /// * `file` - The name of the original test file, including the extension.
+    /// * `ext` - The extension of the copy file.
+    /// * `auto_clear` - Whether this file should be automatically cleared after the test has finished.
     ///
-    fn test_base_path(sub_paths: &[&str]) -> PathBuf {
-        let mut path = TestUtils::get_current_dir();
+    /// `Note:` This path is normalized to avoid creating any issues
+    /// with relative paths.
+    ///
+    pub fn copy_in_file_to_random_out(
+        &mut self,
+        file: &str,
+        ext: &str,
+        auto_clear: bool,
+    ) -> String {
+        let old_path = self.get_in_file(file);
+        let new_path = self.get_out_file(ext, auto_clear);
 
-        // These will always be the same.
-        path.push("..");
-        path.push("tests");
-        path.push("assets");
+        let r = std::fs::copy(&old_path, &new_path);
+        assert!(r.is_ok(), "failed to create copy of file");
 
-        // Push any additional sub-paths.
-        for p in sub_paths {
-            path.push(p);
+        new_path
+    }
+
+    /// Generate a random ASCII string of a specified length.
+    ///
+    /// # Arguments
+    ///
+    /// * `len` - The length of the final string.
+    ///
+    pub fn generate_ascii_string(len: usize) -> String {
+        let mut str = String::new();
+
+        let chars_len = FILE_CHARS.len();
+
+        for _ in 0..len {
+            let index = rand::thread_rng().gen_range(0..chars_len);
+            let char = FILE_CHARS.chars().nth(index).unwrap();
+            str.push(char);
         }
 
-        assert!(path.exists(), "testing file directory does not exist.");
+        str
+    }
 
-        path
+    /// Get the path to the current execution directory.
+    fn get_current_dir() -> PathBuf {
+        std::env::current_dir().unwrap()
     }
 
     /// Get the full path to a random output file path.
@@ -120,30 +144,28 @@ impl TestUtils {
         path.to_str().unwrap().to_string()
     }
 
-    /// Get a test file and copy it to a random output path.
+    /// Compute the base path to the tests directory.
     ///
     /// # Arguments
     ///
-    /// * `file` - The name of the original test file, including the extension.
-    /// * `ext` - The extension of the copy file.
-    /// * `auto_clear` - Whether this file should be automatically cleared after the test has finished.
+    /// * `sub_paths` - A slice of string slices representing the path to the tests.
     ///
-    /// `Note:` This path is normalized to avoid creating any issues
-    /// with relative paths.
-    ///
-    pub fn copy_in_file_to_random_out(
-        &mut self,
-        file: &str,
-        ext: &str,
-        auto_clear: bool,
-    ) -> String {
-        let old_path = self.get_in_file(file);
-        let new_path = self.get_out_file(ext, auto_clear);
+    fn test_base_path(sub_paths: &[&str]) -> PathBuf {
+        let mut path = TestUtils::get_current_dir();
 
-        let r = std::fs::copy(&old_path, &new_path);
-        assert!(r.is_ok(), "failed to create copy of file");
+        // These will always be the same.
+        path.push("..");
+        path.push("tests");
+        path.push("assets");
 
-        new_path
+        // Push any additional sub-paths.
+        for p in sub_paths {
+            path.push(p);
+        }
+
+        assert!(path.exists(), "testing file directory does not exist.");
+
+        path
     }
 }
 

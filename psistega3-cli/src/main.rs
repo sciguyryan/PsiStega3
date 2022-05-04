@@ -195,7 +195,7 @@ fn apply_codec_settings(
 ///
 fn get_codec_by_version(version: Version) -> Box<dyn Codec> {
     match version {
-        Version::V0x01 => Box::new(StegaV1::new()),
+        Version::V0x01 => Box::new(StegaV1::new("")),
     }
 }
 

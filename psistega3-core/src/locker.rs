@@ -8,7 +8,7 @@ use filetime::FileTime;
 use rand::prelude::SliceRandom;
 use std::{
     fmt,
-    fs::File,
+    fs::{self, File},
     io::{Read, Write},
     path::{Path, PathBuf},
 };
@@ -19,22 +19,31 @@ pub(crate) struct Locker {
     entries: Vec<LockerEntry>,
 
     #[cfg(test)]
-    pub clear_on_exit: bool,
+    pub file_name_postfix: String,
 }
 
 impl Locker {
+    #[cfg(not(test))]
     pub fn new(application_name: &str) -> Result<Self> {
         let mut l = Self {
             application_name: application_name.to_string(),
             entries: Vec::with_capacity(20),
-
-            #[cfg(test)]
-            clear_on_exit: false,
         };
 
         l.read_locker_file()?;
 
-        //l.print_locker_list();
+        Ok(l)
+    }
+
+    #[cfg(test)]
+    pub fn new(application_name: &str, file_name_postfix: &str) -> Result<Self> {
+        let mut l = Self {
+            application_name: application_name.to_string(),
+            entries: Vec::with_capacity(20),
+            file_name_postfix: file_name_postfix.to_string(),
+        };
+
+        l.read_locker_file()?;
 
         Ok(l)
     }
@@ -67,22 +76,16 @@ impl Locker {
         self.force_clear_file_lock(hash);
     }
 
-    #[allow(dead_code)]
-    pub(crate) fn clear_locks(&mut self) {
-        // Clear the entries list.
-        self.entries.clear();
-
-        // Write the changes to the file.
-        _ = self.write_locker_file();
-    }
-
+    /// Attempt to create the locker file, including all necessary directories.
     fn create_locker_file(&mut self) -> Result<File> {
         // Attempt to create the path to the directory, if it doesn't already exist.
         let locker_dir = self.get_locker_directory()?;
-        if std::fs::create_dir_all(&locker_dir).is_err() {
+
+        if fs::create_dir_all(&locker_dir).is_err() {
             return Err(Error::LockerFileCreation);
         }
 
+        // Get the path to the locker file.
         let path = self.get_locker_file_path()?;
 
         match File::create(path) {
@@ -101,19 +104,6 @@ impl Locker {
         // do anything here.
     }
 
-    fn get_binary_path() -> Result<String> {
-        let path = match std::env::current_exe() {
-            Ok(p) => p,
-            Err(_) => return Err(Error::LockerFilePath),
-        };
-
-        if let Some(p) = path.to_str() {
-            Ok(p.to_string())
-        } else {
-            Err(Error::LockerFilePath)
-        }
-    }
-
     fn get_entry_index_by_hash(&self, hash: &[u8]) -> Option<usize> {
         self.entries.iter().position(|e| e.hash == hash)
     }
@@ -127,22 +117,39 @@ impl Locker {
     }
 
     fn get_locker_directory(&self) -> Result<PathBuf> {
-        // The locker directory will start from the data directory, with a subdirectory
-        //   containing the name of the application.
-        let mut path = if let Some(p) = dirs::data_dir() {
-            p
+        let mut path = if cfg!(test) {
+            std::env::temp_dir()
         } else {
-            return Err(Error::LockerFilePath);
+            dirs::data_dir().unwrap()
         };
+
+        /*
+          The locker directory will start from the data directory
+            (or temp directory for tests).
+          The locker files will be found in a subdirectory containing
+            the name of the application.
+        */
 
         path.push(&self.application_name);
 
         Ok(path)
     }
 
-    fn get_locker_file_path(&self) -> Result<String> {
+    pub fn get_locker_file_path(&self) -> Result<String> {
         let mut path = self.get_locker_directory()?;
-        path.push("lock.dat");
+
+        #[allow(unused_mut)]
+        let mut file_name = "lock.dat".to_string();
+
+        #[cfg(test)]
+        {
+            if !self.file_name_postfix.is_empty() {
+                file_name = format!("lock-{}.dat", self.file_name_postfix);
+            }
+        }
+
+        // Push the file name onto the path.
+        path.push(file_name);
 
         if let Some(p) = path.to_str() {
             Ok(p.to_string())
@@ -223,7 +230,7 @@ impl Locker {
         // Spoof the file last modification time of the data file to make it
         // appear as though it were never changed.
         if let Ok(time) = mtime {
-            let _ = filetime::set_file_mtime(path, time);
+            let _ = file_utils::set_file_last_modified(path, time);
         }
 
         // Toggle the read-only state again, if needed.
@@ -340,34 +347,38 @@ impl Locker {
 
 impl Drop for Locker {
     fn drop(&mut self) {
-        #[cfg(test)]
-        {
-            if self.clear_on_exit {
-                self.clear_locks();
-                return;
-            }
+        // If the file is read-only then we need to unset that
+        // option, otherwise we will be prevented from writing to the file.
+        let data_path = unwrap_or_return!(self.get_locker_file_path());
+        let state = unwrap_or_return!(file_utils::get_file_read_only_state(&data_path));
+        if state {
+            let _ = file_utils::toggle_file_read_only_state(&data_path);
         }
 
-        // If writing the locker file failed, exit immediately.
+        // Get the original last modified date of the file.
+        let meta = file_utils::get_file_metadata(&data_path);
+        let mut mtime: FileTime = FileTime::now();
+        if let Ok(m) = &meta {
+            mtime = FileTime::from_last_modification_time(m);
+        }
+
+        // If writing the locker file failed, exit immediately and
+        // delete the locker file.
         if self.write_locker_file().is_err() {
             if let Ok(path) = self.get_locker_file_path() {
-                _ = std::fs::remove_file(path);
+                _ = fs::remove_file(path);
             }
             return;
         }
 
-        // Next, we need to set the data files modified date to be the same
-        // as the executable file.
-        // This will stop people who are not aware of what this tool is used
-        // for identifying the use of this file, which is to avoid the same people
-        // from repeatedly trying to break the passwords.
-        let bin_path = unwrap_or_return!(Locker::get_binary_path());
-        let data_path = unwrap_or_return!(self.get_locker_file_path());
+        // The file should be set as read-only again after the writing
+        // operation has finished.
+        let _ = file_utils::toggle_file_read_only_state(&data_path);
 
         // Set the file last modification time of the data file.
-        let meta = unwrap_or_return!(file_utils::get_file_metadata(&bin_path));
-        let mtime = FileTime::from_last_modification_time(&meta);
-        let _ = file_utils::set_file_last_modified(&data_path, mtime);
+        if meta.is_ok() {
+            let _ = file_utils::set_file_last_modified(&data_path, mtime);
+        }
     }
 }
 
@@ -404,8 +415,6 @@ mod tests_locker {
         utilities::{file_utils, test_utils::*},
     };
 
-    use serial_test::serial;
-
     use super::{Locker, LockerEntry};
 
     /// The default entry for use when hashing.
@@ -413,23 +422,18 @@ mod tests_locker {
     /// The sub directory to the test files.
     const BASE: [&str; 1] = ["locker"];
 
-    /*
-     * Note that these tests should be run in serial mode as reading and
-     *   writing from files can be flakey with threads.
-     */
-
     /// Create a file locker instance, or panic if it fails.
-    fn create_locker_instance_or_assert() -> Locker {
-        Locker::new("PsiStega3-Tests").expect("could not initialize locker instance")
+    fn create_locker_instance_or_assert(file_name_postfix: &str) -> Locker {
+        Locker::new("PsiStega3-Tests", file_name_postfix)
+            .expect("could not initialize locker instance")
     }
 
     #[test]
-    #[serial]
     fn test_is_file_locked() {
         let hash = hashers::sha3_256_string(HASH_STR);
+        let locker_pf = TestUtils::generate_ascii_string(16);
 
-        let mut locker = create_locker_instance_or_assert();
-        locker.clear_on_exit = true;
+        let mut locker = create_locker_instance_or_assert(&locker_pf);
 
         // No locker entry for the hash should exist.
         assert!(
@@ -454,20 +458,20 @@ mod tests_locker {
     }
 
     #[test]
-    #[serial]
     fn test_read_write_locker_file() {
         let hash = hashers::sha3_256_string(HASH_STR);
+        let locker_pf = TestUtils::generate_ascii_string(16);
         let entry = LockerEntry::new(&hash, 3);
 
         // The locker instance should save the entries when goes out of scope.
         {
-            let mut locker = create_locker_instance_or_assert();
+            let mut locker = create_locker_instance_or_assert(&locker_pf);
             locker.entries.clear();
             locker.entries.push(entry.clone());
         }
 
         // The new locker instance should read the prior list of entries upon creation.
-        let locker = create_locker_instance_or_assert();
+        let locker = create_locker_instance_or_assert(&locker_pf);
 
         assert!(
             !locker.entries.is_empty(),
@@ -490,15 +494,14 @@ mod tests_locker {
     }
 
     #[test]
-    #[serial]
     fn test_update_access_attempts() {
         let tu = TestUtils::new(&BASE);
 
+        let locker_pf = TestUtils::generate_ascii_string(16);
         let original_path = tu.get_in_file("dummy.png");
         let hash = hashers::sha3_256_file(&original_path).expect("failed to create file hash");
 
-        let mut locker = create_locker_instance_or_assert();
-        locker.clear_on_exit = true;
+        let mut locker = create_locker_instance_or_assert(&locker_pf);
 
         // The file hash should not be in the entries list.
         let entry = locker.get_entry_by_hash(&hash);
@@ -532,10 +535,10 @@ mod tests_locker {
     }
 
     #[test]
-    #[serial]
     fn test_file_lock() {
         let mut tu = TestUtils::new(&BASE);
 
+        let locker_pf = TestUtils::generate_ascii_string(16);
         let old_path = tu.get_in_file("dummy.png");
         let copy_path = tu.copy_in_file_to_random_out("dummy.png", "png", true);
 
@@ -550,8 +553,7 @@ mod tests_locker {
         // Compute the hash of the original file.
         let old_hash = hashers::sha3_256_file(&old_path).expect("failed to create file hash");
 
-        let mut locker = create_locker_instance_or_assert();
-        locker.clear_on_exit = true;
+        let mut locker = create_locker_instance_or_assert(&locker_pf);
 
         // Add the entry with 4 (0th is the first attempt) attempts. The next failed attempt will lock the file.
         locker.entries.push(LockerEntry::new(&old_hash, 3));

@@ -115,6 +115,11 @@ pub(crate) fn get_file_metadata(path: &str) -> Result<Metadata> {
 /// * `path` - The path to the file.
 ///
 pub(crate) fn get_file_read_only_state(path: &str) -> Result<bool> {
+    // If the file doesn't exist then it can't be read-only.
+    if !path_exists(path) {
+        return Ok(false);
+    }
+
     let meta = get_file_metadata(path)?;
 
     Ok(meta.permissions().readonly())
