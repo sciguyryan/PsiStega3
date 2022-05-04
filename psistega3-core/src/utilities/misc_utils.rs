@@ -83,11 +83,11 @@ where
     let remainder = needed - (iterations * ARRAY_SIZE);
 
     let mut vec1: Vec<u8> = Vec::with_capacity(needed);
-    (0..iterations).for_each(|_| {
+    for _ in 0..iterations {
         let mut bytes: [u8; ARRAY_SIZE] = [0; ARRAY_SIZE];
         rng.fill(&mut bytes);
         vec1.extend_from_slice(&bytes);
-    });
+    }
 
     let mut vec2: Vec<u8> = (0..remainder).map(|_| rng.gen()).collect();
 
@@ -106,9 +106,9 @@ where
 ///
 #[inline]
 pub(crate) fn fill_vector_sequential(vec: &mut Vec<usize>) {
-    (0..vec.capacity()).for_each(|i| {
+    for i in 0..vec.capacity() {
         vec.push(i);
-    });
+    }
 }
 
 /// Attempt to find a u8 slice within a u8 slice.
@@ -151,21 +151,22 @@ pub(crate) fn u8_slice_to_base64_string(bytes: &[u8]) -> String {
 ///
 /// # Arguments
 ///
-/// * `arr` - The u8 slice to be converted.
+/// * `slice` - The u8 slice to be converted.
+/// * `uppercase` - A boolean indicating whether the case of the hexadecimal characters.
 ///
 /// `Note:` we ignore the error condition from write! as this is
 ///  completely internal and is designed for use with debug code.
 ///
-/// `Note:` this function should `never` be changed to use the
-/// lower case hexadecimal notation or it will break every file
-/// encoded with an older version!
-///
 #[allow(unused_must_use)]
-pub(crate) fn u8_slice_to_hex(arr: &[u8]) -> String {
-    let mut str = String::with_capacity(2 * arr.len());
-    arr.iter().for_each(|byte| {
-        write!(str, "{:02X}", byte);
-    });
+pub(crate) fn u8_slice_to_hex(slice: &[u8], uppercase: bool) -> String {
+    let mut str = String::with_capacity(2 * slice.len());
+    for b in slice {
+        if uppercase {
+            write!(str, "{:02X}", b);
+        } else {
+            write!(str, "{:02x}", b);
+        }
+    }
     str
 }
 

@@ -2,39 +2,29 @@ use path_absolutize::Absolutize;
 use rand::Rng;
 use std::path::PathBuf;
 
-/// This class will be used to automatically delete any
-/// files generated with the tests.
-pub(crate) struct FileCleaner {
-    files: Vec<String>,
-}
-
-impl FileCleaner {
-    pub fn new() -> Self {
-        Self { files: Vec::new() }
-    }
-
-    pub fn add(&mut self, path: &str) {
-        self.files.push(path.to_string());
-    }
-}
-
-impl Drop for FileCleaner {
-    fn drop(&mut self) {
-        for f in &self.files {
-            let _ = std::fs::remove_file(f);
-        }
-    }
-}
-
 pub(crate) struct TestUtils {
+    /// The base folder path for the test files.
     test_base_path: PathBuf,
+    /// A vector of files that will be automatically cleared when the instance is dropped.
+    auto_clear_files: Vec<String>,
 }
 
 impl TestUtils {
     pub fn new(sub_path: &[&str]) -> Self {
         Self {
             test_base_path: TestUtils::test_base_path(sub_path),
+            auto_clear_files: Vec::new(),
         }
+    }
+
+    /// Add a file to the automatic file clearing list.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - The path to the file to be cleared.
+    ///
+    fn add_auto_clear_file(&mut self, path: &str) {
+        self.auto_clear_files.push(path.to_string());
     }
 
     /// Get the path to the current execution directory.
@@ -43,6 +33,11 @@ impl TestUtils {
     }
 
     /// Compute the base path to the tests directory.
+    ///
+    /// # Arguments
+    ///
+    /// * `sub_paths` - A slice of string slices representing the path to the tests.
+    ///
     fn test_base_path(sub_paths: &[&str]) -> PathBuf {
         let mut path = TestUtils::get_current_dir();
 
@@ -61,23 +56,39 @@ impl TestUtils {
         path
     }
 
-    /// Get the full path to a random output file path, with a given extension.
+    /// Get the full path to a random output file path.
     /// These files are created in the operating system's temp directory.
+    ///
+    /// # Arguments
+    ///
+    /// * `ext` - The extension of the temporary file.
+    /// * `auto_clear` - Whether this file should be automatically cleared after the test has finished.
     ///
     /// `Note:` This path is normalized to avoid creating any issues
     /// with relative paths.
     ///
-    pub fn get_out_file(ext: &str) -> String {
+    pub fn get_out_file(&mut self, ext: &str, auto_clear: bool) -> String {
         let random: u128 = rand::thread_rng().gen();
 
         let mut path = std::env::temp_dir();
         path.push(format!("{}.{}", random, ext));
 
         let path = path.absolutize().unwrap();
-        path.to_str().unwrap().to_string()
+        let path_str = path.to_str().unwrap().to_string();
+
+        // Do we need to automatically delete this file after we are finished?
+        if auto_clear {
+            self.add_auto_clear_file(&path_str);
+        }
+
+        path_str
     }
 
     /// Get the full path to a test file.
+    ///
+    /// # Arguments
+    ///
+    /// * `file` - The name of the test file, including the extension.
     ///
     /// `Note:` This path is normalized to avoid creating any issues
     /// with relative paths.
@@ -94,6 +105,10 @@ impl TestUtils {
 
     /// Get the full path to a test file.
     ///
+    /// # Arguments
+    ///
+    /// * `file` - The name of the test file, including the extension.
+    ///
     /// `Note:` This path is normalized to avoid creating any issues
     /// with relative paths.
     ///
@@ -107,16 +122,35 @@ impl TestUtils {
 
     /// Get a test file and copy it to a random output path.
     ///
+    /// # Arguments
+    ///
+    /// * `file` - The name of the original test file, including the extension.
+    /// * `ext` - The extension of the copy file.
+    /// * `auto_clear` - Whether this file should be automatically cleared after the test has finished.
+    ///
     /// `Note:` This path is normalized to avoid creating any issues
     /// with relative paths.
     ///
-    pub fn copy_in_file_to_random_out(&self, file: &str, ext: &str) -> String {
+    pub fn copy_in_file_to_random_out(
+        &mut self,
+        file: &str,
+        ext: &str,
+        auto_clear: bool,
+    ) -> String {
         let old_path = self.get_in_file(file);
-        let new_path = TestUtils::get_out_file(ext);
+        let new_path = self.get_out_file(ext, auto_clear);
 
         let r = std::fs::copy(&old_path, &new_path);
         assert!(r.is_ok(), "failed to create copy of file");
 
         new_path
+    }
+}
+
+impl Drop for TestUtils {
+    fn drop(&mut self) {
+        for f in &self.auto_clear_files {
+            let _ = std::fs::remove_file(f);
+        }
     }
 }

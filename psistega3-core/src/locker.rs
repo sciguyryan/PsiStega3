@@ -236,8 +236,8 @@ impl Locker {
         }
 
         // This will indicate a corrupted locker file.
-        let metadata = file_utils::get_file_metadata(&path)?;
-        if metadata.len() % (ENTRY_SIZE as u64) != 0 {
+        let meta = file_utils::get_file_metadata(&path)?;
+        if meta.len() % (ENTRY_SIZE as u64) != 0 {
             return Err(Error::LockerFileRead);
         }
 
@@ -350,8 +350,8 @@ impl Drop for Locker {
         let data_path = unwrap_or_return!(Locker::get_locker_file_path());
 
         // Set the file last modification time of the data file.
-        let metadata = unwrap_or_return!(file_utils::get_file_metadata(&bin_path));
-        let mtime = FileTime::from_last_modification_time(&metadata);
+        let meta = unwrap_or_return!(file_utils::get_file_metadata(&bin_path));
+        let mtime = FileTime::from_last_modification_time(&meta);
         let _ = file_utils::set_file_last_modified_timestamp(&data_path, mtime);
     }
 }
@@ -376,7 +376,7 @@ impl fmt::Display for LockerEntry {
         write!(
             f,
             "Hash: {}, Attempts: {}",
-            misc_utils::u8_slice_to_hex(&self.hash),
+            misc_utils::u8_slice_to_hex(&self.hash, false),
             self.attempts
         )
     }
@@ -405,10 +405,7 @@ mod tests_locker {
 
     /// Create a file locker instance, or panic if it fails.
     fn create_locker_instance_or_assert() -> Locker {
-        let locker = Locker::new();
-        assert!(locker.is_ok(), "could not initialize locker instance");
-
-        locker.unwrap()
+        Locker::new().expect("could not initialize locker instance")
     }
 
     #[test]
@@ -482,11 +479,7 @@ mod tests_locker {
         let tu = TestUtils::new(&BASE);
 
         let original_path = tu.get_in_file("dummy.png");
-        let hash = if let Ok(h) = hashers::sha3_256_file(&original_path) {
-            h
-        } else {
-            panic!("failed to create file hash");
-        };
+        let hash = hashers::sha3_256_file(&original_path).expect("failed to create file hash");
 
         let mut locker = create_locker_instance_or_assert();
         locker.clear_on_exit = true;
@@ -506,16 +499,18 @@ mod tests_locker {
             entry.is_some(),
             "entry was found in the entries list, and should not be"
         );
-        assert!(
-            entry.unwrap().attempts == 0,
+        assert_eq!(
+            entry.unwrap().attempts,
+            0,
             "entry was found in the entries list, but the attempts field was invalid"
         );
 
         // Next we need to test of the entry correctly updates.
         locker.update_file_lock(&original_path, &hash);
         let entry = locker.get_entry_by_hash(&hash);
-        assert!(
-            entry.unwrap().attempts == 1,
+        assert_eq!(
+            entry.unwrap().attempts,
+            1,
             "entry was found in the entries list, but the attempts field was invalid"
         );
     }
@@ -523,33 +518,21 @@ mod tests_locker {
     #[test]
     #[serial]
     fn test_file_lock() {
-        let tu = TestUtils::new(&BASE);
+        let mut tu = TestUtils::new(&BASE);
 
         let old_path = tu.get_in_file("dummy.png");
-        let copy_path = tu.copy_in_file_to_random_out("dummy.png", "png");
-
-        let mut f = FileCleaner::new();
-        f.add(&copy_path);
+        let copy_path = tu.copy_in_file_to_random_out("dummy.png", "png", true);
 
         // Set the copy file as read-only.
-        if let Err(_e) = file_utils::toggle_file_read_only_state(&copy_path) {
-            panic!("Failed to set the read-only state of the copied file");
-        }
+        file_utils::toggle_file_read_only_state(&copy_path)
+            .expect("failed to set the read-only state of the copied file");
 
         // Get the last modified timestamp of the original file.
-        let old_timestamp = if let Ok(ft) = file_utils::get_file_last_modified_timestamp(&old_path)
-        {
-            ft
-        } else {
-            panic!("Failed to get the timestamp of the original file");
-        };
+        let old_timestamp = file_utils::get_file_last_modified_timestamp(&old_path)
+            .expect("failed to get the timestamp of the original file");
 
         // Compute the hash of the original file.
-        let old_hash = if let Ok(h) = hashers::sha3_256_file(&old_path) {
-            h
-        } else {
-            panic!("failed to create file hash");
-        };
+        let old_hash = hashers::sha3_256_file(&old_path).expect("failed to create file hash");
 
         let mut locker = create_locker_instance_or_assert();
         locker.clear_on_exit = true;
@@ -559,13 +542,9 @@ mod tests_locker {
         locker.update_file_lock(&copy_path, &old_hash);
 
         // The file hash should have changed.
-        let new_hash = if let Ok(h) = hashers::sha3_256_file(&copy_path) {
-            h
-        } else {
-            panic!("failed to create file hash");
-        };
-        assert!(
-            new_hash != old_hash,
+        let new_hash = hashers::sha3_256_file(&copy_path).expect("failed to create file hash");
+        assert_ne!(
+            new_hash, old_hash,
             "the hash of the copy and original file are the same, no file locking took place"
         );
 
@@ -594,15 +573,11 @@ mod tests_locker {
         );
 
         // Get the last modified timestamp of the copied file.
-        let copy_timestamp =
-            if let Ok(ft) = file_utils::get_file_last_modified_timestamp(&copy_path) {
-                ft
-            } else {
-                panic!("Failed to get the timestamp of the original file");
-            };
+        let copy_timestamp = file_utils::get_file_last_modified_timestamp(&copy_path)
+            .expect("Failed to get the timestamp of the original file");
 
-        assert!(
-            copy_timestamp == old_timestamp,
+        assert_eq!(
+            copy_timestamp, old_timestamp,
             "the timestamp of the copied file is different than that of the original file"
         );
     }
