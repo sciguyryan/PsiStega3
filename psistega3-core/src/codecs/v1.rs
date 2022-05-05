@@ -1122,7 +1122,14 @@ mod tests_encode_decode {
 
     /// Create a StegaV1 instance.
     fn create_instance() -> StegaV1 {
-        StegaV1::new("PsiStega3-Tests")
+        let mut stega = StegaV1::new("PsiStega3-Tests");
+
+        // These options are not needed for the tests, and should help
+        // improve the performance when running them.
+        stega.set_config_state(Config::FastVariance, true);
+        stega.set_config_state(Config::NoiseLayer, false);
+
+        stega
     }
 
     #[test]
