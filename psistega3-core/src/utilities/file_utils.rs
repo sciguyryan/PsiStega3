@@ -5,39 +5,148 @@ use crate::{
 };
 
 use filetime::FileTime;
+use memmap2::Mmap;
 use std::{
     fs::{File, Metadata},
+    io::{Read, Seek, SeekFrom, Write},
     path::Path,
 };
 
+/// The bKGD chunk header of a PNG file.
+const BKGD: [u8; 4] = [0x62, 0x4b, 0x47, 0x44];
+
+/// The IDAT chunk header of a PNG file.
+const IDAT: [u8; 4] = [0x49, 0x44, 0x41, 0x54];
+
+/// The IEND chunk header of a PNG file.
+const IEND: [u8; 4] = [0x49, 0x45, 0x4e, 0x44];
+
+/// The zTXt chunk header of a PNG file.
+const ZTXT: [u8; 4] = [0x7a, 0x54, 0x58, 0x74];
+
 /// The IEND chunk of a PNG file.
-pub(crate) const IEND: [u8; 12] = [0, 0, 0, 0, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82];
+pub(crate) const IEND_CHUNK: [u8; 12] =
+    [0, 0, 0, 0, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82];
 
-/// The ZTXT chunk header of a PNG file.
-pub(crate) const ZTXT: [u8; 4] = [0x7a, 0x54, 0x58, 0x74];
+pub fn splice_data_into_file(path: &str, splice_at: u64, data: &[u8]) -> Result<()> {
+    let mut file = unwrap_or_return_err!(
+        File::options().read(true).write(true).open(path),
+        Error::FileOpen
+    );
 
-/// Attempts to find the position of the zTXt chunk within a PNG file.
+    /*
+        The data will be split into two chunks.
+        The first chunk will contain everything before the split point,
+          the second chunk will contain everything after it.
+        The second chunk will be held in a buffer until the spliced data is
+          written into the file, it will then be written back into the file.
+    */
+
+    let seek = SeekFrom::Start(splice_at);
+    unwrap_or_return_err!(file.seek(seek), Error::FileRead);
+
+    let mut buf: Vec<u8> = Vec::new();
+    unwrap_or_return_err!(file.read_to_end(&mut buf), Error::FileRead);
+    unwrap_or_return_err!(file.seek(seek), Error::FileRead);
+
+    if file.write_all(data).is_err() || file.write_all(&buf).is_err() {
+        return Err(Error::FileWrite);
+    }
+
+    Ok(())
+}
+
+pub(crate) enum PngChunkType {
+    Bkgd,
+    Idat,
+    Iend,
+    Ztxt,
+}
+
+/// Attempts to find the first position of a chunk type within a PNG file.
 ///
 /// # Arguments
 ///
 /// * `path` - The path to the file.
+/// * `chunk_type` - The type of chunk to find.
 ///
-pub(crate) fn find_png_ztxt_chunk_start(path: &str) -> Option<usize> {
-    use memmap2::Mmap;
-
+pub(crate) fn find_png_chunk_start(path: &str, chunk_type: PngChunkType) -> Option<usize> {
     let file = unwrap_or_return_val!(File::open(path), None);
 
     // Create a read-only memory map of the file as it should improve
     // the performance of this function.
     let mmap = unsafe { unwrap_or_return_val!(Mmap::map(&file), None) };
 
+    let seq = match chunk_type {
+        PngChunkType::Bkgd => &BKGD,
+        PngChunkType::Idat => &IDAT,
+        PngChunkType::Iend => &IEND,
+        PngChunkType::Ztxt => &ZTXT,
+    };
+
     // If we have a zTXt chunk present then the index of
     // the header will be returned.
-    let index = misc_utils::find_subsequence(&mmap, &ZTXT)?;
+    let index = misc_utils::find_subsequence(&mmap, seq)?;
 
     // The start of a chunk is always four bytes behind the header.
     // The initial four bytes of the chunk indicate the length of the chunk.
     Some(index - 4)
+}
+
+/// Generate a bKGD chunk for a PNG.
+///
+pub(crate) fn generate_png_bkgd_chunk(data: &[u8]) -> Vec<u8> {
+    assert_eq!(
+        data.len(),
+        6,
+        "the bKGD data chunk must have exactly 8 bytes, for a 32-bit PNG file"
+    );
+
+    // bKGD chunk.
+    // See: http://www.libpng.org/pub/png/spec/1.2/PNG-Structure.html
+    // The first four bytes will hold the length, which will be updated
+    // below.
+    let mut chunk: Vec<u8> = vec![0, 0, 0, 0];
+    chunk.extend_from_slice(&BKGD);
+    chunk.extend_from_slice(data);
+
+    // Update the chunk length data. This excludes the length
+    // of the chunk (4 bytes) and the chunk type label (4 bytes).
+    let chunk_len = (chunk.len() - 8) as u32;
+    for (i, b) in chunk_len.to_be_bytes().iter().enumerate() {
+        chunk[i] = *b;
+    }
+
+    // Write the CRC for the chunk. This must exclude the bytes indicating
+    // the length of the chunk.
+    let crc = crate::hashers::crc32_slice(&chunk[4..]);
+    let crc_bytes = crc.to_be_bytes();
+    chunk.extend_from_slice(&crc_bytes);
+
+    chunk
+}
+
+pub fn insert_or_update_png_bkgd_chunk(path: &str, data: &[u8]) -> Result<()> {
+    // bKGD chunk.
+    // See: http://www.libpng.org/pub/png/spec/1.2/PNG-Structure.html
+    // This chunk must be after the PLTE chunk,
+    // and before the first IDAT chunk.
+
+    let idat = find_png_chunk_start(path, PngChunkType::Idat);
+    if idat.is_none() {
+        // TODO: handle this error case.
+    }
+
+    let bkgd = find_png_chunk_start(path, PngChunkType::Bkgd);
+    if idat.is_some() {
+        // TODO: handle this case.
+    }
+
+    let chunk = generate_png_bkgd_chunk(data);
+
+    let r = splice_data_into_file(path, idat.unwrap() as u64, &chunk);
+
+    Ok(())
 }
 
 /// Generate a zTXt chunk for a PNG.
@@ -53,7 +162,7 @@ pub(crate) fn generate_png_ztxt_chunk(keys: &[String], data: &[Vec<u8>]) -> Vec<
     // The first four bytes will hold the length, which will be updated
     // below.
     let mut chunk: Vec<u8> = vec![0, 0, 0, 0];
-    chunk.append(&mut String::from("zTXt").into_bytes());
+    chunk.extend_from_slice(&ZTXT);
 
     for i in 0..keys.len() {
         chunk.extend_from_slice(keys[i].as_bytes());
@@ -145,8 +254,6 @@ pub(crate) fn path_exists(path: &str) -> bool {
 /// * `path` - The path to the file.
 ///
 pub(crate) fn read_file_to_u8_vector(path: &str) -> Result<Vec<u8>> {
-    use std::io::Read;
-
     if !path_exists(path) {
         return Err(Error::PathInvalid);
     }
@@ -168,11 +275,9 @@ pub(crate) fn read_file_to_u8_vector(path: &str) -> Result<Vec<u8>> {
 /// `Note:` This function assumes that the PNG file is valid and not badly malformed.
 ///
 pub(crate) fn read_png_ztxt_chunk_data(path: &str) -> Option<Vec<u8>> {
-    use memmap2::Mmap;
-
     // If we have a zTXt chunk present then the index of
     // the header will be returned.
-    let mut start = find_png_ztxt_chunk_start(path)?;
+    let mut start = find_png_chunk_start(path, PngChunkType::Ztxt)?;
 
     let file = unwrap_or_return_val!(File::open(path), None);
 
@@ -211,7 +316,7 @@ pub(crate) fn read_png_ztxt_chunk_data(path: &str) -> Option<Vec<u8>> {
 /// `Note:` This function assumes that the PNG file is valid and not badly malformed.
 ///
 pub(crate) fn remove_ztxt_chunk(path: &str) -> bool {
-    let index = find_png_ztxt_chunk_start(path);
+    let index = find_png_chunk_start(path, PngChunkType::Ztxt);
     if index.is_none() {
         return false;
     }

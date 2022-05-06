@@ -224,7 +224,7 @@ impl Locker {
             // in order for it to be considered valid.
             let mut f = unwrap_or_return_val!(File::options().append(true).open(path), false);
 
-            let end = file_utils::IEND.to_vec();
+            let end = file_utils::IEND_CHUNK.to_vec();
             let _wb = f.write(&end).unwrap();
         }
 
@@ -413,7 +413,10 @@ impl fmt::Display for LockerEntry {
 mod tests_locker {
     use crate::{
         hashers,
-        utilities::{file_utils, test_utils::*},
+        utilities::{
+            file_utils::{self, PngChunkType},
+            test_utils::*,
+        },
     };
 
     use super::{Locker, LockerEntry};
@@ -575,7 +578,7 @@ mod tests_locker {
         );
 
         // The file should also no longer contain a zTXt chunk.
-        let ztxt_start = file_utils::find_png_ztxt_chunk_start(&copy_path);
+        let ztxt_start = file_utils::find_png_chunk_start(&copy_path, PngChunkType::Ztxt);
         assert!(
             ztxt_start.is_none(),
             "a zTXt chunk was found in the locked PNG file, it should have been removed"

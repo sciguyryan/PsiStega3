@@ -574,7 +574,7 @@ impl StegaV1 {
 
         // Now we can write the IEND chunk, which indicated the end of the PNG file data.
         // This chunk is always the same, so it can be hardcoded.
-        let end = file_utils::IEND.to_vec();
+        let end = file_utils::IEND_CHUNK.to_vec();
         let _wb = f.write(&end).unwrap();
 
         Ok(())
@@ -1108,7 +1108,10 @@ mod tests_encode_decode {
     use crate::{
         codecs::codec::{Codec, Config},
         hashers,
-        utilities::{file_utils, test_utils::*},
+        utilities::{
+            file_utils::{self, PngChunkType},
+            test_utils::*,
+        },
     };
 
     use super::StegaV1;
@@ -1279,7 +1282,7 @@ mod tests_encode_decode {
             .expect("failed to encode the data");
 
         assert!(
-            file_utils::find_png_ztxt_chunk_start(&output_img_path).is_some(),
+            file_utils::find_png_chunk_start(&output_img_path, PngChunkType::Ztxt).is_some(),
             "zTXt chunk was not written to the PNG file"
         );
     }
