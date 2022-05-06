@@ -21,7 +21,7 @@ use std::fs::File;
 /// * `version` - The version of the Argon2 hashing function to be used.
 ///
 pub fn argon2_string(
-    str: &str,
+    key_bytes: &[u8],
     salt: [u8; 12],
     m_cost: u32,
     p_cost: u32,
@@ -46,13 +46,13 @@ pub fn argon2_string(
     let hasher = Argon2::new(argon2::Algorithm::Argon2id, version, params);
 
     // Nom!
-    let mut key_bytes = [0u8; 128];
+    let mut hashed_bytes = [0u8; 128];
     unwrap_or_return_err!(
-        hasher.hash_password_into(str.as_bytes(), &salt, &mut key_bytes),
+        hasher.hash_password_into(key_bytes, &salt, &mut hashed_bytes),
         Error::Argon2NoHash
     );
 
-    Ok(key_bytes)
+    Ok(hashed_bytes)
 }
 
 /// Get the CRC32 hash of a u8 slice.
@@ -113,10 +113,23 @@ pub fn sha3_512_file(path: &str) -> Result<Vec<u8>> {
 ///
 /// # Arguments
 ///
-/// * `slice` - The string slice to be hashed.
+/// * `str` - The string slice to be hashed.
 ///
+#[allow(dead_code)]
 pub fn sha3_256_string(str: &str) -> Vec<u8> {
     let mut hasher = Sha3_256::new();
     hasher.update(&str);
+    hasher.finalize().to_vec()
+}
+
+/// Get the SHA3-256 hash of a u8 slice.
+///
+/// # Arguments
+///
+/// * `bytes` - The byte slice to be hashed.
+///
+pub fn sha3_256_bytes(bytes: &[u8]) -> Vec<u8> {
+    let mut hasher = Sha3_256::new();
+    hasher.update(&bytes);
     hasher.finalize().to_vec()
 }

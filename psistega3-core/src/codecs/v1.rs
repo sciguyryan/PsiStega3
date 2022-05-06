@@ -86,16 +86,16 @@ impl StegaV1 {
     ///
     /// # Arguments
     ///
-    /// * `key` - The key that should be used to seed the random number generator.
+    /// * `key` - The key bytes that should be used to seed the random number generator.
     /// * `img` - A reference to the [`ImageWrapper`] that holds the image.
     ///
-    fn build_data_to_cell_index_map(&mut self, img: &ImageWrapper, key: &str) {
+    fn build_data_to_cell_index_map(&mut self, img: &ImageWrapper, key: &[u8]) {
         /*
           When we can't use the Argon2 hash for the positional RNG
           as we will need the salt, which will not be available when
           initially reading the data from the file.
         */
-        let bytes = hashers::sha3_256_string(key);
+        let bytes = hashers::sha3_256_bytes(key);
         let mut rng: ChaCha20Rng = StegaV1::u8_slice_to_seed(&bytes);
 
         // It doesn't matter if we call this on reference or encoded
@@ -476,7 +476,7 @@ impl StegaV1 {
     /// * `key` - The plaintext key.
     ///
     #[inline]
-    pub fn generate_composite_key(original_path: &str, key: String) -> Result<String> {
+    pub fn generate_composite_key(original_path: &str, key: String) -> Result<Vec<u8>> {
         /*
           The key for the encryption is the SHA3-512 hash of the input image file
             combined with the plaintext key.
@@ -486,10 +486,10 @@ impl StegaV1 {
         */
 
         let file_hash_bytes = hashers::sha3_512_file(original_path)?;
-        let file_hash_string = misc_utils::u8_slice_to_hex(&file_hash_bytes, true);
 
-        let mut composite_key = key;
-        composite_key.push_str(&file_hash_string);
+        let mut composite_key: Vec<u8> = Vec::new();
+        composite_key.extend_from_slice(&key.into_bytes());
+        composite_key.extend_from_slice(&file_hash_bytes);
 
         Ok(composite_key)
     }
@@ -1139,7 +1139,14 @@ mod tests_encode_decode {
         let input_path = tu.get_in_file("text-file.txt");
         let key = StegaV1::generate_composite_key(&input_path, KEY.to_string())
             .expect("failed to generate a composite key");
-        let expected_key = "ElPsyKongroo47867242B4A88A617053E7A0B2B8771A2D7B4F2D6597AEDE066C45F2424CF933EA87CE48939942ADA41AB0EADB7B0B4663BA51687E036C14AE54E1CAC0360A05";
+        let expected_key = vec![
+            0x45, 0x6c, 0x50, 0x73, 0x79, 0x4b, 0x6f, 0x6e, 0x67, 0x72, 0x6f, 0x6f, 0x47, 0x86,
+            0x72, 0x42, 0xb4, 0xa8, 0x8a, 0x61, 0x70, 0x53, 0xe7, 0xa0, 0xb2, 0xb8, 0x77, 0x1a,
+            0x2d, 0x7b, 0x4f, 0x2d, 0x65, 0x97, 0xae, 0xde, 0x06, 0x6c, 0x45, 0xf2, 0x42, 0x4c,
+            0xf9, 0x33, 0xea, 0x87, 0xce, 0x48, 0x93, 0x99, 0x42, 0xad, 0xa4, 0x1a, 0xb0, 0xea,
+            0xdb, 0x7b, 0x0b, 0x46, 0x63, 0xba, 0x51, 0x68, 0x7e, 0x03, 0x6c, 0x14, 0xae, 0x54,
+            0xe1, 0xca, 0xc0, 0x36, 0x0a, 0x05,
+        ];
 
         assert_eq!(
             key, expected_key,
