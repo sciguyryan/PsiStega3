@@ -169,6 +169,28 @@ pub(crate) fn u8_slice_to_hex(slice: &[u8], uppercase: bool) -> String {
     str
 }
 
+/// Convert a u8 slice to an 64-bit unsigned integer.
+///
+/// # Arguments
+///
+/// * `bytes` - The slice of u8 values to be converted.
+///
+pub(crate) fn u8_slice_to_u64(bytes: &[u8]) -> u64 {
+    use byteorder::{LittleEndian, ReadBytesExt};
+    use std::io::Cursor;
+
+    assert!(
+        bytes.len() == 64,
+        "Byte vector is not 64 bytes (512-bits) in length."
+    );
+
+    let mut rdr = Cursor::new(bytes);
+    let seed = rdr.read_u64::<LittleEndian>();
+    assert!(seed.is_ok(), "Failed to create a u64 from the key bytes.");
+
+    seed.unwrap()
+}
+
 /// Convert a u8 value into its binary representation.
 ///
 /// # Arguments

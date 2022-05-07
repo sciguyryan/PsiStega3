@@ -142,7 +142,7 @@ pub fn insert_or_replace_bkgd_chunk(path: &str, data: &[u8]) -> Result<()> {
         return Err(Error::ImageMalformed);
     }
 
-    // Generate the data for the chunk.
+    // Generate the entire bKGD the chunk.
     let chunk = generate_bkgd_chunk(data);
 
     // Does a bKGD chunk already exists within the PNG file?

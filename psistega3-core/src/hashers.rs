@@ -115,21 +115,21 @@ pub fn sha3_512_file(path: &str) -> Result<Vec<u8>> {
 ///
 /// * `str` - The string slice to be hashed.
 ///
-#[allow(dead_code)]
+#[cfg(test)]
 pub fn sha3_256_string(str: &str) -> Vec<u8> {
     let mut hasher = Sha3_256::new();
     hasher.update(&str);
     hasher.finalize().to_vec()
 }
 
-/// Get the SHA3-256 hash of a u8 slice.
+/// Get the SHA3-512 hash of a u8 slice.
 ///
 /// # Arguments
 ///
 /// * `bytes` - The byte slice to be hashed.
 ///
-pub fn sha3_256_bytes(bytes: &[u8]) -> Vec<u8> {
-    let mut hasher = Sha3_256::new();
+pub fn sha3_512_bytes(bytes: &[u8]) -> Vec<u8> {
+    let mut hasher = Sha3_512::new();
     hasher.update(&bytes);
     hasher.finalize().to_vec()
 }

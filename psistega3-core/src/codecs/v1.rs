@@ -14,10 +14,10 @@ use aes_gcm::{
     Aes256Gcm, Key, Nonce,
 };
 use rand::prelude::*;
-use rand_chacha::ChaCha20Rng;
+use rand_xoshiro::Xoshiro512PlusPlus;
 use std::{
     collections::{HashMap, VecDeque},
-    convert::{TryFrom, TryInto},
+    convert::TryInto,
 };
 
 use super::codec::Config;
@@ -97,8 +97,9 @@ impl StegaV1 {
           as we will need the salt, which will not be available when
           initially reading the data from the file.
         */
-        let bytes = hashers::sha3_256_bytes(key);
-        let mut rng: ChaCha20Rng = StegaV1::u8_slice_to_seed(&bytes);
+        let bytes = hashers::sha3_512_bytes(key);
+        let seed = misc_utils::u8_slice_to_u64(&bytes);
+        let mut rng = Xoshiro512PlusPlus::seed_from_u64(seed);
 
         // It doesn't matter if we call this on reference or encoded
         // as they will have the same value at this point.
@@ -591,11 +592,13 @@ impl StegaV1 {
         flag_states[0] = misc_utils::is_bit_set(&data[0], 0);
 
         // The 2nd to 4th bits will be restores in bytes 2 to 4 respectively.
+        // These are currently reserved for future use.
         flag_states[1] = misc_utils::is_bit_set(&data[1], 0);
         flag_states[2] = misc_utils::is_bit_set(&data[2], 0);
         flag_states[3] = misc_utils::is_bit_set(&data[3], 0);
 
         // 5th and 6th bits will be stored in byte 5.
+        // These are currently reserved for future use.
         flag_states[4] = misc_utils::is_bit_set(&data[4], 0);
         flag_states[5] = misc_utils::is_bit_set(&data[4], 1);
 
@@ -685,22 +688,6 @@ impl StegaV1 {
     #[inline]
     fn set_feature_flag_state(&mut self, index: usize, state: bool) {
         misc_utils::set_bit_state(&mut self.flags, index, state)
-    }
-
-    /// Create a seedable RNG object with a defined 32-byte seed.
-    ///
-    /// # Arguments
-    ///
-    /// * `bytes` - The slice of u8 values to be used as the seed.
-    ///
-    fn u8_slice_to_seed<R: SeedableRng<Seed = [u8; 32]>>(bytes: &[u8]) -> R {
-        assert!(
-            bytes.len() == 32,
-            "Byte vector is not 32 bytes (256-bits) in length."
-        );
-        let arr = <[u8; 32]>::try_from(bytes).unwrap();
-
-        R::from_seed(arr)
     }
 
     /// Update the attempts field for a given file. Only used when use_file_locker is enabled.
@@ -1040,14 +1027,14 @@ impl DataDecoder {
 /// Note: this structure handles little Endian conversions internally.
 struct DataEncoder {
     bytes: Vec<u8>,
-    rng: ChaCha20Rng,
+    rng: Xoshiro512PlusPlus,
 }
 
 impl DataEncoder {
     pub fn new(capacity: usize) -> Self {
         Self {
             bytes: Vec::with_capacity(capacity),
-            rng: ChaCha20Rng::from_entropy(),
+            rng: Xoshiro512PlusPlus::from_entropy(),
         }
     }
 
