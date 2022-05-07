@@ -1,7 +1,7 @@
 use crate::{
     error::*,
     macros::*,
-    utilities::{file_utils, misc_utils},
+    utilities::{file_utils, misc_utils, png_utils},
 };
 
 use filetime::FileTime;
@@ -219,7 +219,7 @@ impl Locker {
 
         // Next, we need to remove the bKGD chunk from the PNG file.
         // This will prevent the file from being decoded.
-        _ = file_utils::remove_png_bkgd_chunk(path);
+        _ = png_utils::remove_png_bkgd_chunk(path);
 
         // Spoof the file last modification time of the data file to make it
         // appear as though it were never changed.
@@ -407,7 +407,8 @@ mod tests_locker {
     use crate::{
         hashers,
         utilities::{
-            file_utils::{self, PngChunkType},
+            file_utils,
+            png_utils::{self, PngChunkType},
             test_utils::*,
         },
     };
@@ -571,7 +572,7 @@ mod tests_locker {
         );
 
         // The file should also no longer contain a bKGD chunk.
-        let kgd_start = file_utils::find_png_chunk_start(&copy_path, PngChunkType::Bkgd);
+        let kgd_start = png_utils::find_png_chunk_start(&copy_path, PngChunkType::Bkgd);
         assert!(
             kgd_start.is_none(),
             "a zTXt chunk was found in the locked PNG file, it should have been removed"
