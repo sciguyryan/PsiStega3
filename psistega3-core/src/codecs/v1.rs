@@ -96,7 +96,7 @@ impl StegaV1 {
         // Create and fill our vector with sequential values, one
         // for each cell ID.
         let mut cell_list = Vec::with_capacity(total_cells);
-        misc_utils::fill_vector_sequential(&mut cell_list);
+        misc_utils::fill_vec_sequential(&mut cell_list);
 
         // Randomize the order of the cell IDs.
         cell_list.shuffle(&mut rng);
@@ -805,7 +805,7 @@ impl Codec for StegaV1 {
         }
 
         // Convert the file into a byte vector.
-        let bytes = file_utils::read_file_to_u8_vector(input_file_path)?;
+        let bytes = file_utils::read_file_to_u8_vec(input_file_path)?;
 
         // Encode the information into the target image.
         self.encode_internal(original_img_path, key, &bytes, encoded_img_path)

@@ -104,7 +104,7 @@ where
 /// capacity has been specified.
 ///
 #[inline]
-pub(crate) fn fill_vector_sequential(vec: &mut Vec<usize>) {
+pub(crate) fn fill_vec_sequential(vec: &mut Vec<usize>) {
     for i in 0..vec.capacity() {
         vec.push(i);
     }
@@ -177,14 +177,13 @@ pub(crate) fn u8_slice_to_hex(slice: &[u8], uppercase: bool) -> String {
 ///
 pub(crate) fn u8_slice_to_u64(bytes: &[u8]) -> u64 {
     use byteorder::{LittleEndian, ReadBytesExt};
-    use std::io::Cursor;
 
     assert!(
         bytes.len() == 64,
         "Byte vector is not 64 bytes (512-bits) in length."
     );
 
-    let mut rdr = Cursor::new(bytes);
+    let mut rdr = std::io::Cursor::new(bytes);
     let seed = rdr.read_u64::<LittleEndian>();
     assert!(seed.is_ok(), "Failed to create a u64 from the key bytes.");
 

@@ -55,7 +55,6 @@ pub(crate) fn get_file_read_only_state(path: &str) -> Result<bool> {
     }
 
     let meta = get_file_metadata(path)?;
-
     Ok(meta.permissions().readonly())
 }
 
@@ -76,7 +75,7 @@ pub(crate) fn path_exists(path: &str) -> bool {
 ///
 /// * `path` - The path to the file.
 ///
-pub(crate) fn read_file_to_u8_vector(path: &str) -> Result<Vec<u8>> {
+pub(crate) fn read_file_to_u8_vec(path: &str) -> Result<Vec<u8>> {
     if !path_exists(path) {
         return Err(Error::PathInvalid);
     }
@@ -104,17 +103,18 @@ pub fn remove_file_segment(path: &str, remove_start: u64, remove_length: u64) ->
     );
 
     /*
-        The data will essentially be split into three segments.
-        The first segments will contain everything before the split point,
-          the second segments will contain the data to be removed,
-          the third segments will contain the data to be preserved.
+      The data will essentially be split into three segments:
+        the first segments will contain everything before the split point,
+        the second segments will contain the data to be removed,
+        the third segments will contain the data to be preserved.
     */
 
     // Calculate the length of the file, after the data has been removed.
     let meta = unwrap_or_return_err!(file.metadata(), Error::FileMetadata);
     let new_len = meta.len() - remove_length;
 
-    // Set the cursor to the position where the data to be kept begins.
+    // Set the cursor to the position where the data
+    // to be kept begins (segment 3).
     let remove_end = remove_start + remove_length;
     unwrap_or_return_err!(file.seek(SeekFrom::Start(remove_end)), Error::FileRead);
 
@@ -169,16 +169,18 @@ pub(crate) fn splice_data_into_file(path: &str, splice_at: u64, data: &[u8]) -> 
     );
 
     /*
-        The data will be split into two chunks.
-        The first chunk will contain everything before the split point,
-          the second chunk will contain everything after it.
-        The second chunk will be held in a buffer until the spliced data is
-          written into the file, it will then be written back into the file.
+      The data will be split into two chunks.
+      The first chunk will contain everything before the split point,
+        the second chunk will contain everything after it.
+      The second chunk will be held in a buffer until the spliced data is
+        written into the file, it will then be written back into the file.
     */
-
     let seek = SeekFrom::Start(splice_at);
     unwrap_or_return_err!(file.seek(seek), Error::FileRead);
 
+    // Note: if this ever needs to be optimized for larger files,
+    // the data of the second chunk should be read and written in chunks.
+    // As we are dealing with small(ish) files, that shouldn't be a problem here.
     let mut buf: Vec<u8> = Vec::new();
     unwrap_or_return_err!(file.read_to_end(&mut buf), Error::FileRead);
     unwrap_or_return_err!(file.seek(seek), Error::FileRead);
@@ -200,7 +202,7 @@ pub(crate) fn toggle_file_read_only_state(path: &str) -> Result<()> {
     // Get the metadata for the file.
     let metadata = get_file_metadata(path)?;
 
-    // If the file is read only, then we need to unset that flag.
+    // Get the read-only state of the file, and invert it.
     let mut permissions = metadata.permissions();
     permissions.set_readonly(!permissions.readonly());
 
