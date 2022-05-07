@@ -13,29 +13,18 @@ use std::{
     path::{Path, PathBuf},
 };
 
+/// This struct holds the file locker attempts for the application.
 #[derive(Debug)]
 pub(crate) struct Locker {
+    /// The name of the application.
     application_name: String,
+    /// A list of [`LockerEntries] that are held by the application.
     entries: Vec<LockerEntry>,
-
-    #[cfg(test)]
-    pub file_name_postfix: String,
+    /// The postfix to apply to the end of the locker data file.
+    file_name_postfix: String,
 }
 
 impl Locker {
-    #[cfg(not(test))]
-    pub fn new(application_name: &str) -> Result<Self> {
-        let mut l = Self {
-            application_name: application_name.to_string(),
-            entries: Vec::with_capacity(20),
-        };
-
-        l.read_locker_file()?;
-
-        Ok(l)
-    }
-
-    #[cfg(test)]
     pub fn new(application_name: &str, file_name_postfix: &str) -> Result<Self> {
         let mut l = Self {
             application_name: application_name.to_string(),
@@ -67,6 +56,12 @@ impl Locker {
     #[cfg(debug_assertions)]
     fn cipher_slice(_: &mut [u8], _: u8) {}
 
+    /// Clear the locker entry for a given file, if it hasn't already been locked.
+    ///
+    /// # Arguments
+    ///
+    /// * `hash` - The hash of the file to be unlocked.
+    ///
     pub fn clear_file_lock(&mut self, hash: &[u8]) {
         // If the file has been locked then we can't unlock it.
         if self.is_file_locked(hash) {
@@ -77,10 +72,12 @@ impl Locker {
     }
 
     /// Attempt to create the locker file, including all necessary directories.
+    ///
     fn create_locker_file(&mut self) -> Result<File> {
-        // Attempt to create the path to the directory, if it doesn't already exist.
+        // Get the expected path to the locker file.
         let locker_dir = self.get_locker_directory()?;
 
+        // Attempt to create the path to the directory, if it doesn't already exist.
         if fs::create_dir_all(&locker_dir).is_err() {
             return Err(Error::LockerFileCreation);
         }
@@ -94,6 +91,12 @@ impl Locker {
         }
     }
 
+    /// Forcibly clear the locker entry for a given file.
+    ///
+    /// # Arguments
+    ///
+    /// * `hash` - The hash of the file to be unlocked.
+    ///
     fn force_clear_file_lock(&mut self, hash: &[u8]) {
         if let Some(i) = self.get_entry_index_by_hash(hash) {
             // The hash exists within the list so we should remove it.
@@ -104,18 +107,38 @@ impl Locker {
         // do anything here.
     }
 
+    /// Attempt to get a locker entry index by the file's hash.
+    ///
+    /// # Arguments
+    ///
+    /// * `hash` - The hash of the file to be unlocked.
+    ///
     fn get_entry_index_by_hash(&self, hash: &[u8]) -> Option<usize> {
         self.entries.iter().position(|e| e.hash == hash)
     }
 
+    /// Attempt to get a reference to a locker entry by the file's hash.
+    ///
+    /// # Arguments
+    ///
+    /// * `hash` - The hash of the file to be unlocked.
+    ///
     fn get_entry_by_hash(&self, hash: &[u8]) -> Option<&LockerEntry> {
         self.entries.iter().find(|e| e.hash == hash)
     }
 
+    /// Attempt to get mutable reference to a locker entry by the file's hash.
+    ///
+    /// # Arguments
+    ///
+    /// * `hash` - The hash of the file to be unlocked.
+    ///
     fn get_entry_by_hash_mut(&mut self, hash: &[u8]) -> Option<&mut LockerEntry> {
         self.entries.iter_mut().find(|e| e.hash == hash)
     }
 
+    /// Get the directory in which the locker data file should be held.
+    ///
     fn get_locker_directory(&self) -> Result<PathBuf> {
         /*
           The locker directory will start from the data directory
@@ -123,31 +146,27 @@ impl Locker {
           The locker files will be found in a subdirectory containing
             the name of the application, if not running tests.
         */
-
-        let mut path: PathBuf;
-        if cfg!(test) {
-            path = std::env::temp_dir();
+        let path = if cfg!(test) {
+            std::env::temp_dir()
         } else {
-            path = dirs::data_dir().unwrap();
-
-            path.push(&self.application_name);
+            let mut p = dirs::data_dir().unwrap();
+            p.push(&self.application_name);
+            p
         };
 
         Ok(path)
     }
 
-    pub fn get_locker_file_path(&self) -> Result<String> {
+    /// Get the full path to the locker data file.
+    ///
+    fn get_locker_file_path(&self) -> Result<String> {
         let mut path = self.get_locker_directory()?;
 
-        #[allow(unused_mut)]
-        let mut file_name = "lock.dat".to_string();
-
-        #[cfg(test)]
-        {
-            if !self.file_name_postfix.is_empty() {
-                file_name = format!("lock-{}.dat", self.file_name_postfix);
-            }
-        }
+        let file_name = if !self.file_name_postfix.is_empty() {
+            format!("lock-{}.dat", self.file_name_postfix)
+        } else {
+            "lock.dat".to_string()
+        };
 
         // Push the file name onto the path.
         path.push(file_name);
@@ -159,6 +178,8 @@ impl Locker {
         }
     }
 
+    /// Check whether a given file's hash has received 5 or more unsuccessful attempts to decrypt the file.
+    ///
     pub fn is_file_locked(&self, hash: &[u8]) -> bool {
         /*
           A file is considered locked if 5 or more attempts have been made
@@ -176,6 +197,12 @@ impl Locker {
         }
     }
 
+    /// Permanently render a file impossible to decrypt, regardless of whether it contained data or not.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - The path to the image file.
+    ///
     pub fn lock_file(&mut self, path: &str) -> bool {
         use crate::image_wrapper::ImageWrapper;
 
@@ -235,7 +262,10 @@ impl Locker {
         res.is_ok()
     }
 
+    /// Print the entries in the locker list, debug only.
+    ///
     #[allow(dead_code)]
+    #[cfg(debug_assertions)]
     fn print_locker_list(&self) {
         println!("Total entries: {}", self.entries.len());
         for (i, e) in self.entries.iter().enumerate() {
@@ -243,6 +273,8 @@ impl Locker {
         }
     }
 
+    /// Attempt to read the entries within the locker data file.
+    ///
     fn read_locker_file(&mut self) -> Result<()> {
         const ENTRY_SIZE: usize = 33;
 
@@ -284,6 +316,13 @@ impl Locker {
         Ok(())
     }
 
+    /// Update the attempts for a given file hash, will lock the file if there have been enough unsuccessful decryption attempts.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - The path to the image file.
+    /// * `hash` - The hash of the file to be unlocked.
+    ///
     pub fn update_file_lock(&mut self, path: &str, hash: &[u8]) {
         // We need to update the locke entry, or add it if it
         // doesn't already exist.
@@ -310,6 +349,8 @@ impl Locker {
         }
     }
 
+    /// Attempt to write the held locker entries into the locker data file.
+    ///
     fn write_locker_file(&mut self) -> Result<()> {
         let mut file = self.create_locker_file()?;
 

@@ -91,10 +91,6 @@ pub enum Config {
     ///
     /// Applicable to: v1.
     NoiseLayer,
-    /// Enable or disable fast variance.
-    ///
-    /// Applicable to: v1.
-    FastVariance,
     /// Enable or disable verbose mode.
     ///
     /// Applicable to: v1.

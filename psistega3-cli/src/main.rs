@@ -153,27 +153,27 @@ fn apply_codec_settings(
     action_type: ActionType,
     unattended: bool,
 ) {
-    if action_type == ActionType::Encode {
-        // Only applicable to encoding.
-        if args.contains(&String::from("--fv")) || args.contains(&String::from("--fast-variance")) {
-            codec.set_config_state(Config::FastVariance, true);
+    let is_encode = action_type == ActionType::Encode;
+
+    // Only applicable to encoding.
+    if is_encode && args.contains(&String::from("--l")) || args.contains(&String::from("--locker"))
+    {
+        // We want to warn the user that enabling this option
+        // render the data unrecoverable.
+        let mut enabled = true;
+        if !unattended {
+            print!("WARNING: the file locker will render the encoded data unrecoverable if 5 or more attempts to decode the data are unsuccessful. ");
+            enabled = read_confirm_from_stdin(CONFIRM_PROMPT);
         }
 
-        if args.contains(&String::from("--l")) || args.contains(&String::from("--locker")) {
-            // We want to warn the user that enabling this option
-            // render the data unrecoverable.
-            let mut enabled = true;
-            if !unattended {
-                print!("WARNING: the file locker will render the encoded data unrecoverable if 5 or more attempts to decode the data are unsuccessful. ");
-                enabled = read_confirm_from_stdin(CONFIRM_PROMPT);
-            }
+        codec.set_config_state(Config::Locker, enabled);
+    }
 
-            codec.set_config_state(Config::Locker, enabled);
-        }
-
-        if args.contains(&String::from("--nn")) || args.contains(&String::from("--no-noise")) {
-            codec.set_config_state(Config::NoiseLayer, false);
-        }
+    // Only applicable to encoding.
+    if is_encode && args.contains(&String::from("--nn"))
+        || args.contains(&String::from("--no-noise"))
+    {
+        codec.set_config_state(Config::NoiseLayer, false);
     }
 
     // Applicable to encoding and decoding.
@@ -463,7 +463,6 @@ fn show_help() {
     println!("\t-df, -DF\t\tDecode a file from a target image.");
     println!();
     println!("OPTIONS:");
-    println!("\t--fv, --fast-variance\tEnable the fast variance encoding mode (better performance, lower security).");
     println!("\t--l, --locker\t\tEnable file locker. This option will lock a file after 5 unsuccessful decryption attempts.");
     println!("\t--nn, --no-noise\tDisable the noise layer when encoding (better performance, lower security).");
     println!("\t--nf, --no-files\tDisable the creation of any output files.");

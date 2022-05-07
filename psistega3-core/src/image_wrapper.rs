@@ -158,8 +158,6 @@ impl ImageWrapper {
     ///
     /// * `path` - The path to which the file should be saved.
     ///
-    /// `Note:` the file type is derived from the file extension.
-    ///
     pub fn save(&self, path: &str) -> image::ImageResult<()> {
         assert!(!self.read_only, "attempted to write to a read-only file");
 

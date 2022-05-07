@@ -31,8 +31,7 @@ const M_COST: u32 = 65536;
 /// The version of the Argon2 hashing algorithm to use.
 const ARGON_VER: argon2::Version = argon2::Version::V0x13;
 
-// TODO: add a test to ensure that the PNG modifier correctly overwrites a bKGD chunk, if present.
-
+/// The struct that holds the v1 Steganography algorithm.
 pub struct StegaV1 {
     /// The application name.
     application_name: String,
@@ -42,12 +41,6 @@ pub struct StegaV1 {
     noise_layer: bool,
     /// If the resulting image file should be saved when encoding.
     output_files: bool,
-    /// If the faster method of setting the bit variance should be
-    /// used.
-    ///
-    /// This method will not use randomness to determine the pixel value variance
-    /// and will instead alternate between adding and subtracting 1.
-    fast_variance: bool,
     /// Flags for use when encoding and decoding.
     /// Bit 0 indicates that the file locker is to be used with this file.
     /// Bits 1 to 7 are reserved for future use.
@@ -65,19 +58,14 @@ impl StegaV1 {
             application_name = "PsiStega3"
         }
 
-        #[cfg(test)]
         let locker =
             Locker::new(application_name, "").expect("could not initialize the file locker");
-
-        #[cfg(not(test))]
-        let locker = Locker::new(application_name).expect("could not initialize the file locker");
 
         Self {
             application_name: application_name.to_string(),
             data_cell_map: HashMap::with_capacity(1),
             noise_layer: true,
             output_files: true,
-            fast_variance: false,
             flags: 0,
             locker,
             logger: Logger::new(false),
@@ -417,10 +405,15 @@ impl StegaV1 {
         // Clear the key since it is no longer needed.
         composite_key.clear();
 
+        let start = std::time::Instant::now();
+
         // Iterate over each byte of data to be encoded.
         for (i, byte) in data.bytes.iter().enumerate() {
             self.write_u8_by_data_index(&mut img, byte, i);
         }
+
+        let elapsed_time = start.elapsed().as_millis();
+        println!("Elapsed time (new): {}ms", elapsed_time);
 
         if !self.output_files {
             return Ok(());
@@ -713,7 +706,7 @@ impl StegaV1 {
     /// * `img` - A reference to the [`ImageWrapper`] that holds the image.
     ///
     fn validate_image(img: &ImageWrapper) -> Result<()> {
-        // We currently only support PNG files.
+        // We only support PNG files.
         if img.get_image_format() != image::ImageFormat::Png {
             return Err(Error::ImageTypeInvalid);
         }
@@ -758,15 +751,7 @@ impl StegaV1 {
                 1..=254 => {
                     // We do not need to calculate this if the value is either
                     // 0 or 255. This will slightly improve performance.
-                    let add = if self.fast_variance {
-                        // We will tend towards the median value
-                        // when using the fast variance method.
-                        *b <= 128
-                    } else {
-                        thread_rng().gen_bool(0.5)
-                    };
-
-                    if add {
+                    if (i ^ cell_start) % 2 == 0 {
                         *b + 1
                     } else {
                         *b - 1
@@ -878,9 +863,6 @@ impl Codec for StegaV1 {
             Config::NoiseLayer => {
                 self.noise_layer = state;
             }
-            Config::FastVariance => {
-                self.fast_variance = state;
-            }
             Config::Verbose => {
                 self.logger.enable_verbose_mode();
             }
@@ -908,6 +890,7 @@ impl Drop for StegaV1 {
 ///
 /// Note: this structure handles little Endian conversions
 /// internally.
+///
 struct DataDecoder {
     xor_bytes: VecDeque<u8>,
     bytes: VecDeque<u8>,
@@ -1025,6 +1008,7 @@ impl DataDecoder {
 /// This structure will hold data to be encoded into an image.
 ///
 /// Note: this structure handles little Endian conversions internally.
+///
 struct DataEncoder {
     bytes: Vec<u8>,
     rng: Xoshiro512PlusPlus,
@@ -1128,7 +1112,6 @@ mod tests_encode_decode {
 
         // These options are not needed for the tests, and should help
         // improve the performance when running them.
-        stega.set_config_state(Config::FastVariance, true);
         stega.set_config_state(Config::NoiseLayer, false);
 
         stega
