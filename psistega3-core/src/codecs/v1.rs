@@ -1556,7 +1556,7 @@ mod tests_encryption_decryption {
             ),
             TestEntry::new(
                 "missing-file.png",
-                Err(Error::ImageOpening),
+                Err(Error::PathInvalid),
                 "file is missing and therefore cannot be loaded",
             ),
         ];
