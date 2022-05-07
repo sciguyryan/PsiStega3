@@ -217,16 +217,9 @@ impl Locker {
         // the entry list, otherwise we will need to try again later.
         let res = img.save(path);
 
-        // Next, we need to remove the ZTXT chunk from the PNG file. This will
-        // act to further camouflage the modifications.
-        if file_utils::remove_ztxt_chunk(path) {
-            // We need to add the IEND chunk back into the PNG file
-            // in order for it to be considered valid.
-            let mut f = unwrap_or_return_val!(File::options().append(true).open(path), false);
-
-            let end = file_utils::IEND_CHUNK.to_vec();
-            let _wb = f.write(&end).unwrap();
-        }
+        // Next, we need to remove the bKGD chunk from the PNG file.
+        // This will prevent the file from being decoded.
+        _ = file_utils::remove_png_bkgd_chunk(path);
 
         // Spoof the file last modification time of the data file to make it
         // appear as though it were never changed.
@@ -577,10 +570,10 @@ mod tests_locker {
             "entry was found in the entries list, after it should have been removed"
         );
 
-        // The file should also no longer contain a zTXt chunk.
-        let ztxt_start = file_utils::find_png_chunk_start(&copy_path, PngChunkType::Ztxt);
+        // The file should also no longer contain a bKGD chunk.
+        let kgd_start = file_utils::find_png_chunk_start(&copy_path, PngChunkType::Bkgd);
         assert!(
-            ztxt_start.is_none(),
+            kgd_start.is_none(),
             "a zTXt chunk was found in the locked PNG file, it should have been removed"
         );
 

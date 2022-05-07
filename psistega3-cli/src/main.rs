@@ -8,8 +8,6 @@ use psistega3_core::codecs::v1::StegaV1;
 use psistega3_core::version::*;
 
 use simple_logger::SimpleLogger;
-use std::fs::File;
-use std::io::{Seek, SeekFrom, Write};
 use std::{convert::TryFrom, env, io::stdin};
 
 /// The prompt for confirming a yes/no option.

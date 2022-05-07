@@ -31,6 +31,8 @@ const M_COST: u32 = 65536;
 /// The version of the Argon2 hashing algorithm to use.
 const ARGON_VER: argon2::Version = argon2::Version::V0x13;
 
+// TODO: add a test to ensure that the PNG modifier correctly overwrites a bKGD chunk, if present.
+
 pub struct StegaV1 {
     /// The application name.
     application_name: String,
@@ -119,17 +121,6 @@ impl StegaV1 {
         }
     }
 
-    /// Cipher the flag byte, for use when reading or writing the zTXt chunk of a PNG file.
-    ///
-    /// # Arguments
-    ///
-    /// * `flags` - The value of the flag u8.
-    /// * `last_byte` - The last junk u8 value in the chunk.
-    ///
-    fn cipher_flag_byte(flags: &mut u8, last: &u8) {
-        *flags = !(*flags ^ !last)
-    }
-
     /// Clear the lock on a file. Only used when use_file_locker is enabled.
     ///
     /// * `hash` - The hash of the file to be unlocked.
@@ -156,8 +147,11 @@ impl StegaV1 {
         key: String,
         encoded_img_path: &str,
     ) -> Result<String> {
-        // Process the zTXt chunk data, if present.
-        self.process_ztxt_chunk(encoded_img_path);
+        // Process the bKGD chunk data.
+        // If it isn't present then we will not attempt to decode the file.
+        if !self.process_bkgd_chunk(encoded_img_path) {
+            return Err(Error::DecryptionFailed);
+        }
 
         let mut enc_hash: Vec<u8> = vec![];
         if self.is_file_locker_enabled() {
@@ -494,35 +488,33 @@ impl StegaV1 {
         Ok(composite_key)
     }
 
-    /// Generate a zTXt chunk for our PNG. This chunk will hold information
-    /// about feature flags set while encoding the file.
-    fn generate_ztxt_chunk_data(&self) -> Vec<u8> {
-        let junk_bytes = thread_rng().gen_range(122..=176);
+    fn generate_bkgd_chunk_data(&self) -> [u8; 6] {
+        let mut data = [0u8; 6];
 
-        let key = "Comment".to_string();
-        let mut data_bytes: Vec<u8> = Vec::with_capacity(junk_bytes * 2);
-
-        // Junk data.
-        for _ in 0..=junk_bytes {
-            let b = thread_rng().gen_range(1..=255);
-            data_bytes.push(b);
+        // Fill the data bytes with random values.
+        for b in &mut data {
+            *b = thread_rng().gen();
         }
 
-        // The flag data byte.
-        let mut flags = 0b0000_0000;
+        // The 1st bit will be stored in byte 1.
+        misc_utils::set_bit_state(&mut data[0], 0, true);
 
-        // The 1st bit indicates whether file locking is enabled.
-        // The 2nd to 8th bits are reserved for future use.
-        misc_utils::set_bit_state(&mut flags, 0, true);
+        // The 2nd to 4th bits will be restores in bytes 2 to 4 respectively.
+        misc_utils::set_bit_state(&mut data[1], 0, false);
+        misc_utils::set_bit_state(&mut data[2], 0, false);
+        misc_utils::set_bit_state(&mut data[3], 0, false);
 
-        // Cipher the flag byte in order add some randomness to the value.
-        StegaV1::cipher_flag_byte(&mut flags, data_bytes.last().unwrap());
+        // 5th and 6th bits will be stored in byte 5.
+        misc_utils::set_bit_state(&mut data[4], 0, false);
+        misc_utils::set_bit_state(&mut data[4], 1, false);
 
-        // Push the flag byte into the vector.
-        data_bytes.push(flags);
+        // 7th and 8th bits will be stored in byte 6.
+        // These are currently reserved for future use.
+        misc_utils::set_bit_state(&mut data[5], 0, false);
+        misc_utils::set_bit_state(&mut data[5], 1, false);
 
-        // Generate the zTXt chunk from the data.
-        file_utils::generate_png_ztxt_chunk(&[key], &[data_bytes])
+        // Return the data.
+        data
     }
 
     /// Is the file locker enabled for this file?
@@ -560,47 +552,66 @@ impl StegaV1 {
     /// * `file_path` - The path to the image file.
     ///
     fn modify_png_file(&self, file_path: &str) -> Result<()> {
-        use std::{fs::File, io::Write};
+        // Generate the bKGD chunk containing our flags.
+        let chunk = self.generate_bkgd_chunk_data();
 
-        // Truncate the IEND chunk from the file.
-        file_utils::truncate_file(file_path, 12)?;
-
-        let mut f =
-            unwrap_or_return_err!(File::options().append(true).open(file_path), Error::File);
-
-        // Generate and write the ztxt chunk to the file.
-        let ztxt_chunk = self.generate_ztxt_chunk_data();
-        let _wb = f.write(&ztxt_chunk).unwrap();
-
-        // Now we can write the IEND chunk, which indicated the end of the PNG file data.
-        // This chunk is always the same, so it can be hardcoded.
-        let end = file_utils::IEND_CHUNK.to_vec();
-        let _wb = f.write(&end).unwrap();
-
-        Ok(())
+        // Write the chunk data to the file. If the chunk
+        // is already present then the data will be overwritten.
+        file_utils::insert_or_replace_png_bkgd_chunk(file_path, &chunk)
     }
 
-    /// Process the zTXt chunk of a PNG file, and apply any flags that may be present.
+    /// Process the bKGD chunk of a PNG file, and apply any flags that may be present.
     ///
     /// * `path` - The path to the PNG file.
     ///
-    pub fn process_ztxt_chunk(&mut self, path: &str) {
-        let chunk = file_utils::read_png_ztxt_chunk_data(path);
-        if chunk.is_none() {
-            return;
+    pub fn process_bkgd_chunk(&mut self, path: &str) -> bool {
+        let chunk = if let Some(c) = file_utils::read_png_bkgd_chunk_data(path) {
+            c
+        } else {
+            // This is an error as we should always have a bKGD chunk.
+            return false;
+        };
+
+        // We have a bKGD chunk to process!
+        let data = if let Some(d) = file_utils::get_png_chunk_data(&chunk) {
+            d
+        } else {
+            // This is an error as we should always have a bKGD chunk.
+            return false;
+        };
+
+        if data.len() < 6 {
+            // This is an error as there should always be 6 bytes.
+            return false;
         }
 
-        // We have a zTXt chunk to process!
-        let chunk = chunk.unwrap();
-        let len = chunk.len();
+        let mut flag_states = [false; 8];
 
-        // The final byte in the sequence contains the encoded flags.
-        let mut flags = chunk[len - 1];
+        // The 1st bit will be stored in byte 1.
+        flag_states[0] = misc_utils::is_bit_set(&data[0], 0);
 
-        // The byte prior to the final byte is used to cipher the flags byte.
-        StegaV1::cipher_flag_byte(&mut flags, &chunk[len - 2]);
+        // The 2nd to 4th bits will be restores in bytes 2 to 4 respectively.
+        flag_states[1] = misc_utils::is_bit_set(&data[1], 0);
+        flag_states[2] = misc_utils::is_bit_set(&data[2], 0);
+        flag_states[3] = misc_utils::is_bit_set(&data[3], 0);
+
+        // 5th and 6th bits will be stored in byte 5.
+        flag_states[4] = misc_utils::is_bit_set(&data[4], 0);
+        flag_states[5] = misc_utils::is_bit_set(&data[4], 1);
+
+        // 7th and 8th bits will be stored in byte 6.
+        // These are currently reserved for future use.
+        flag_states[6] = misc_utils::is_bit_set(&data[5], 0);
+        flag_states[7] = misc_utils::is_bit_set(&data[5], 1);
+
+        let mut flags = 0u8;
+        for (i, state) in flag_states.iter().enumerate() {
+            misc_utils::set_bit_state(&mut flags, i, *state);
+        }
 
         self.flags = flags;
+
+        true
     }
 
     /// Read a byte of encoded data, starting at a specified index.
@@ -1269,7 +1280,7 @@ mod tests_encode_decode {
     }
 
     #[test]
-    fn test_encode_ztxt_chunk() {
+    fn test_encode_bkgd_chunk() {
         let mut tu = TestUtils::new(&BASE);
 
         let input_path = tu.get_in_file("reference-valid.png");
@@ -1282,8 +1293,8 @@ mod tests_encode_decode {
             .expect("failed to encode the data");
 
         assert!(
-            file_utils::find_png_chunk_start(&output_img_path, PngChunkType::Ztxt).is_some(),
-            "zTXt chunk was not written to the PNG file"
+            file_utils::find_png_chunk_start(&output_img_path, PngChunkType::Bkgd).is_some(),
+            "bKGD chunk was not written to the PNG file"
         );
     }
 

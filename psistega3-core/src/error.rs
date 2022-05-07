@@ -42,6 +42,8 @@ pub enum Error {
     ImageFormatUnknown,
     /// There is insufficient space within the image to encode the specified data.
     ImageInsufficientSpace,
+    /// The image is malformed.
+    ImageMalformed,
     /// There was an error when attempting to load an image file.
     ImageOpening,
     /// There was an error when attempting to save an image file.
@@ -87,6 +89,7 @@ impl fmt::Display for Error {
             Error::ImageInsufficientSpace => {
                 "There is insufficient space to encode the data within the image."
             }
+            Error::ImageMalformed => "The image file is malformed.",
             Error::ImageOpening => "Error when attempting to load the specified image.",
             Error::ImageSaving(s) => s,
             Error::ImageTypeInvalid => "Invalid image pixel type.",
