@@ -405,15 +405,10 @@ impl StegaV1 {
         // Clear the key since it is no longer needed.
         composite_key.clear();
 
-        let start = std::time::Instant::now();
-
         // Iterate over each byte of data to be encoded.
         for (i, byte) in data.bytes.iter().enumerate() {
             self.write_u8_by_data_index(&mut img, byte, i);
         }
-
-        let elapsed_time = start.elapsed().as_millis();
-        println!("Elapsed time (new): {}ms", elapsed_time);
 
         if !self.output_files {
             return Ok(());
