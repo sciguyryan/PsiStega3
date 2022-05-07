@@ -104,12 +104,18 @@ impl ImageWrapper {
     ///
     /// # Arguments
     ///
-    /// * `file_path` - The path to the image file.
+    /// * `path` - The path to the image file.
     ///
-    pub fn load_from_file(file_path: &str, read_only: bool) -> Result<ImageWrapper> {
+    pub fn load_from_file(path: &str, read_only: bool) -> Result<ImageWrapper> {
+        use crate::utilities::file_utils;
         use image::{DynamicImage::*, GenericImageView};
 
-        let image = unwrap_or_return_err!(image::open(file_path), Error::ImageOpening);
+        // We can't load an image that doesn't exist.
+        if !file_utils::path_exists(path) {
+            return Err(Error::PathInvalid);
+        }
+
+        let image = unwrap_or_return_err!(image::open(path), Error::ImageOpening);
 
         let colour_type = match &image {
             ImageLuma8(_) => ColorType::L8,
@@ -137,7 +143,7 @@ impl ImageWrapper {
 
         // If we can't identify the image format then we cannot
         // go any further here.
-        if let Ok(f) = ImageFormat::from_path(file_path) {
+        if let Ok(f) = ImageFormat::from_path(path) {
             w.format = f;
         } else {
             return Err(Error::ImageTypeInvalid);

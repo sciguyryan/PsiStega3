@@ -72,7 +72,6 @@ pub(crate) fn is_little_endian() -> bool {
 /// Note: this method is intended to be called on vectors that have a predefined
 /// capacity.
 ///
-#[inline]
 pub(crate) fn fast_fill_vec_random<T>(in_vec: &mut Vec<u8>, rng: &mut T)
 where
     T: RngCore,

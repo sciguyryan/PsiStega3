@@ -89,6 +89,14 @@ pub(crate) fn read_file_to_u8_vector(path: &str) -> Result<Vec<u8>> {
     }
 }
 
+/// Remove a segment from a file.
+///
+/// # Arguments
+///
+/// * `path` - The path to the file.
+/// * `remove_start` - The point at which the segment to be removed begins.
+/// * `remove_length` - The number of consecutive u8 values to be removed.
+///
 pub fn remove_file_segment(path: &str, remove_start: u64, remove_length: u64) -> Result<()> {
     let mut file = unwrap_or_return_err!(
         File::options().read(true).write(true).open(path),
@@ -146,7 +154,7 @@ pub(crate) fn set_file_last_modified(path: &str, timestamp: FileTime) -> Result<
     }
 }
 
-/// Sets the last modified timestamp of a file.
+/// Splice a u8 slice into a specified point within a file.
 ///
 /// # Arguments
 ///

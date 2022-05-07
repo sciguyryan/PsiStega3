@@ -6,7 +6,7 @@ use crate::{
     locker::Locker,
     logger::Logger,
     macros::*,
-    utilities::*,
+    utilities::{png_utils::PngChunkType, *},
 };
 
 use aes_gcm::{
@@ -557,7 +557,7 @@ impl StegaV1 {
 
         // Write the chunk data to the file. If the chunk
         // is already present then the data will be overwritten.
-        png_utils::insert_or_replace_png_bkgd_chunk(file_path, &chunk)
+        png_utils::insert_or_replace_bkgd_chunk(file_path, &chunk)
     }
 
     /// Process the bKGD chunk of a PNG file, and apply any flags that may be present.
@@ -565,7 +565,7 @@ impl StegaV1 {
     /// * `path` - The path to the PNG file.
     ///
     pub fn process_bkgd_chunk(&mut self, path: &str) -> bool {
-        let chunk = if let Some(c) = png_utils::read_png_bkgd_chunk_data(path) {
+        let chunk = if let Some(c) = png_utils::read_chunk_raw(path, PngChunkType::Bkgd) {
             c
         } else {
             // This is an error as we should always have a bKGD chunk.
@@ -573,7 +573,7 @@ impl StegaV1 {
         };
 
         // We have a bKGD chunk to process!
-        let data = if let Some(d) = png_utils::get_png_chunk_data(&chunk) {
+        let data = if let Some(d) = png_utils::get_chunk_data(&chunk) {
             d
         } else {
             // This is an error as we should always have a bKGD chunk.
@@ -1294,7 +1294,7 @@ mod tests_encode_decode {
             .expect("failed to encode the data");
 
         assert!(
-            png_utils::find_png_chunk_start(&output_img_path, PngChunkType::Bkgd).is_some(),
+            png_utils::find_chunk_start(&output_img_path, PngChunkType::Bkgd).is_some(),
             "bKGD chunk was not written to the PNG file"
         );
     }
