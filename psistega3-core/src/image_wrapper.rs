@@ -115,7 +115,7 @@ impl ImageWrapper {
             return Err(Error::PathInvalid);
         }
 
-        let image = unwrap_or_return_err!(image::open(path), Error::ImageOpening);
+        let image = unwrap_res_or_return!(image::open(path), Err(Error::ImageOpening));
 
         let colour_type = match &image {
             ImageLuma8(_) => ColorType::L8,

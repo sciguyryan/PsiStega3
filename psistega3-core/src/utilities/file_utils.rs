@@ -80,7 +80,7 @@ pub(crate) fn read_file_to_u8_vec(path: &str) -> Result<Vec<u8>> {
         return Err(Error::PathInvalid);
     }
 
-    let mut file = unwrap_or_return_err!(File::open(&path), Error::File);
+    let mut file = unwrap_res_or_return!(File::open(&path), Err(Error::File));
     let mut buffer = Vec::new();
     match file.read_to_end(&mut buffer) {
         Ok(_) => Ok(buffer),
@@ -97,9 +97,9 @@ pub(crate) fn read_file_to_u8_vec(path: &str) -> Result<Vec<u8>> {
 /// * `remove_length` - The number of consecutive u8 values to be removed.
 ///
 pub fn remove_file_segment(path: &str, remove_start: u64, remove_length: u64) -> Result<()> {
-    let mut file = unwrap_or_return_err!(
+    let mut file = unwrap_res_or_return!(
         File::options().read(true).write(true).open(path),
-        Error::FileOpen
+        Err(Error::FileOpen)
     );
 
     /*
@@ -110,20 +110,23 @@ pub fn remove_file_segment(path: &str, remove_start: u64, remove_length: u64) ->
     */
 
     // Calculate the length of the file, after the data has been removed.
-    let meta = unwrap_or_return_err!(file.metadata(), Error::FileMetadata);
+    let meta = unwrap_res_or_return!(file.metadata(), Err(Error::FileMetadata));
     let new_len = meta.len() - remove_length;
 
     // Set the cursor to the position where the data
     // to be kept begins (segment 3).
     let remove_end = remove_start + remove_length;
-    unwrap_or_return_err!(file.seek(SeekFrom::Start(remove_end)), Error::FileRead);
+    unwrap_res_or_return!(file.seek(SeekFrom::Start(remove_end)), Err(Error::FileRead));
 
     // Read the chunk into a buffer.
     let mut buf: Vec<u8> = Vec::new();
-    unwrap_or_return_err!(file.read_to_end(&mut buf), Error::FileRead);
+    unwrap_res_or_return!(file.read_to_end(&mut buf), Err(Error::FileRead));
 
     // Set the cursor to the position of the start of the section to be removed.
-    unwrap_or_return_err!(file.seek(SeekFrom::Start(remove_start)), Error::FileRead);
+    unwrap_res_or_return!(
+        file.seek(SeekFrom::Start(remove_start)),
+        Err(Error::FileRead)
+    );
 
     // Write the saved chunk back into the file.
     if file.write_all(&buf).is_err() {
@@ -163,9 +166,9 @@ pub(crate) fn set_file_last_modified(path: &str, timestamp: FileTime) -> Result<
 /// * `data` - The data which should be spliced into the file.
 ///
 pub(crate) fn splice_data_into_file(path: &str, splice_at: u64, data: &[u8]) -> Result<()> {
-    let mut file = unwrap_or_return_err!(
+    let mut file = unwrap_res_or_return!(
         File::options().read(true).write(true).open(path),
-        Error::FileOpen
+        Err(Error::FileOpen)
     );
 
     /*
@@ -176,14 +179,14 @@ pub(crate) fn splice_data_into_file(path: &str, splice_at: u64, data: &[u8]) -> 
         written into the file, it will then be written back into the file.
     */
     let seek = SeekFrom::Start(splice_at);
-    unwrap_or_return_err!(file.seek(seek), Error::FileRead);
+    unwrap_res_or_return!(file.seek(seek), Err(Error::FileRead));
 
     // Note: if this ever needs to be optimized for larger files,
     // the data of the second chunk should be read and written in chunks.
     // As we are dealing with small(ish) files, that shouldn't be a problem here.
     let mut buf: Vec<u8> = Vec::new();
-    unwrap_or_return_err!(file.read_to_end(&mut buf), Error::FileRead);
-    unwrap_or_return_err!(file.seek(seek), Error::FileRead);
+    unwrap_res_or_return!(file.read_to_end(&mut buf), Err(Error::FileRead));
+    unwrap_res_or_return!(file.seek(seek), Err(Error::FileRead));
 
     if file.write_all(data).is_err() || file.write_all(&buf).is_err() {
         return Err(Error::FileWrite);
@@ -219,7 +222,7 @@ pub(crate) fn toggle_file_read_only_state(path: &str) -> Result<()> {
 /// * `bytes` - The slice of u8 values to be written to the file.
 ///
 pub(crate) fn write_u8_slice_to_file(path: &str, bytes: &[u8]) -> Result<()> {
-    let mut file = unwrap_or_return_err!(File::create(&path), Error::FileCreate);
+    let mut file = unwrap_res_or_return!(File::create(&path), Err(Error::FileCreate));
 
     // Write the resulting bytes directly into the output file.
     match file.write_all(bytes) {

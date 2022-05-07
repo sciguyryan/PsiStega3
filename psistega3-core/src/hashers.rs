@@ -47,9 +47,9 @@ pub fn argon2_string(
 
     // Nom!
     let mut hashed_bytes = [0u8; 128];
-    unwrap_or_return_err!(
+    unwrap_res_or_return!(
         hasher.hash_password_into(key_bytes, &salt, &mut hashed_bytes),
-        Error::Argon2NoHash
+        Err(Error::Argon2NoHash)
     );
 
     Ok(hashed_bytes)
@@ -74,11 +74,11 @@ pub fn crc32_slice(slice: &[u8]) -> u32 {
 /// * `path` - The path to the file.
 ///
 pub fn sha3_256_file(path: &str) -> Result<Vec<u8>> {
-    let file = unwrap_or_return_err!(File::open(path), Error::FileHashingError);
+    let file = unwrap_res_or_return!(File::open(path), Err(Error::FileHashingError));
 
     // Create a read-only memory map of the file as it should improve
     // the performance of this function.
-    let mmap = unsafe { unwrap_or_return_err!(Mmap::map(&file), Error::FileHashingError) };
+    let mmap = unsafe { unwrap_res_or_return!(Mmap::map(&file), Err(Error::FileHashingError)) };
 
     let mut hasher = Sha3_256::new();
     for c in mmap.chunks(16384) {
@@ -95,11 +95,11 @@ pub fn sha3_256_file(path: &str) -> Result<Vec<u8>> {
 /// * `path` - The path to the file.
 ///
 pub fn sha3_512_file(path: &str) -> Result<Vec<u8>> {
-    let file = unwrap_or_return_err!(File::open(path), Error::FileHashingError);
+    let file = unwrap_res_or_return!(File::open(path), Err(Error::FileHashingError));
 
     // Create a read-only memory map of the file as it should improve
     // the performance of this function.
-    let mmap = unsafe { unwrap_or_return_err!(Mmap::map(&file), Error::FileHashingError) };
+    let mmap = unsafe { unwrap_res_or_return!(Mmap::map(&file), Err(Error::FileHashingError)) };
 
     let mut hasher = Sha3_512::new();
     for c in mmap.chunks(16384) {

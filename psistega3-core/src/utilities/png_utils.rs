@@ -28,10 +28,10 @@ const IDAT: [u8; 4] = [0x49, 0x44, 0x41, 0x54];
 /// * `chunk_type` - The type of chunk to find.
 ///
 pub(crate) fn find_chunk_start(path: &str, chunk_type: PngChunkType) -> Option<usize> {
-    let file = unwrap_or_return_val!(File::open(path), None);
+    let file = unwrap_res_or_return!(File::open(path), None);
 
     // Create a read-only memory map of the file.
-    let mmap = unsafe { unwrap_or_return_val!(Mmap::map(&file), None) };
+    let mmap = unsafe { unwrap_res_or_return!(Mmap::map(&file), None) };
 
     let seq = match chunk_type {
         PngChunkType::Bkgd => &BKGD,
@@ -171,8 +171,8 @@ pub(crate) fn read_chunk_raw(path: &str, chunk_type: PngChunkType) -> Option<Vec
     let start = find_chunk_start(path, chunk_type)?;
 
     // Create a read-only memory map of the file.
-    let file = unwrap_or_return_val!(File::open(path), None);
-    let mmap = unsafe { unwrap_or_return_val!(Mmap::map(&file), None) };
+    let file = unwrap_res_or_return!(File::open(path), None);
+    let mmap = unsafe { unwrap_res_or_return!(Mmap::map(&file), None) };
 
     // The start of a chunk is always four bytes before the chunk header.
     // The initial four bytes of the chunk give the length of the data
@@ -209,17 +209,18 @@ pub(crate) fn read_chunk_raw(path: &str, chunk_type: PngChunkType) -> Option<Vec
 /// * `path` - The path to the file.
 ///
 pub(crate) fn remove_bkgd_chunk(path: &str) -> bool {
+    // Do we have a valid bKGD chunk to remove?
     let chunk = if let Some(c) = read_chunk_raw(path, PngChunkType::Bkgd) {
         c
     } else {
-        return false;
+        return true;
     };
 
     /*
-        Next, we need to read the length of the chunk data.
-        For our uses there should always be 6 bytes, but better to be safe here.
-        The unwrap is safe here since read_chunk_raw verifies the length of the
-          data is sufficient
+       Next, we need to read the length of the chunk data.
+       For our uses there should always be 6 bytes, but better to be safe here.
+       The unwrap is safe here since read_chunk_raw verifies the length of the
+         data is sufficient
     */
     let chunk_len = get_chunk_length(&chunk).unwrap();
 

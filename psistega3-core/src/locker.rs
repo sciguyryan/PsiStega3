@@ -235,7 +235,7 @@ impl Locker {
         // Now we need to ensure that the file can never be decoded.
         // This will happen regardless of whether the image ever contained
         // encoded data or not.
-        let mut img = unwrap_or_return_val!(ImageWrapper::load_from_file(path, false), false);
+        let mut img = unwrap_res_or_return!(ImageWrapper::load_from_file(path, false), false);
 
         // Scramble the image.
         img.scramble();
@@ -290,7 +290,7 @@ impl Locker {
         }
 
         // The file will automatically be closed when it goes out of scope.
-        let mut file = unwrap_or_return_err!(File::open(path), Error::LockerFileRead);
+        let mut file = unwrap_res_or_return!(File::open(path), Err(Error::LockerFileRead));
 
         // This will hold the chunk of data that is being read.
         let mut buffer = [0u8; ENTRY_SIZE];
@@ -384,8 +384,8 @@ impl Drop for Locker {
     fn drop(&mut self) {
         // If the file is read-only then we need to unset that
         // option, otherwise we will be prevented from writing to the file.
-        let data_path = unwrap_or_return!(self.get_locker_file_path());
-        let state = unwrap_or_return!(file_utils::get_file_read_only_state(&data_path));
+        let data_path = unwrap_res_or_return!(self.get_locker_file_path());
+        let state = unwrap_res_or_return!(file_utils::get_file_read_only_state(&data_path));
         if state {
             let _ = file_utils::toggle_file_read_only_state(&data_path);
         }

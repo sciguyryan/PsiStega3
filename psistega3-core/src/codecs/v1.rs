@@ -5,7 +5,7 @@ use crate::{
     image_wrapper::ImageWrapper,
     locker::Locker,
     logger::Logger,
-    macros::*,
+    macros::unwrap_res_or_return,
     utilities::{png_utils::PngChunkType, *},
 };
 
@@ -144,9 +144,9 @@ impl StegaV1 {
 
         let mut enc_hash: Vec<u8> = vec![];
         if self.is_file_locker_enabled() {
-            enc_hash = unwrap_or_return_err!(
+            enc_hash = unwrap_res_or_return!(
                 hashers::sha3_256_file(encoded_img_path),
-                Error::FileHashingError
+                Err(Error::FileHashingError)
             );
 
             // The first thing we need to do is to check whether the file hash
@@ -339,9 +339,9 @@ impl StegaV1 {
         // We will convert the input data byte vector into a base64 string.
         let plaintext = misc_utils::u8_slice_to_base64_string(data);
         let pt_bytes = plaintext.as_bytes();
-        let ct_bytes = unwrap_or_return_err!(
+        let ct_bytes = unwrap_res_or_return!(
             cipher.encrypt(nonce, pt_bytes.as_ref()),
-            Error::EncryptionFailed
+            Err(Error::EncryptionFailed)
         );
 
         /*
