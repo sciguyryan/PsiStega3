@@ -103,4 +103,8 @@ pub enum Config {
     ///
     /// Applicable to: v1.
     Locker,
+    /// Enable or disable the single-read locker system.
+    ///
+    /// Applicable to: v1.
+    ReadOnce,
 }
