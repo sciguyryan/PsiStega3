@@ -5,7 +5,6 @@ use crate::error::{Error, Result};
 
 use psistega3_core::codecs::codec::{Codec, Config};
 use psistega3_core::codecs::v1::StegaV1;
-use psistega3_core::png_file::{PngChunk, PngChunkType};
 use psistega3_core::version::*;
 
 use simple_logger::SimpleLogger;
