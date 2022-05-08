@@ -7,6 +7,5 @@ mod image_wrapper;
 mod locker;
 mod logger;
 mod macros;
-pub mod png_file;
 pub mod utilities;
 pub mod version;

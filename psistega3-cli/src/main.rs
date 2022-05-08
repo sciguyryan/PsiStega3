@@ -26,43 +26,6 @@ enum ActionType {
 fn main() {
     SimpleLogger::new().init().unwrap();
 
-    use psistega3_core::png_file::PngFile;
-    //let png = PngFile::open("D:\\GitHub\\PsiStega3\\test-images\\l-2.png");
-
-    let path = "D:\\GitHub\\PsiStega3\\test-images\\l-2.png";
-
-    let mut png = PngFile::open(path);
-
-    use std::time::Instant;
-    let now = Instant::now();
-
-    match png {
-        Ok(mut p) => {
-            //println!("Decode was successful!");
-
-            let mut chunk = PngChunk::new(b"bKGD", &[0; 6], &[0]);
-            //chunk.calculate_and_update_crc();
-
-            p.insert_chunk_after(chunk, PngChunkType::Ihdr);
-
-            let r = p.write_to_file("D:\\Downloads\\l-2.png");
-            //println!("Write result: {}", r)
-        }
-        Err(e) => println!("Decode was unsuccessful. {}", e),
-    }
-    let elapsed = now.elapsed();
-    println!("Elapsed: {:.2?}", elapsed);
-
-    let path2 = "D:\\GitHub\\PsiStega3\\test-images\\l-3.png";
-    std::fs::copy(path, path2);
-
-    let now = Instant::now();
-    psistega3_core::utilities::png_utils::insert_or_replace_bkgd_chunk(path2, &[0; 6]);
-    let elapsed = now.elapsed();
-    println!("Elapsed: {:.2?}", elapsed);
-
-    return;
-
     let mut args: Vec<String> = env::args().collect();
     if args.len() == 1 {
         show_help();
