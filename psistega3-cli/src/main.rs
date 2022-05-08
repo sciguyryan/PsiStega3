@@ -25,6 +25,16 @@ enum ActionType {
 fn main() {
     SimpleLogger::new().init().unwrap();
 
+    use psistega3_core::png_file::PngFile;
+    let png = PngFile::open("D:\\GitHub\\PsiStega3\\test-images\\l-2.png");
+
+    match png {
+        Ok(_) => println!("Decode was successful!"),
+        Err(e) => println!("Decode was successful. {}", e),
+    }
+
+    return;
+
     let mut args: Vec<String> = env::args().collect();
     if args.len() == 1 {
         show_help();
