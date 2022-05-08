@@ -355,9 +355,8 @@ impl StegaV1 {
 
         // We will convert the input data byte vector into a base64 string.
         let plaintext = misc_utils::u8_slice_to_base64_string(data);
-        let pt_bytes = plaintext.as_bytes();
         let ct_bytes = unwrap_res_or_return!(
-            cipher.encrypt(nonce, pt_bytes.as_ref()),
+            cipher.encrypt(nonce, plaintext.as_bytes()),
             Err(Error::EncryptionFailed)
         );
 
@@ -1361,9 +1360,10 @@ mod tests_encode_decode {
 
         let ref_path = tu.get_in_file("reference-valid.png");
         let enc_path = tu.get_in_file("encoded-file-text.png");
-        let output_file_path = tu.get_out_file("png", true);
+        let original_file_path = tu.get_in_file("text-file.txt");
+        let output_file_path = tu.get_out_file("txt", true);
 
-        // Attempt to decode the file, ensure the locker file is cleared on exit.
+        // Attempt to decode the file.
         let mut stega = create_instance();
 
         stega
@@ -1378,7 +1378,7 @@ mod tests_encode_decode {
 
         // Create a hash of the original and new file. If these hashes match
         // then we can be confident that the files are the same.
-        let hash_original = hashers::sha3_512_file(&output_file_path);
+        let hash_original = hashers::sha3_512_file(&original_file_path);
         let hash_new = hashers::sha3_512_file(&output_file_path);
 
         assert_eq!(
