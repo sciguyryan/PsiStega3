@@ -1,44 +1,63 @@
+use std::{fs::File, io::Write};
+
 use crate::{
     error::{Error, Result},
-    macros::*,
+    macros::unwrap_res_or_return,
     utilities::file_utils,
 };
 
 use crc32fast::Hasher as Crc32;
 
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq)]
 pub enum PngChunkType {
+    /// Animation control (APNG).
+    Actl,
     /// Background colour.
     Bkgd,
+    /// Primary chromaticities.
+    Chrm,
+    /// Frame control (APNG).
+    Fctl,
+    /// Frame data (APNG).
+    Fdat,
+    /// Image gamma.
+    Gama,
+    /// Palette histogram.
+    Hist,
+    /// Embedded ICC profile.
+    Iccp,
     /// Image data.
     Idat,
     /// Image trailer.
     Iend,
     /// Image header.
     Ihdr,
+    /// International textual data.
+    Itxt,
+    /// Palette
+    Plte,
+    /// Physical dimensions.
+    Phys,
+    /// Significant bits.
+    Sbit,
+    /// Suggested palette
+    Splt,
+    /// Standard RGB color space.
+    Srgb,
+    /// Textual data.
+    Text,
+    /// Image last-modification time.
+    Time,
     /// Transparency.
     Trns,
     /// Unrecognized chunk type.
     Unknown,
+    /// Compressed textual data.
+    Ztxt,
 }
 
 /// The signature of a PNG file.
 const PNG_SIGNATURE: [u8; 8] = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
-
-/// The bKGD chunk header.
-const BKGD: [u8; 4] = [0x62, 0x4b, 0x47, 0x44];
-
-/// The IDAT chunk header.
-const IDAT: [u8; 4] = [0x49, 0x44, 0x41, 0x54];
-
-/// The IEND chunk header.
-const IEND: [u8; 4] = [0x49, 0x45, 0x4E, 0x44];
-
-/// The IHDR chunk header.
-const IHDR: [u8; 4] = [0x49, 0x48, 0x44, 0x52];
-
-/// The tRNS chunk header.
-const TRNS: [u8; 4] = [0x74, 0x52, 0x4E, 0x53];
 
 pub struct PngFile {
     chunks: Vec<PngChunk>,
@@ -57,13 +76,36 @@ impl PngFile {
         // Load the entire file into a u8 vector.
         let vec = file_utils::read_file_to_u8_vec(path)?;
 
+        //use std::time::Instant;
+        //let now = Instant::now();
+        //for i in 0..10 {
         // Parse the PNG file.
         let mut file = PngFile::new();
         if file.parse(&vec).is_err() {
-            return Err(Error::ImageMalformed);
+            //return Err(Error::ImageMalformed);
         }
+        //}
+        //let elapsed = now.elapsed();
+        //println!("Elapsed: {:.2?}", elapsed);
 
         Ok(file)
+    }
+
+    pub fn insert_chunk_after(&mut self, chunk: PngChunk, before: PngChunkType) -> bool {
+        let index = self.chunks.iter().position(|r| r.chunk_type == before);
+
+        //println!("Chunks = {}", self.chunks.len());
+
+        if let Some(i) = index {
+            self.chunks.insert(i + 1, chunk);
+
+            //println!("{:?}", index);
+            //println!("Chunks = {}", self.chunks.len());
+
+            true
+        } else {
+            false
+        }
     }
 
     pub fn parse(&mut self, bytes: &[u8]) -> Result<()> {
@@ -85,14 +127,43 @@ impl PngFile {
             // Move the index to the start of the next chunk.
             pos += chunk.total_length as usize;
 
-            println!("chunk type: {:?}", chunk.chunk_type);
-            //println!("pos: {}", pos);
+            //println!("chunk type: {:?}", chunk.chunk_type);
 
             // Add the valid chunk to the chunk list.
             self.chunks.push(chunk);
         }
 
         Ok(())
+    }
+
+    pub fn write_to_file(&self, path: &str) -> bool {
+        let mut file = unwrap_res_or_return!(File::create(path), false);
+
+        // First the header must be written to the file.
+        let _wb = file.write_all(&PNG_SIGNATURE);
+
+        // Next, we need to write all of the chunks.
+        for c in &self.chunks {
+            // First, we write the length, in big Endian format.
+            let _wb = file.write_all(&c.get_data_len_as_be_bytes());
+
+            // Next, the chunk header.
+            let _wb = file.write_all(&c.chunk_type_raw);
+
+            // Next, the chunk data.
+            let _wb = file.write_all(&c.data);
+
+            // Finally, the chunk CRC.
+            let _wb = file.write_all(&c.hash);
+        }
+
+        true
+    }
+}
+
+impl Default for PngFile {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -118,8 +189,20 @@ impl PngChunk {
         }
     }
 
+    pub fn get_data_len_as_be_bytes(&self) -> [u8; 4] {
+        (self.data.len() as u32).to_be_bytes()
+    }
+
     pub fn get_data_length(&self) -> usize {
         self.data.len()
+    }
+
+    pub fn calculate_and_update_crc(&mut self) {
+        let mut hasher = Crc32::new();
+        hasher.update(&self.chunk_type_raw);
+        hasher.update(&self.data);
+
+        self.hash = hasher.finalize().to_be_bytes().to_vec();
     }
 
     fn calculate_crc(&self) -> Vec<u8> {
@@ -153,12 +236,28 @@ impl PngChunk {
 
     fn get_chunk_type_from_slice(data: &[u8]) -> PngChunkType {
         let chunk_type_bytes = <[u8; 4]>::try_from(data).unwrap();
-        let chunk_type = match chunk_type_bytes {
-            BKGD => PngChunkType::Bkgd,
-            IDAT => PngChunkType::Idat,
-            IEND => PngChunkType::Iend,
-            IHDR => PngChunkType::Ihdr,
-            TRNS => PngChunkType::Trns,
+        let chunk_type = match &chunk_type_bytes {
+            b"acTL" => PngChunkType::Actl,
+            b"bKGD" => PngChunkType::Bkgd,
+            b"cHRM" => PngChunkType::Chrm,
+            b"fcTL" => PngChunkType::Fctl,
+            b"fdAT" => PngChunkType::Fdat,
+            b"gAMA" => PngChunkType::Gama,
+            b"hIST" => PngChunkType::Hist,
+            b"iCCP" => PngChunkType::Iccp,
+            b"IDAT" => PngChunkType::Idat,
+            b"IEND" => PngChunkType::Iend,
+            b"IHDR" => PngChunkType::Ihdr,
+            b"iTXt" => PngChunkType::Itxt,
+            b"PLTE" => PngChunkType::Plte,
+            b"pHYs" => PngChunkType::Phys,
+            b"sBIT" => PngChunkType::Sbit,
+            b"sPLT" => PngChunkType::Splt,
+            b"sRGB" => PngChunkType::Srgb,
+            b"tEXt" => PngChunkType::Text,
+            b"tIME" => PngChunkType::Time,
+            b"tRNS" => PngChunkType::Trns,
+            b"zTXt" => PngChunkType::Ztxt,
             _ => {
                 println!(
                     "Unknown chunk type: {}",
@@ -202,9 +301,8 @@ impl TryFrom<&[u8]> for PngChunk {
         // The next segment contains the data for the chunk.
         // This extends from 8 bytes after the start of the chunk
         // to 4 bytes before the end of the chunk.
-        let data_start = 8;
-        let data_end = data_start + chunk_len;
-        let chunk_data = &bytes[data_start..data_end];
+        let data_end = 8 + chunk_len;
+        let chunk_data = &bytes[8..data_end];
 
         // The final 4 bytes will give the checksum of the chunk.
         let chunk_crc = &bytes[data_end..(data_end + 4)];
