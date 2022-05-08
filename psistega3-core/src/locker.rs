@@ -178,6 +178,39 @@ impl Locker {
         }
     }
 
+    /// Increment the attempts for a given file hash, will lock the file if there have been sufficient attempts.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - The path to the image file.
+    /// * `hash` - The hash of the file.
+    ///
+    pub fn increment_file_lock(&mut self, path: &str, hash: &[u8]) {
+        // We need to update the locke entry, or add it if it
+        // doesn't already exist.
+        if let Some(entry) = self.get_entry_by_hash_mut(hash) {
+            // The entry exists within the entries list.
+            // We need to update the counter.
+            (*entry).attempts += 1;
+        } else {
+            // The entry does not exists within the entries list.
+            // We need to add it with the default attempt value of zero.
+            self.entries.push(LockerEntry::new(hash, 0));
+        }
+
+        // Do we need to lock the file?
+        if self.is_file_locked(hash) {
+            // The entry exists within the list, has hit the attempt limited
+            // but hasn't been locked. We need to attempt to lock the file.
+            // If successful then it can be removed from the list.
+            if self.lock_file(path) {
+                self.force_clear_file_lock(hash);
+            } else {
+                // TODO: figure out if anything should be done here.
+            }
+        }
+    }
+
     /// Check whether a given file's hash has received 5 or more unsuccessful attempts to decrypt the file.
     ///
     pub fn is_file_locked(&self, hash: &[u8]) -> bool {
@@ -316,24 +349,24 @@ impl Locker {
         Ok(())
     }
 
-    /// Update the attempts for a given file hash, will lock the file if there have been enough unsuccessful decryption attempts.
+    /// Directly update the attempts for a given file hash.
     ///
     /// # Arguments
     ///
     /// * `path` - The path to the image file.
     /// * `hash` - The hash of the file to be unlocked.
     ///
-    pub fn update_file_lock(&mut self, path: &str, hash: &[u8]) {
+    pub(crate) fn set_attempts(&mut self, path: &str, hash: &[u8], attempts: u8) {
         // We need to update the locke entry, or add it if it
         // doesn't already exist.
         if let Some(entry) = self.get_entry_by_hash_mut(hash) {
             // The entry exists within the entries list.
             // We need to update the counter.
-            (*entry).attempts += 1;
+            (*entry).attempts = attempts;
         } else {
             // The entry does not exists within the entries list.
-            // We need to add it with the default attempt value of zero.
-            self.entries.push(LockerEntry::new(hash, 0));
+            // We need to add it to the list.
+            self.entries.push(LockerEntry::new(hash, attempts));
         }
 
         // Do we need to lock the file?
@@ -549,7 +582,7 @@ mod tests_locker {
             "entry was found in the entries list, and should not be"
         );
 
-        locker.update_file_lock(&original_path, &hash);
+        locker.increment_file_lock(&original_path, &hash);
 
         // The entry should now be present in the entries list, with a default attempts value of zero.
         let entry = locker.get_entry_by_hash(&hash);
@@ -564,7 +597,7 @@ mod tests_locker {
         );
 
         // Next we need to test of the entry correctly updates.
-        locker.update_file_lock(&original_path, &hash);
+        locker.increment_file_lock(&original_path, &hash);
         let entry = locker.get_entry_by_hash(&hash);
         assert_eq!(
             entry.unwrap().attempts,
@@ -596,7 +629,7 @@ mod tests_locker {
 
         // Add the entry with 4 (0th is the first attempt) attempts. The next failed attempt will lock the file.
         locker.entries.push(LockerEntry::new(&old_hash, 3));
-        locker.update_file_lock(&copy_path, &old_hash);
+        locker.increment_file_lock(&copy_path, &old_hash);
 
         // The file hash should have changed.
         let new_hash = hashers::sha3_256_file(&copy_path).expect("failed to create file hash");

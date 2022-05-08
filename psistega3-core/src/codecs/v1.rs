@@ -279,8 +279,13 @@ impl StegaV1 {
         };
 
         // The decryption was successful, we can remove any file access
-        // attempts that might be present.
-        self.clear_file_lock(&enc_hash);
+        //   attempts that might be present.
+        // We will never clear the attempts for a file that has the
+        //   read-once flag.
+        // TODO: this needs a test.
+        if !self.is_read_once_enabled() {
+            self.clear_file_lock(&enc_hash);
+        }
 
         let str: String;
         unsafe {
@@ -288,6 +293,18 @@ impl StegaV1 {
             // We are working with internal code and it can't
             // generate any invalid UTF-8 sequences.
             str = String::from_utf8_unchecked(pt_bytes);
+        }
+
+        // We successfully decrypt the data.
+        // Was the read-once flag set for this file?
+        if !str.is_empty() && self.is_read_once_enabled() {
+            /*
+              Update the attempts counter and attempt to lock the file.
+              We intentionally do this, rather than directly locking the file,
+                since we will try to lock the file again next time, should the
+                locking attempt fail here.
+            */
+            self.locker.set_attempts(encoded_img_path, &enc_hash, 4);
         }
 
         Ok(str)
@@ -477,6 +494,8 @@ impl StegaV1 {
         Ok(composite_key)
     }
 
+    /// Generate the bKGD chunk data containing the encoded flags.
+    ///
     fn generate_bkgd_chunk_data(&self) -> [u8; 6] {
         let mut data = [0u8; 6];
 
@@ -486,10 +505,10 @@ impl StegaV1 {
         }
 
         // The 1st bit will be stored in byte 1.
-        misc_utils::set_bit_state(&mut data[0], 0, true);
+        misc_utils::set_bit_state(&mut data[0], 0, self.is_file_locker_enabled());
 
         // The 2nd to 4th bits will be restores in bytes 2 to 4 respectively.
-        misc_utils::set_bit_state(&mut data[1], 0, false);
+        misc_utils::set_bit_state(&mut data[1], 0, self.is_read_once_enabled());
         misc_utils::set_bit_state(&mut data[2], 0, false);
         misc_utils::set_bit_state(&mut data[3], 0, false);
 
@@ -510,6 +529,18 @@ impl StegaV1 {
     #[inline]
     fn is_file_locker_enabled(&self) -> bool {
         misc_utils::is_bit_set(&self.flags, 0)
+    }
+
+    /// Is the file locker system required for this task?
+    #[inline]
+    fn is_locker_needed(&self) -> bool {
+        self.is_file_locker_enabled() || self.is_read_once_enabled()
+    }
+
+    /// Is the read-once file locker enabled for this file?
+    #[inline]
+    fn is_read_once_enabled(&self) -> bool {
+        misc_utils::is_bit_set(&self.flags, 1)
     }
 
     /// Loads an image from file and validates that the image is suitable for steganography.
@@ -686,12 +717,12 @@ impl StegaV1 {
     /// * `hash` - The hash of the image file.
     ///
     fn update_file_lock(&mut self, path: &str, hash: &[u8]) {
-        if !self.is_file_locker_enabled() {
+        if !self.is_locker_needed() {
             return;
         }
 
         // This error counts as a failed decryption attempt.
-        self.locker.update_file_lock(path, hash);
+        self.locker.increment_file_lock(path, hash);
     }
 
     /// Validate if the image can be used with our steganography algorithms.
