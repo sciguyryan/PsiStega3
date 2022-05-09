@@ -170,6 +170,21 @@ fn apply_codec_settings(
     }
 
     // Only applicable to encoding.
+    if is_encode && args.contains(&String::from("--ro"))
+        || args.contains(&String::from("--read-once"))
+    {
+        // We want to warn the user that enabling this option
+        // render the data unrecoverable.
+        let mut enabled = true;
+        if !unattended {
+            print!("WARNING: the file locker will render the encoded data unrecoverable after it has been successfully decoded. ");
+            enabled = read_confirm_from_stdin(CONFIRM_PROMPT);
+        }
+
+        codec.set_config_state(Config::ReadOnce, enabled);
+    }
+
+    // Only applicable to encoding.
     if is_encode && args.contains(&String::from("--nn"))
         || args.contains(&String::from("--no-noise"))
     {
@@ -466,6 +481,9 @@ fn show_help() {
     println!("\t--l, --locker\t\tEnable file locker. This option will lock a file after 5 unsuccessful decryption attempts.");
     println!("\t--nn, --no-noise\tDisable the noise layer when encoding (better performance, lower security).");
     println!("\t--nf, --no-files\tDisable the creation of any output files.");
+    println!(
+        "\t--ro, --read-once\tPermanently locks the file after it has been successfully read."
+    );
     //println!("\t--verbose\tEnable verbose mode.");
     println!();
     println!("Please use -examples to display some example commands.");
