@@ -1411,7 +1411,6 @@ mod tests_encode_decode {
 
         let input_path = tu.get_in_file("reference-valid.png");
         let output_img_path = tu.get_out_file("png", true);
-
         let correct_key = "banana";
 
         // Attempt to encode the file.

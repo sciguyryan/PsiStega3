@@ -471,7 +471,7 @@ impl fmt::Display for LockerEntry {
         write!(
             f,
             "Hash: {}, Attempts: {}",
-            misc_utils::u8_slice_to_hex(&self.hash, false),
+            misc_utils::u8_slice_to_hex(&self.hash, true),
             self.attempts
         )
     }
