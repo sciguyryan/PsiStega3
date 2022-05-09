@@ -113,7 +113,7 @@ impl Locker {
     ///
     /// * `hash` - The hash of the file to be unlocked.
     ///
-    fn get_entry_index_by_hash(&self, hash: &[u8]) -> Option<usize> {
+    pub(crate) fn get_entry_index_by_hash(&self, hash: &[u8]) -> Option<usize> {
         self.entries.iter().position(|e| e.hash == hash)
     }
 
@@ -302,14 +302,14 @@ impl Locker {
     fn print_locker_list(&self) {
         println!("Total entries: {}", self.entries.len());
         for (i, e) in self.entries.iter().enumerate() {
-            println!("Entry {} : {}", i, e);
+            eprintln!("Entry {} : {}", i, e);
         }
     }
 
     /// Attempt to read the entries within the locker data file.
     ///
     fn read_locker_file(&mut self) -> Result<()> {
-        const ENTRY_SIZE: usize = 33;
+        const ENTRY_SIZE: usize = 65;
 
         let path = self.get_locker_file_path()?;
         if !file_utils::path_exists(&path) {
@@ -340,7 +340,8 @@ impl Locker {
             Locker::cipher_slice(&mut buffer, xor);
 
             // Construct the entry based on the read bytes.
-            let fa = LockerEntry::new(&buffer[..32], buffer[32]);
+            let last = ENTRY_SIZE - 1;
+            let fa = LockerEntry::new(&buffer[..last], buffer[last]);
             self.entries.push(fa);
 
             xor -= 1;
@@ -502,7 +503,7 @@ mod tests_locker {
 
     #[test]
     fn test_is_file_locked() {
-        let hash = hashers::sha3_256_string(HASH_STR);
+        let hash = hashers::sha3_512_string(HASH_STR);
         let locker_pf = TestUtils::generate_ascii_string(16);
 
         let mut locker = create_locker_instance_or_assert(&locker_pf);
@@ -531,7 +532,7 @@ mod tests_locker {
 
     #[test]
     fn test_read_write_locker_file() {
-        let hash = hashers::sha3_256_string(HASH_STR);
+        let hash = hashers::sha3_512_string(HASH_STR);
         let locker_pf = TestUtils::generate_ascii_string(16);
         let entry = LockerEntry::new(&hash, 3);
 
@@ -549,6 +550,8 @@ mod tests_locker {
             !locker.entries.is_empty(),
             "incorrect number of locker entries present upon loads"
         );
+
+        locker.print_locker_list();
 
         // The entry should exist within the data loaded by the file locker instance.
         let entry2 = locker.get_entry_by_hash(&hash);
@@ -571,7 +574,7 @@ mod tests_locker {
 
         let locker_pf = TestUtils::generate_ascii_string(16);
         let original_path = tu.get_in_file("dummy.png");
-        let hash = hashers::sha3_256_file(&original_path).expect("failed to create file hash");
+        let hash = hashers::sha3_512_file(&original_path).expect("failed to create file hash");
 
         let mut locker = create_locker_instance_or_assert(&locker_pf);
 
@@ -623,7 +626,7 @@ mod tests_locker {
             .expect("failed to get the timestamp of the original file");
 
         // Compute the hash of the original file.
-        let old_hash = hashers::sha3_256_file(&old_path).expect("failed to create file hash");
+        let old_hash = hashers::sha3_512_file(&old_path).expect("failed to create file hash");
 
         let mut locker = create_locker_instance_or_assert(&locker_pf);
 
@@ -632,7 +635,7 @@ mod tests_locker {
         locker.increment_file_lock(&copy_path, &old_hash);
 
         // The file hash should have changed.
-        let new_hash = hashers::sha3_256_file(&copy_path).expect("failed to create file hash");
+        let new_hash = hashers::sha3_512_file(&copy_path).expect("failed to create file hash");
         assert_ne!(
             new_hash, old_hash,
             "the hash of the copy and original file are the same, no file locking took place"

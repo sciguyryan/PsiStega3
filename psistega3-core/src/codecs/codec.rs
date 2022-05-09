@@ -86,6 +86,7 @@ pub trait Codec {
 }
 
 /// A list of configuration options that are applicable to a [`Codec`].
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Config {
     /// Enable or disable the noise map.
     ///

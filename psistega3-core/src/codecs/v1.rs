@@ -145,7 +145,7 @@ impl StegaV1 {
         let mut enc_hash: Vec<u8> = vec![];
         if self.is_file_locker_enabled() {
             enc_hash = unwrap_res_or_return!(
-                hashers::sha3_256_file(encoded_img_path),
+                hashers::sha3_512_file(encoded_img_path),
                 Err(Error::FileHashingError)
             );
 
@@ -282,7 +282,6 @@ impl StegaV1 {
         //   attempts that might be present.
         // We will never clear the attempts for a file that has the
         //   read-once flag.
-        // TODO: this needs a test.
         if !self.is_read_once_enabled() {
             self.clear_file_lock(&enc_hash);
         }
@@ -1136,13 +1135,26 @@ mod tests_encode_decode {
 
     /// Create a StegaV1 instance.
     fn create_instance() -> StegaV1 {
-        let mut stega = StegaV1::new("PsiStega3-Tests");
+        use crate::{locker::Locker, logger::Logger};
+        use std::collections::HashMap;
 
-        // These options are not needed for the tests, and should help
-        // improve the performance when running them.
-        stega.set_config_state(Config::NoiseLayer, false);
+        let app_name = "PsiStega3-Tests";
 
-        stega
+        // Create a custom locker instance per test.
+        let locker_pf = TestUtils::generate_ascii_string(16);
+        let locker =
+            Locker::new(app_name, &locker_pf).expect("could not initialize the file locker");
+
+        // Return a new StegaV1 instance.
+        StegaV1 {
+            application_name: app_name.to_string(),
+            data_cell_map: HashMap::new(),
+            noise_layer: false, // We do not need this here.
+            output_files: true,
+            flags: 0,
+            locker,
+            logger: Logger::new(false),
+        }
     }
 
     #[test]
@@ -1153,12 +1165,12 @@ mod tests_encode_decode {
         let key = StegaV1::generate_composite_key(&input_path, KEY.to_string())
             .expect("failed to generate a composite key");
         let expected_key = vec![
-            0x45, 0x6c, 0x50, 0x73, 0x79, 0x4b, 0x6f, 0x6e, 0x67, 0x72, 0x6f, 0x6f, 0x47, 0x86,
-            0x72, 0x42, 0xb4, 0xa8, 0x8a, 0x61, 0x70, 0x53, 0xe7, 0xa0, 0xb2, 0xb8, 0x77, 0x1a,
-            0x2d, 0x7b, 0x4f, 0x2d, 0x65, 0x97, 0xae, 0xde, 0x06, 0x6c, 0x45, 0xf2, 0x42, 0x4c,
-            0xf9, 0x33, 0xea, 0x87, 0xce, 0x48, 0x93, 0x99, 0x42, 0xad, 0xa4, 0x1a, 0xb0, 0xea,
-            0xdb, 0x7b, 0x0b, 0x46, 0x63, 0xba, 0x51, 0x68, 0x7e, 0x03, 0x6c, 0x14, 0xae, 0x54,
-            0xe1, 0xca, 0xc0, 0x36, 0x0a, 0x05,
+            0x45, 0x6C, 0x50, 0x73, 0x79, 0x4B, 0x6F, 0x6E, 0x67, 0x72, 0x6F, 0x6F, 0x47, 0x86,
+            0x72, 0x42, 0xB4, 0xA8, 0x8A, 0x61, 0x70, 0x53, 0xE7, 0xA0, 0xB2, 0xB8, 0x77, 0x1A,
+            0x2D, 0x7B, 0x4F, 0x2D, 0x65, 0x97, 0xAE, 0xDE, 0x06, 0x6C, 0x45, 0xF2, 0x42, 0x4C,
+            0xF9, 0x33, 0xEA, 0x87, 0xCE, 0x48, 0x93, 0x99, 0x42, 0xAD, 0xA4, 0x1A, 0xB0, 0xEA,
+            0xDB, 0x7B, 0x0B, 0x46, 0x63, 0xBA, 0x51, 0x68, 0x7E, 0x03, 0x6C, 0x14, 0xAE, 0x54,
+            0xE1, 0xCA, 0xC0, 0x36, 0x0A, 0x05,
         ];
 
         assert_eq!(
@@ -1275,6 +1287,183 @@ mod tests_encode_decode {
         assert!(
             stega.is_file_locker_enabled(),
             "file locker was not enabled after decoding the file"
+        );
+    }
+
+    #[test]
+    fn test_encode_decode_read_once_enabled() {
+        let mut tu = TestUtils::new(&BASE);
+
+        let input_path = tu.get_in_file("reference-valid.png");
+        let output_img_path = tu.get_out_file("png", true);
+
+        // Attempt to encode the file.
+        let mut stega = create_instance();
+
+        // We want to enable the read-once file locker system here.
+        stega.set_config_state(Config::ReadOnce, true);
+
+        stega
+            .encode(&input_path, KEY.to_string(), TEXT, &output_img_path)
+            .expect("failed to encode the data");
+
+        // Disable the read-once file locker system again.
+        stega.set_config_state(Config::ReadOnce, false);
+
+        // Attempt to decode the string.
+        stega
+            .decode(&input_path, KEY.to_string(), &output_img_path)
+            .expect("failed to decode the data");
+
+        // Was the read-once file locker enabled upon decoding?
+        assert!(
+            stega.is_read_once_enabled(),
+            "read-once was not enabled after decoding the file"
+        );
+
+        // Was the read-once file locked after decoding the data?
+        assert!(
+            stega.is_read_once_enabled(),
+            "read-once was not enabled after decoding the file"
+        );
+    }
+
+    #[test]
+    fn test_read_once_roundtrip_successful() {
+        let mut tu = TestUtils::new(&BASE);
+
+        let input_path = tu.get_in_file("reference-valid.png");
+        let output_img_path = tu.get_out_file("png", true);
+
+        // Attempt to encode the file.
+        let mut stega = create_instance();
+
+        // We want to enable the read-once file locker system here.
+        stega.set_config_state(Config::ReadOnce, true);
+
+        stega
+            .encode(&input_path, KEY.to_string(), TEXT, &output_img_path)
+            .expect("failed to encode the data");
+
+        // Hash the original file, this should change upon successful decryption.
+        let hash_original = hashers::sha3_512_file(&output_img_path);
+
+        // Attempt to decode the string.
+        stega
+            .decode(&input_path, KEY.to_string(), &output_img_path)
+            .expect("failed to decode the data");
+
+        // Hash the file again.
+        let hash_new = hashers::sha3_512_file(&output_img_path);
+
+        // Was the read-once file locked after successfully decoding the data?
+        assert_ne!(
+            hash_original, hash_new,
+            "the read-once file was not successfully locked after successful decryption attempt"
+        );
+    }
+
+    #[test]
+    fn test_read_once_roundtrip_unsuccessful() {
+        let mut tu = TestUtils::new(&BASE);
+
+        let input_path = tu.get_in_file("reference-valid.png");
+        let output_img_path = tu.get_out_file("png", true);
+
+        // Attempt to encode the file.
+        let mut stega = create_instance();
+
+        // We want to enable the read-once file locker system here.
+        stega.set_config_state(Config::ReadOnce, true);
+
+        stega
+            .encode(&input_path, "banana".to_string(), TEXT, &output_img_path)
+            .expect("failed to encode the data");
+
+        // Hash the original file, this should not change upon unsuccessful decryption.
+        let hash_original =
+            hashers::sha3_512_file(&output_img_path).expect("failed to create file hash");
+
+        // Attempt to decode the string. We do not care about the return result here.
+        _ = stega.decode(&input_path, KEY.to_string(), &output_img_path);
+
+        // Hash the file again.
+        let hash_new =
+            hashers::sha3_512_file(&output_img_path).expect("failed to create file hash");
+
+        // Was the read-once file locked after failing to decoding the data?
+        assert_eq!(
+            hash_original, hash_new,
+            "the read-once file was locked after unsuccessful decryption attempt"
+        );
+
+        // No locker entry should exist for the file in this instance.
+        let locker_entry = stega.locker.get_entry_index_by_hash(&hash_original);
+        assert!(
+            locker_entry.is_none(),
+            "found a locker entry when none was expected"
+        );
+    }
+
+    #[test]
+    fn test_read_once_roundtrip_with_locker() {
+        let mut tu = TestUtils::new(&BASE);
+
+        let input_path = tu.get_in_file("reference-valid.png");
+        let output_img_path = tu.get_out_file("png", true);
+
+        let correct_key = "banana";
+
+        // Attempt to encode the file.
+        let mut stega = create_instance();
+
+        // We want to enable the read-once file locker and normal file locker system here.
+        stega.set_config_state(Config::Locker, true);
+        stega.set_config_state(Config::ReadOnce, true);
+
+        stega
+            .encode(&input_path, correct_key.to_string(), TEXT, &output_img_path)
+            .expect("failed to encode the data");
+
+        // Hash the original file.
+        let hash_original =
+            hashers::sha3_512_file(&output_img_path).expect("failed to create file hash");
+
+        // Attempt to decode the string. We do not care about the return result here.
+        _ = stega.decode(&input_path, KEY.to_string(), &output_img_path);
+
+        // A locker entry should exist for the file here.
+        let locker_entry = stega.locker.get_entry_index_by_hash(&hash_original);
+        assert!(
+            locker_entry.is_some(),
+            "no locker entry was found when one was expected"
+        );
+
+        // Hash the file again.
+        let hash_new =
+            hashers::sha3_512_file(&output_img_path).expect("failed to create file hash");
+
+        // Was the file locked?
+        // It should not be locked here as a single unsuccessful attempt was made.
+        assert_eq!(
+            hash_original, hash_new,
+            "the read-once file was locked after unsuccessful decryption attempt"
+        );
+
+        // Attempt to decode the string. We do not care about the return result here.
+        _ = stega
+            .decode(&input_path, correct_key.to_string(), &output_img_path)
+            .expect("failed to decrypt the data");
+
+        // Hash the file again.
+        let hash_final =
+            hashers::sha3_512_file(&output_img_path).expect("failed to create file hash");
+
+        // Was the file locked?
+        // It should have been locked as it was successfully decoded.
+        assert_ne!(
+            hash_original, hash_final,
+            "the read-once file was not locked after a successful decryption attempt"
         );
     }
 
