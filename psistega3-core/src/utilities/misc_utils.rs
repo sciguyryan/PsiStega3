@@ -94,22 +94,6 @@ where
     in_vec.append(&mut vec2);
 }
 
-/// Fills a vector with sequential values.
-///
-/// # Arguments
-///
-/// * `vec` - The vector to be filled with values.
-///
-/// Note: this method will only operate as expected if an explicit
-/// capacity has been specified.
-///
-#[inline]
-pub(crate) fn fill_vec_sequential(vec: &mut Vec<usize>) {
-    for i in 0..vec.capacity() {
-        vec.push(i);
-    }
-}
-
 /// Attempt to find a u8 slice within a u8 slice.
 ///
 /// # Arguments

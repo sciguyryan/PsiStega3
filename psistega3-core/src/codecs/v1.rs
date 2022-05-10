@@ -95,8 +95,7 @@ impl StegaV1 {
 
         // Create and fill our vector with sequential values, one
         // for each cell ID.
-        let mut cell_list = Vec::with_capacity(total_cells);
-        misc_utils::fill_vec_sequential(&mut cell_list);
+        let mut cell_list: Vec<usize> = (0..total_cells).into_iter().collect();
 
         // Randomize the order of the cell IDs.
         cell_list.shuffle(&mut rng);
