@@ -46,7 +46,7 @@ pub struct StegaV1 {
     /// Bits 1 to 7 are reserved for future use.
     flags: u8,
     /// The file locker instance for this codec.
-    pub(crate) locker: Locker,
+    locker: Locker,
     /// The logger instance for this codec.
     logger: Logger,
 }
@@ -775,7 +775,7 @@ impl StegaV1 {
                 1..=254 => {
                     // We do not need to calculate this if the value is either
                     // 0 or 255. This will slightly improve performance.
-                    if (i ^ cell_start) % 2 == 0 {
+                    if i % 2 == 0 {
                         *b + 1
                     } else {
                         *b - 1
@@ -797,7 +797,7 @@ impl StegaV1 {
     #[inline]
     fn write_u8_by_data_index(&mut self, img: &mut ImageWrapper, data: &u8, data_index: usize) {
         // We need to look up the cell to which this byte of data
-        //will be encoded within the image.
+        //  will be encoded within the image.
         // Each cell is 2 subcells (16 channels) in length.
         let start_index = self.get_data_cell_index(&data_index) * 2;
 

@@ -177,7 +177,7 @@ fn apply_codec_settings(
         // render the data unrecoverable.
         let mut enabled = true;
         if !unattended {
-            print!("WARNING: the file locker will render the encoded data unrecoverable after it has been successfully decoded. ");
+            print!("WARNING: the file locker will render the encoded data unrecoverable after it has been successfully decoded once. ");
             enabled = read_confirm_from_stdin(CONFIRM_PROMPT);
         }
 
