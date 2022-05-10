@@ -4,7 +4,6 @@ use crate::{
     utilities::{file_utils, misc_utils, png_utils},
 };
 
-use filetime::FileTime;
 use rand::prelude::SliceRandom;
 use std::{
     fmt,
@@ -439,13 +438,6 @@ impl Drop for Locker {
             let _ = file_utils::toggle_file_read_only_state(&locker_path);
         }
 
-        // Get the original last modified date of the file.
-        let meta = file_utils::get_file_metadata(&locker_path);
-        let mut mtime: FileTime = FileTime::now();
-        if let Ok(m) = &meta {
-            mtime = FileTime::from_last_modification_time(m);
-        }
-
         // If writing the locker file failed, exit immediately and
         // delete the locker file.
         if self.write_locker_file().is_err() {
@@ -458,11 +450,6 @@ impl Drop for Locker {
         // The file should be set as read-only again after the writing
         // operation has finished.
         let _ = file_utils::toggle_file_read_only_state(&locker_path);
-
-        // Set the file last modification time of the data file.
-        if meta.is_ok() {
-            let _ = file_utils::set_file_last_modified(&locker_path, mtime);
-        }
     }
 }
 
@@ -640,10 +627,6 @@ mod tests_locker {
         file_utils::toggle_file_read_only_state(&copy_path)
             .expect("failed to set the read-only state of the copied file");
 
-        // Get the last modified timestamp of the original file.
-        let old_timestamp = file_utils::get_file_last_modified(&old_path)
-            .expect("failed to get the timestamp of the original file");
-
         // Compute the hash of the original file.
         let old_hash = hashers::sha3_512_file(&old_path).expect("failed to create file hash");
 
@@ -682,15 +665,6 @@ mod tests_locker {
         assert!(
             locked_read_only.unwrap(),
             "the read-only state of the file was not restored after locking"
-        );
-
-        // Get the last modified timestamp of the copied file.
-        let copy_timestamp = file_utils::get_file_last_modified(&copy_path)
-            .expect("Failed to get the timestamp of the original file");
-
-        assert_eq!(
-            copy_timestamp, old_timestamp,
-            "the timestamp of the copied file is different than that of the original file"
         );
     }
 }

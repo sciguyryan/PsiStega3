@@ -4,7 +4,6 @@ use crate::{
 };
 
 use argon2::Argon2;
-use crc32fast::Hasher as Crc32;
 use memmap2::Mmap;
 use sha3::{Digest, Sha3_512};
 use std::fs::File;
@@ -13,7 +12,7 @@ use std::fs::File;
 ///
 /// # Arguments
 ///
-/// * `str` - The string to be hashed.
+/// * `key_bytes` - The key bytes to be hashed.
 /// * `salt` - A 12-byte array of random values.
 /// * `m_cost` - The memory cost (in kilobytes) to be applied to the Argon2 hashing function.
 /// * `p_cost` - The parallel cost (in threads) to be applied to the Argon2 hashing function.
@@ -38,7 +37,7 @@ pub fn argon2_string(
     };
 
     // This method return an error condition if any of supplied parameters
-    // are incorrect prior to this statement.
+    //   are incorrect prior to this statement.
     // This unwrap should be safe as a result.
     let params = builder.params().unwrap();
 
@@ -62,7 +61,7 @@ pub fn argon2_string(
 /// * `slice` - The u8 slice to be hashed.
 ///
 pub fn crc32_slice(slice: &[u8]) -> u32 {
-    let mut hasher = Crc32::new();
+    let mut hasher = crc32fast::Hasher::new();
     hasher.update(slice);
     hasher.finalize()
 }

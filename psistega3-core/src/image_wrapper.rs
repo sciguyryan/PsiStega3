@@ -5,7 +5,7 @@ use crate::{
 
 use image::{ColorType, ImageFormat};
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct ImageWrapper {
     image_bytes: Vec<u8>,
     /// A boolean indicating whether modifications to the image should be permitted.
