@@ -754,12 +754,6 @@ impl StegaV1 {
     /// * `cell_start` - The index of the first pixel of the cell into which the data will be encoded.
     ///
     fn write_u8(&mut self, img: &mut ImageWrapper, data: &u8, cell_start: usize) {
-        // If the data is zero then we can fast-path here as we will not
-        // have any bit set to work with.
-        if *data == 0 {
-            return;
-        }
-
         // Get the image bytes relevant to this cell.
         let bytes = img.get_subcells_from_index_mut(cell_start, 2);
         for (i, b) in bytes.iter_mut().enumerate() {
@@ -796,6 +790,12 @@ impl StegaV1 {
     ///
     #[inline]
     fn write_u8_by_data_index(&mut self, img: &mut ImageWrapper, data: &u8, data_index: usize) {
+        // If the data is zero then we can fast-path here as we will not
+        // have any actions to undertake.
+        if *data == 0 {
+            return;
+        }
+
         // We need to look up the cell to which this byte of data
         //  will be encoded within the image.
         // Each cell is 2 subcells (16 channels) in length.
