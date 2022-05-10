@@ -33,6 +33,7 @@ impl Locker {
             application_name: application_name.to_string(),
             entries: Vec::with_capacity(20),
             file_name_postfix: file_name_postfix.to_string(),
+
             #[cfg(test)]
             clear_on_exit: false,
         };

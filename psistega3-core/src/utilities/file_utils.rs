@@ -5,7 +5,7 @@ use crate::{
 
 use filetime::FileTime;
 use std::{
-    fs::{File, Metadata},
+    fs::{File, Metadata, self},
     io::{Read, Seek, SeekFrom, Write},
     path::Path,
 };
@@ -210,7 +210,7 @@ pub(crate) fn toggle_file_read_only_state(path: &str) -> Result<()> {
     permissions.set_readonly(!permissions.readonly());
 
     // Update the file system.
-    match std::fs::set_permissions(path, permissions) {
+    match fs::set_permissions(path, permissions) {
         Ok(_) => Ok(()),
         Err(_) => Err(Error::FileMetadata),
     }

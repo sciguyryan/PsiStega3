@@ -1,8 +1,10 @@
 use path_absolutize::Absolutize;
 use rand::Rng;
-use std::path::PathBuf;
+use std::{fs, path::PathBuf};
 
-const FILE_CHARS: &str = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890";
+
+
+const FILE_CHARS: &str = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ123456789-__";
 
 pub(crate) struct TestUtils {
     /// The base folder path for the test files.
@@ -49,7 +51,7 @@ impl TestUtils {
         let old_path = self.get_in_file(file);
         let new_path = self.get_out_file(ext, auto_clear);
 
-        let r = std::fs::copy(&old_path, &new_path);
+        let r = fs::copy(&old_path, &new_path);
         assert!(r.is_ok(), "failed to create copy of file");
 
         new_path
@@ -172,7 +174,7 @@ impl TestUtils {
 impl Drop for TestUtils {
     fn drop(&mut self) {
         for f in &self.auto_clear_files {
-            let _ = std::fs::remove_file(f);
+            let _ = fs::remove_file(f);
         }
     }
 }
