@@ -7,12 +7,29 @@ use rand_core::{OsRng, RngCore};
 ///
 /// * `string` - The base64 string to be decoded.
 ///
-pub(crate) fn base64_string_to_vec(b64_str: &str) -> Result<Vec<u8>> {
-    let mut buf: Vec<u8> = Vec::new();
+pub(crate) fn decode_base64_str_to_vec(b64_str: &str) -> Result<Vec<u8>> {
+    // A base64 string is roughly 1.37 times large than the original string.
+    // Since the capacity must be a usize, allocating the size
+    //   of the encoded string will provide more than enough room within the
+    //   vector for the output, thereby avoiding reallocation.
+    let mut buf: Vec<u8> = Vec::with_capacity(b64_str.len());
     match base64::decode_config_buf(&b64_str, base64::STANDARD, &mut buf) {
         Ok(_) => Ok(buf),
         Err(_) => Err(Error::Base64Decoding),
     }
+}
+
+/// Encode a u8 slice as a base64 string.
+///
+/// * `bytes` - The slice of u8 values to be encoded.
+///
+pub(crate) fn encode_u8_slice_to_base64_str(bytes: &[u8]) -> String {
+    // A base64 string is roughly 1.37 times large than the original string.
+    // Since the capacity must be a usize, allocate double the capacity of the
+    //   slice will avoid reallocation.
+    let mut buf = String::with_capacity(2 * bytes.len());
+    base64::encode_config_buf(bytes, base64::STANDARD, &mut buf);
+    buf
 }
 
 /// Calculate the Shannon entropy of a byte vector.
@@ -29,11 +46,11 @@ pub fn entropy(bytes: &[u8]) -> f32 {
     }
 
     // The total entropy is the sum of the probabilities
-    // of each byte occurring within a sequence.
+    //   of each byte occurring within a sequence.
     // The maximum total entropy is equal to the
-    // total number of microstates in each term.
+    //   total number of microstates in each term.
     // As a byte typically consists of 8-bits in most
-    // modern systems, the maximum entropy will be 8.
+    //   modern systems, the maximum entropy will be 8.
     // The closer to 8, the higher the total entropy is.
     let len = bytes.len();
     histogram
@@ -87,16 +104,6 @@ pub(crate) fn find_subsequence(haystack: &[u8], needle: &[u8]) -> Option<usize> 
 #[inline]
 pub(crate) fn set_bit_state(value: &mut u8, index: usize, state: bool) {
     *value = (*value & !(1 << index)) | ((state as u8) << index)
-}
-
-/// Convert a u8 slice to a base64 string.
-///
-/// * `bytes` - The slice of u8 values to be encoded.
-///
-pub(crate) fn u8_slice_to_base64_string(bytes: &[u8]) -> String {
-    let mut buf = String::new();
-    base64::encode_config_buf(bytes, base64::STANDARD, &mut buf);
-    buf
 }
 
 /// Convert a u8 slice into its hexadecimal representation.

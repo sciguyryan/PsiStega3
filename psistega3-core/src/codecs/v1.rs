@@ -352,7 +352,7 @@ impl StegaV1 {
         let nonce = Nonce::from_slice(&nonce_bytes);
 
         // We will convert the input data byte vector into a base64 string.
-        let plaintext = misc_utils::u8_slice_to_base64_string(data);
+        let plaintext = misc_utils::encode_u8_slice_to_base64_str(data);
         let ct_bytes = unwrap_res_or_return!(
             cipher.encrypt(nonce, plaintext.as_bytes()),
             Err(Error::EncryptionFailed)
@@ -849,7 +849,7 @@ impl Codec for StegaV1 {
         let b64_str = self.decode_internal(original_img_path, key, encoded_img_path)?;
 
         // Decode the base64 string into the raw bytes.
-        let bytes = misc_utils::base64_string_to_vec(&b64_str)?;
+        let bytes = misc_utils::decode_base64_str_to_vec(&b64_str)?;
 
         // Convert the raw bytes back into a string. This is done lossy
         // to ensure that any invalid sequences are handled.
@@ -867,7 +867,7 @@ impl Codec for StegaV1 {
         let b64_str = self.decode_internal(original_img_path, key, encoded_img_path)?;
 
         // Decode the base64 string into the raw bytes.
-        let bytes = misc_utils::base64_string_to_vec(&b64_str)?;
+        let bytes = misc_utils::decode_base64_str_to_vec(&b64_str)?;
 
         // Write the raw bytes directly to the output file.
         if self.output_files {
