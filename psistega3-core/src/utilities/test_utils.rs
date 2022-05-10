@@ -2,8 +2,6 @@ use path_absolutize::Absolutize;
 use rand::Rng;
 use std::{fs, path::PathBuf};
 
-
-
 const FILE_CHARS: &str = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ123456789-__";
 
 pub(crate) struct TestUtils {

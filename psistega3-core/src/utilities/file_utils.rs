@@ -5,7 +5,7 @@ use crate::{
 
 use filetime::FileTime;
 use std::{
-    fs::{File, Metadata, self},
+    fs::{self, File, Metadata},
     io::{Read, Seek, SeekFrom, Write},
     path::Path,
 };

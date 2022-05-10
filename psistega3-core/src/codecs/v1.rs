@@ -63,7 +63,7 @@ impl StegaV1 {
 
         Self {
             application_name: application_name.to_string(),
-            data_cell_map: HashMap::with_capacity(1),
+            data_cell_map: HashMap::new(),
             noise_layer: true,
             output_files: true,
             flags: 0,
@@ -101,12 +101,12 @@ impl StegaV1 {
         cell_list.shuffle(&mut rng);
 
         // Add the randomized entries to our cell map.
-        self.data_cell_map = HashMap::with_capacity(total_cells);
-        let mut i = 0;
-        while let Some(id) = cell_list.pop() {
-            self.data_cell_map.insert(i, id);
-            i += 1;
-        }
+        self.data_cell_map = cell_list
+            .iter()
+            .rev()
+            .enumerate()
+            .map(|(i, id)| (i, *id))
+            .collect();
     }
 
     /// Clear the lock on a file. Only used when use_file_locker is enabled.
@@ -141,6 +141,8 @@ impl StegaV1 {
             return Err(Error::DecryptionFailed);
         }
 
+        // If the file locker system is enabled then we will need to computer
+        // the SHA3-512 has of the file here.
         let mut enc_hash: Vec<u8> = vec![];
         if self.is_file_locker_enabled() {
             enc_hash = unwrap_res_or_return!(
@@ -196,7 +198,7 @@ impl StegaV1 {
             * 2; /* 2 subcells per cell */
 
         /*
-          In total we will never store more than 0xffffffff bytes of data.
+          In total we will never store more than 0xFFFFFFFF bytes of data.
           This is done to keep the total number of cells below the maximum
             possible value for an unsigned 32-bit integer.
         */
@@ -379,10 +381,10 @@ impl StegaV1 {
             + ct_bytes.len() as u64)
             * 2; /* 2 subcells per cell */
 
-        // In total we can never store more than 0xffffffff bytes of data to
+        // In total we can never store more than 0xFFFFFFFF bytes of data to
         // ensure that the values of usize never exceeds the maximum value
         // of the u32 type.
-        if total_cells_needed > 0xffffffff {
+        if total_cells_needed > u32::MAX as u64 {
             return Err(Error::DataTooLarge);
         }
 
@@ -408,7 +410,6 @@ impl StegaV1 {
         data.push_u8_slice(&ct_bytes);
 
         // Fill all of the unused cells with junk random data.
-        // Yes, I know... I'm evil.
         if self.noise_layer {
             data.fill_empty_bytes();
         }
@@ -445,6 +446,7 @@ impl StegaV1 {
     /// Note: this method will panic if the data cell is not present in the map.
     /// In practice this should never occur.
     ///
+    #[inline]
     fn get_data_cell_index(&self, data_index: &usize) -> usize {
         *self
             .data_cell_map
@@ -505,11 +507,13 @@ impl StegaV1 {
         misc_utils::set_bit_state(&mut data[0], 0, self.is_file_locker_enabled());
 
         // The 2nd to 4th bits will be restores in bytes 2 to 4 respectively.
+        // Bits 3 and 4 are currently reserved for future use.
         misc_utils::set_bit_state(&mut data[1], 0, self.is_read_once_enabled());
         misc_utils::set_bit_state(&mut data[2], 0, false);
         misc_utils::set_bit_state(&mut data[3], 0, false);
 
         // 5th and 6th bits will be stored in byte 5.
+        // These are currently reserved for future use.
         misc_utils::set_bit_state(&mut data[4], 0, false);
         misc_utils::set_bit_state(&mut data[4], 1, false);
 
@@ -608,7 +612,7 @@ impl StegaV1 {
         flag_states[0] = misc_utils::is_bit_set(&data[0], 0);
 
         // The 2nd to 4th bits will be restores in bytes 2 to 4 respectively.
-        // These are currently reserved for future use.
+        // Bits 3 and 4 are reserved fo future use.
         flag_states[1] = misc_utils::is_bit_set(&data[1], 0);
         flag_states[2] = misc_utils::is_bit_set(&data[2], 0);
         flag_states[3] = misc_utils::is_bit_set(&data[3], 0);
@@ -937,6 +941,7 @@ impl DataDecoder {
     }
 
     /// Iterates through each XOR'ed byte and XOR pair, adds the value produced by applying the XOR operation on them to the internal list.
+    ///
     pub fn decode(&mut self) {
         let len = self.xor_bytes.len() / 2;
         for _ in 0..len {
@@ -947,7 +952,6 @@ impl DataDecoder {
               If the number of cells is not divisible by 2 then
                 the final cell will not have a corresponding XOR cell.
               In that case the final cell value will be the XOR value.
-              This is fine as it will contain no useful data in any event.
             */
             if let Some(x) = xor {
                 self.bytes.push_back(xor_value ^ x);
@@ -960,6 +964,7 @@ impl DataDecoder {
     }
 
     /// Pop a XOR-decoded byte from the front of the byte list.
+    ///
     pub fn pop_u8(&mut self) -> u8 {
         assert!(!self.bytes.is_empty(), "insufficient values available");
 
