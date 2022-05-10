@@ -72,26 +72,23 @@ pub(crate) fn is_little_endian() -> bool {
 /// Note: this method is intended to be called on vectors that have a predefined
 /// capacity.
 ///
-pub(crate) fn fast_fill_vec_random<T>(in_vec: &mut Vec<u8>, rng: &mut T)
+pub fn fast_fill_vec_random<T>(in_vec: &mut Vec<u8>, rng: &mut T)
 where
     T: RngCore,
 {
-    const ARRAY_SIZE: usize = 64;
+    const ARRAY_SIZE: usize = 128;
     let needed = in_vec.capacity() - in_vec.len();
     let iterations = needed / ARRAY_SIZE;
     let remainder = needed - (iterations * ARRAY_SIZE);
 
-    let mut vec1: Vec<u8> = Vec::with_capacity(needed);
     for _ in 0..iterations {
         let mut bytes: [u8; ARRAY_SIZE] = [0; ARRAY_SIZE];
         rng.fill(&mut bytes);
-        vec1.extend_from_slice(&bytes);
+        in_vec.extend_from_slice(&bytes);
     }
 
-    let mut vec2: Vec<u8> = (0..remainder).map(|_| rng.gen()).collect();
-
-    in_vec.append(&mut vec1);
-    in_vec.append(&mut vec2);
+    let vec: Vec<u8> = (0..remainder).map(|_| rng.gen()).collect();
+    in_vec.extend_from_slice(&vec);
 }
 
 /// Attempt to find a u8 slice within a u8 slice.
