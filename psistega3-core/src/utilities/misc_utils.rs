@@ -1,7 +1,6 @@
 use crate::error::{Error, Result};
 
 use core::fmt::Write;
-use rand::Rng;
 use rand_core::{OsRng, RngCore};
 
 /// Decode a base64 string and convert it to raw vector of bytes.
@@ -62,33 +61,6 @@ pub(crate) fn is_bit_set(value: &u8, index: usize) -> bool {
 #[allow(dead_code)]
 pub(crate) fn is_little_endian() -> bool {
     0x1234u32 == 0x1234u32.to_le()
-}
-
-/// Fill a u8 vector with randomly generated values.
-///
-/// * `in_vec` - The vector to be filled with u8 values.
-/// * `rng` - The random number generator that will be used to generate the values.
-///
-/// Note: this method is intended to be called on vectors that have a predefined
-/// capacity.
-///
-pub fn fast_fill_vec_random<T>(in_vec: &mut Vec<u8>, rng: &mut T)
-where
-    T: RngCore,
-{
-    const ARRAY_SIZE: usize = 128;
-    let needed = in_vec.capacity() - in_vec.len();
-    let iterations = needed / ARRAY_SIZE;
-    let remainder = needed - (iterations * ARRAY_SIZE);
-
-    for _ in 0..iterations {
-        let mut bytes: [u8; ARRAY_SIZE] = [0; ARRAY_SIZE];
-        rng.fill(&mut bytes);
-        in_vec.extend_from_slice(&bytes);
-    }
-
-    let vec: Vec<u8> = (0..remainder).map(|_| rng.gen()).collect();
-    in_vec.extend_from_slice(&vec);
 }
 
 /// Attempt to find a u8 slice within a u8 slice.

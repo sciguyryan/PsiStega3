@@ -1049,8 +1049,21 @@ impl DataEncoder {
     }
 
     /// Fill any unused slots in the byte list with random byte data.
+    ///
     pub fn fill_empty_bytes(&mut self) {
-        misc_utils::fast_fill_vec_random(&mut self.bytes, &mut self.rng);
+        const ARRAY_SIZE: usize = 128;
+        let needed = self.bytes.capacity() - self.bytes.len();
+        let iterations = needed / ARRAY_SIZE;
+        let remainder = needed - (iterations * ARRAY_SIZE);
+
+        for _ in 0..iterations {
+            let mut bytes: [u8; ARRAY_SIZE] = [0; ARRAY_SIZE];
+            self.rng.fill(&mut bytes);
+            self.bytes.extend_from_slice(&bytes);
+        }
+
+        let vec: Vec<u8> = (0..remainder).map(|_| self.rng.gen()).collect();
+        self.bytes.extend_from_slice(&vec);
     }
 
     /// Add a byte of data into the byte list.
