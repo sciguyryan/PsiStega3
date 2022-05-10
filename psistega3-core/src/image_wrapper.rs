@@ -1,8 +1,11 @@
-use crate::error::{Error, Result};
+use crate::{
+    error::{Error, Result},
+    macros::*,
+};
 
-use image::{ColorType, DynamicImage, GenericImageView, ImageFormat};
+use image::{ColorType, ImageFormat};
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct ImageWrapper {
     image_bytes: Vec<u8>,
     /// A boolean indicating whether modifications to the image should be permitted.
@@ -50,7 +53,7 @@ impl ImageWrapper {
     #[inline]
     pub fn get_subcells_from_index_mut(&mut self, start_index: usize, count: u16) -> &mut [u8] {
         let start = start_index * 4;
-        let end = start + (count as usize * 4);
+        let end = start + (count * 4) as usize;
         &mut self.image_bytes[start..end]
     }
 
@@ -101,16 +104,18 @@ impl ImageWrapper {
     ///
     /// # Arguments
     ///
-    /// * `file_path` - The path to the image file.
+    /// * `path` - The path to the image file.
     ///
-    pub fn load_from_file(file_path: &str, read_only: bool) -> Result<ImageWrapper> {
-        use DynamicImage::*;
+    pub fn load_from_file(path: &str, read_only: bool) -> Result<ImageWrapper> {
+        use crate::utilities::file_utils;
+        use image::{DynamicImage::*, GenericImageView};
 
-        let image = match image::open(file_path) {
-            Ok(img) => img,
-            // TODO: add more granularity to the errors here.
-            Err(_) => return Err(Error::ImageOpening),
-        };
+        // We can't load an image that doesn't exist.
+        if !file_utils::path_exists(path) {
+            return Err(Error::PathInvalid);
+        }
+
+        let image = unwrap_res_or_return!(image::open(path), Err(Error::ImageOpening));
 
         let colour_type = match &image {
             ImageLuma8(_) => ColorType::L8,
@@ -138,7 +143,7 @@ impl ImageWrapper {
 
         // If we can't identify the image format then we cannot
         // go any further here.
-        if let Ok(f) = ImageFormat::from_path(file_path) {
+        if let Ok(f) = ImageFormat::from_path(path) {
             w.format = f;
         } else {
             return Err(Error::ImageTypeInvalid);
@@ -153,12 +158,38 @@ impl ImageWrapper {
     ///
     /// * `path` - The path to which the file should be saved.
     ///
-    /// `Note:` the file type is derived from the file extension.
-    ///
     pub fn save(&self, path: &str) -> image::ImageResult<()> {
         assert!(!self.read_only, "attempted to write to a read-only file");
 
         let (w, h) = self.dimensions;
         image::save_buffer_with_format(path, &self.image_bytes, w, h, self.colour_type, self.format)
+    }
+
+    /// Scramble the data within the image file.
+    ///
+    pub fn scramble(&mut self) {
+        use rand::{thread_rng, Rng};
+
+        // Iterate over each of the image bytes and modify them randomly.
+        // The file will be visually the same, but will be modified such that
+        // any encoded data is rendered invalid.
+        for b in &mut self.image_bytes {
+            // If the value is 0 then the new value will always be 1.
+            // If the value is 255 then the new value will always be 254.
+            // Otherwise the value will be assigned to be ±1.
+            *b = match *b {
+                0 => 1,
+                1..=254 => {
+                    // We do not need to calculate this if the value is either
+                    // 0 or 255. This will slightly improve performance.
+                    if thread_rng().gen_bool(0.5) {
+                        *b + 1
+                    } else {
+                        *b - 1
+                    }
+                }
+                255 => 254,
+            };
+        }
     }
 }

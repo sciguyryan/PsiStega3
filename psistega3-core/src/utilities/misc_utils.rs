@@ -3,32 +3,13 @@ use crate::error::{Error, Result};
 use core::fmt::Write;
 use rand::Rng;
 use rand_core::{OsRng, RngCore};
-use std::{
-    fs::File,
-    path::{Path, PathBuf},
-};
-
-/// A list of the bitmasks that can check if a given but is set in a u8 value.
-pub(crate) const U8_BIT_MASKS: [u8; 8] = [1, 2, 4, 8, 16, 32, 64, 128];
-
-/// A list of the bitmasks that can be used to set the state of a bit in a u8 value.
-pub(crate) const U8_UNSET_BIT_MASK: [u8; 8] = [
-    255 - 1,
-    255 - 2,
-    255 - 4,
-    255 - 8,
-    255 - 16,
-    255 - 32,
-    255 - 64,
-    255 - 128,
-];
 
 /// Decode a base64 string and convert it to raw vector of bytes.
 ///
 /// * `string` - The base64 string to be decoded.
 ///
-pub(crate) fn base64_string_to_vector(b64_str: &str) -> Result<Vec<u8>> {
-    let mut buf = Vec::<u8>::new();
+pub(crate) fn base64_string_to_vec(b64_str: &str) -> Result<Vec<u8>> {
+    let mut buf: Vec<u8> = Vec::new();
     match base64::decode_config_buf(&b64_str, base64::STANDARD, &mut buf) {
         Ok(_) => Ok(buf),
         Err(_) => Err(Error::Base64Decoding),
@@ -65,16 +46,16 @@ pub fn entropy(bytes: &[u8]) -> f32 {
         .sum()
 }
 
-/// Check if a bitmask is set for a given u8 value.
+/// Check if a bit is set for a given u8 value.
 ///
 /// # Arguments
 ///
-/// * `value` - The value against which the bitmask should be checked.
+/// * `value` - The value against which the bit should be checked.
 /// * `index` - The bit index to be modified.
 ///
 #[inline]
 pub(crate) fn is_bit_set(value: &u8, index: usize) -> bool {
-    (value & U8_BIT_MASKS[index]) != 0
+    ((value >> index) & 1) == 1
 }
 
 /// Check if the current platform is little Endian.
@@ -91,7 +72,6 @@ pub(crate) fn is_little_endian() -> bool {
 /// Note: this method is intended to be called on vectors that have a predefined
 /// capacity.
 ///
-#[inline]
 pub(crate) fn fast_fill_vec_random<T>(in_vec: &mut Vec<u8>, rng: &mut T)
 where
     T: RngCore,
@@ -114,12 +94,6 @@ where
     in_vec.append(&mut vec2);
 }
 
-/// Get the path to the current execution directory.
-#[allow(dead_code)]
-pub(crate) fn get_current_dir() -> PathBuf {
-    std::env::current_dir().unwrap()
-}
-
 /// Fills a vector with sequential values.
 ///
 /// # Arguments
@@ -130,42 +104,23 @@ pub(crate) fn get_current_dir() -> PathBuf {
 /// capacity has been specified.
 ///
 #[inline]
-pub(crate) fn fill_vector_sequential(vec: &mut Vec<usize>) {
-    (0..vec.capacity()).for_each(|i| {
+pub(crate) fn fill_vec_sequential(vec: &mut Vec<usize>) {
+    for i in 0..vec.capacity() {
         vec.push(i);
-    });
+    }
 }
 
-/// Check if the specified path is valid and exists.
+/// Attempt to find a u8 slice within a u8 slice.
 ///
-/// * `path` - The path to be checked.
+/// # Arguments
 ///
-#[inline]
-pub(crate) fn path_exists(path: &str) -> bool {
-    Path::new(path).exists()
-}
-
-/// Read a file into a u8 vector.
+/// * `haystack` - The u8 slice within which the search should be performed.
+/// * `needle` - The u8 slice to search for.
 ///
-/// * `path` - The path to the file.
-///
-pub(crate) fn read_file_to_u8_vector(path: &str) -> Result<Vec<u8>> {
-    use std::io::Read;
-
-    if !Path::new(path).exists() {
-        return Err(Error::PathInvalid);
-    }
-
-    let mut file = match File::open(&path) {
-        Ok(f) => f,
-        Err(_) => return Err(Error::File),
-    };
-
-    let mut buffer = Vec::new();
-    match file.read_to_end(&mut buffer) {
-        Ok(_) => Ok(buffer),
-        Err(_) => Err(Error::FileRead),
-    }
+pub(crate) fn find_subsequence(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    haystack
+        .windows(needle.len())
+        .position(|window| window == needle)
 }
 
 /// Set the state of a bit in a u8 value.
@@ -178,29 +133,7 @@ pub(crate) fn read_file_to_u8_vector(path: &str) -> Result<Vec<u8>> {
 ///
 #[inline]
 pub(crate) fn set_bit_state(value: &mut u8, index: usize, state: bool) {
-    if state {
-        *value |= U8_BIT_MASKS[index];
-    } else {
-        *value &= U8_UNSET_BIT_MASK[index];
-    }
-}
-
-/// Convert a u8 slice into its hexadecimal representation.
-///
-/// # Arguments
-///
-/// * `arr` - The u8 slice to be converted.
-///
-/// Note: we ignore the error condition from write! as this is
-/// completely internal and is designed for use with debug code.
-///
-#[allow(unused_must_use)]
-pub(crate) fn u8_array_to_hex(arr: &[u8]) -> String {
-    let mut str = String::with_capacity(2 * arr.len());
-    arr.iter().for_each(|byte| {
-        write!(str, "{:02X}", byte);
-    });
-    str
+    *value = (*value & !(1 << index)) | ((state as u8) << index)
 }
 
 /// Convert a u8 slice to a base64 string.
@@ -213,6 +146,50 @@ pub(crate) fn u8_slice_to_base64_string(bytes: &[u8]) -> String {
     buf
 }
 
+/// Convert a u8 slice into its hexadecimal representation.
+///
+/// # Arguments
+///
+/// * `slice` - The u8 slice to be converted.
+/// * `uppercase` - A boolean indicating whether the case of the hexadecimal characters.
+///
+/// `Note:` we ignore the error condition from write! as this is
+///  completely internal and is designed for use with debug code.
+///
+#[allow(unused_must_use)]
+pub(crate) fn u8_slice_to_hex(slice: &[u8], uppercase: bool) -> String {
+    let mut str = String::with_capacity(2 * slice.len());
+    for b in slice {
+        if uppercase {
+            write!(str, "{:02X}", b);
+        } else {
+            write!(str, "{:02x}", b);
+        }
+    }
+    str
+}
+
+/// Convert a u8 slice to an 64-bit unsigned integer.
+///
+/// # Arguments
+///
+/// * `bytes` - The slice of u8 values to be converted.
+///
+pub(crate) fn u8_slice_to_u64(bytes: &[u8]) -> u64 {
+    use byteorder::{LittleEndian, ReadBytesExt};
+
+    assert!(
+        bytes.len() == 64,
+        "Byte vector is not 64 bytes (512-bits) in length."
+    );
+
+    let mut rdr = std::io::Cursor::new(bytes);
+    let seed = rdr.read_u64::<LittleEndian>();
+    assert!(seed.is_ok(), "Failed to create a u64 from the key bytes.");
+
+    seed.unwrap()
+}
+
 /// Convert a u8 value into its binary representation.
 ///
 /// # Arguments
@@ -220,7 +197,7 @@ pub(crate) fn u8_slice_to_base64_string(bytes: &[u8]) -> String {
 /// * `byte` - The byte to be converted.
 ///
 /// `Note:` we ignore the error condition from write! as this is
-/// completely internal and is designed for use with debug code.
+///  completely internal and is designed for use with debug code.
 ///
 #[allow(unused_must_use, dead_code)]
 pub(crate) fn u8_to_binary(byte: &u8) -> String {
@@ -234,26 +211,4 @@ pub(crate) fn secure_random_bytes<const N: usize>() -> [u8; N] {
     let mut arr = [0u8; N];
     OsRng.fill_bytes(&mut arr);
     arr
-}
-
-/// Write a u8 slice to an output file.
-///
-/// * `out_file` - The path to the file.
-/// * `bytes` - The slice of u8 values to be written to the file.
-///
-pub(crate) fn write_u8_slice_to_file(out_file: &str, bytes: &[u8]) -> Result<()> {
-    use std::io::Write;
-
-    // We have decoded a valid base64 string.
-    // Next we need to write the data to the file.
-    let mut file = match File::create(&out_file) {
-        Ok(f) => f,
-        Err(_) => return Err(Error::FileCreate),
-    };
-
-    // Write the resulting bytes directly into the output file.
-    match file.write_all(bytes) {
-        Ok(_) => Ok(()),
-        Err(_) => Err(Error::FileWrite),
-    }
 }

@@ -24,10 +24,14 @@ pub enum Error {
     FileCreate,
     /// An error occurred while attempting to hash a file.
     FileHashingError,
-    /// Unable to get the file metadata.
+    /// Error reading or writing a file's metadata.
     FileMetadata,
+    /// Error opening a file.
+    FileOpen,
     /// Error reading from a file.
     FileRead,
+    /// Error truncating a file.
+    FileTruncate,
     /// Error writing to a file.
     FileWrite,
     /// Invalid image dimensions.
@@ -38,6 +42,8 @@ pub enum Error {
     ImageFormatUnknown,
     /// There is insufficient space within the image to encode the specified data.
     ImageInsufficientSpace,
+    /// The image is malformed.
+    ImageMalformed,
     /// There was an error when attempting to load an image file.
     ImageOpening,
     /// There was an error when attempting to save an image file.
@@ -52,7 +58,6 @@ pub enum Error {
     LockerFileRead,
     /// Unable to write the data file.
     LockerFileWrite,
-
     /// The specified path is invalid.
     PathInvalid,
     /// Invalid version number.
@@ -71,8 +76,10 @@ impl fmt::Display for Error {
             Error::File => "A generic file-related error occurred.",
             Error::FileCreate => "An error occurred when attempting to create a file.",
             Error::FileHashingError => "An error occurred when attempting to hash a file.",
-            Error::FileMetadata => "Unable to get the file metadata.",
+            Error::FileOpen => "An error occurred when attempting open a file.",
+            Error::FileMetadata => "An error occurred when attempting to read or write a file's metadata.",
             Error::FileRead => "An error occurred when attempting to read from a file.",
+            Error::FileTruncate => "An error occurred when attempting to truncate a file.",
             Error::FileWrite => "An error occurred when attempting to write to a file.",
             Error::ImageDimensionsInvalid => {
                 "Invalid image dimensions: the total number of available data channels must be divisible by 8."
@@ -82,6 +89,7 @@ impl fmt::Display for Error {
             Error::ImageInsufficientSpace => {
                 "There is insufficient space to encode the data within the image."
             }
+            Error::ImageMalformed => "The image file is malformed.",
             Error::ImageOpening => "Error when attempting to load the specified image.",
             Error::ImageSaving(s) => s,
             Error::ImageTypeInvalid => "Invalid image pixel type.",

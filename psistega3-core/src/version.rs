@@ -6,7 +6,7 @@ use core::convert::TryFrom;
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 #[repr(u8)]
 pub enum Version {
-    /// Version 1 (0x01 in hex)
+    /// Version 1 (0x01)
     V0x01,
 }
 

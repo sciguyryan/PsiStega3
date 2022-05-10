@@ -2,8 +2,10 @@
 
 pub mod codecs;
 pub mod error;
-pub mod hashers;
+mod hashers;
 mod image_wrapper;
+mod locker;
 mod logger;
-pub mod utils;
+mod macros;
+pub mod utilities;
 pub mod version;

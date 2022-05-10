@@ -65,6 +65,16 @@ pub trait Codec {
         output_file_path: &str,
     ) -> Result<()>;
 
+    /// Set the name of the application.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - A string containing the name of the application.
+    ///
+    /// `Note:` this is intended for custom applications that make use of the PsiStega3 crate.
+    ///
+    fn set_application_name(&mut self, name: String);
+
     /// Enable or disable a specific configuration.
     ///
     /// # Arguments
@@ -81,10 +91,6 @@ pub enum Config {
     ///
     /// Applicable to: v1.
     NoiseLayer,
-    /// Enable or disable fast variance.
-    ///
-    /// Applicable to: v1.
-    FastVariance,
     /// Enable or disable verbose mode.
     ///
     /// Applicable to: v1.
@@ -93,4 +99,12 @@ pub enum Config {
     ///
     /// Applicable to: v1.
     OutputFiles,
+    /// Enable or disable the file access locking system for this file.
+    ///
+    /// Applicable to: v1.
+    Locker,
+    /// Enable or disable the single-read locker system.
+    ///
+    /// Applicable to: v1.
+    ReadOnce,
 }
