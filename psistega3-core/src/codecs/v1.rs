@@ -720,7 +720,7 @@ impl StegaV1 {
         }
 
         // This error counts as a failed decryption attempt.
-        self.locker.increment_file_lock(path, hash);
+        self.locker.increment_attempts(path, hash);
     }
 
     /// Validate if the image can be used with our steganography algorithms.
@@ -1134,6 +1134,9 @@ mod tests_encode_decode {
     const BASE: [&str; 1] = ["encoding_decoding"];
 
     /// Create a StegaV1 instance.
+    ///
+    /// `Note:` we will attempt to clear the locker file upon exit by default.
+    ///
     fn create_instance() -> StegaV1 {
         use crate::{locker::Locker, logger::Logger};
         use std::collections::HashMap;
@@ -1142,8 +1145,9 @@ mod tests_encode_decode {
 
         // Create a custom locker instance per test.
         let locker_pf = TestUtils::generate_ascii_string(16);
-        let locker =
+        let mut locker =
             Locker::new(app_name, &locker_pf).expect("could not initialize the file locker");
+        locker.clear_on_exit = true;
 
         // Return a new StegaV1 instance.
         StegaV1 {
@@ -1492,7 +1496,7 @@ mod tests_encode_decode {
         let ref_img_path = tu.get_in_file("reference-valid.png");
         let enc_img_path = tu.get_in_file("encoded-text.png");
 
-        // Attempt to decode the string, ensure the locker file is cleared on exit.
+        // Attempt to decode the string.
         let mut stega = create_instance();
 
         let r = stega
@@ -1510,7 +1514,7 @@ mod tests_encode_decode {
         let ref_img_path = tu.get_in_file("reference-valid.png");
         let enc_img_path = tu.get_in_file("encoded-text.png");
 
-        // Attempt to decode the string, ensure the locker file is cleared on exit.
+        // Attempt to decode the string.
         let mut stega = create_instance();
 
         let r = stega.decode(&ref_img_path, "A".to_string(), &enc_img_path);
@@ -1529,7 +1533,7 @@ mod tests_encode_decode {
         let ref_path = tu.get_in_file("reference-invalid.png");
         let enc_path = tu.get_in_file("encoded-text.png");
 
-        // Attempt to decode the string, ensure the locker file is cleared on exit.
+        // Attempt to decode the string.
         // The key is valid but the reference image is not.
         let mut stega = create_instance();
 
@@ -1583,7 +1587,7 @@ mod tests_encode_decode {
         let enc_path = tu.get_in_file("encoded-file-text.png");
         let output_file_path = tu.get_out_file("png", true);
 
-        // Attempt to decode the file, ensure the locker file is cleared on exit.
+        // Attempt to decode the file.
         let mut stega = create_instance();
 
         let r = stega.decode_file(&ref_path, "A".to_string(), &enc_path, &output_file_path);
@@ -1603,7 +1607,7 @@ mod tests_encode_decode {
         let enc_path = tu.get_in_file("encoded-file-text.png");
         let output_file_path = tu.get_out_file("png", true);
 
-        // Attempt to decode the file, ensure the locker file is cleared on exit.
+        // Attempt to decode the file.
         let mut stega = create_instance();
 
         let r = stega.decode_file(&ref_path, KEY.to_string(), &enc_path, &output_file_path);

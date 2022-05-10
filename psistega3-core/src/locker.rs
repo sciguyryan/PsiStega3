@@ -22,6 +22,10 @@ pub(crate) struct Locker {
     entries: Vec<LockerEntry>,
     /// The postfix to apply to the end of the locker data file.
     file_name_postfix: String,
+
+    /// Attempt to clear the locker file upon exit.
+    #[cfg(test)]
+    pub clear_on_exit: bool,
 }
 
 impl Locker {
@@ -30,6 +34,8 @@ impl Locker {
             application_name: application_name.to_string(),
             entries: Vec::with_capacity(20),
             file_name_postfix: file_name_postfix.to_string(),
+            #[cfg(test)]
+            clear_on_exit: false,
         };
 
         l.read_locker_file()?;
@@ -60,7 +66,7 @@ impl Locker {
     ///
     /// # Arguments
     ///
-    /// * `hash` - The hash of the file to be unlocked.
+    /// * `hash` - The hash of the file.
     ///
     pub fn clear_file_lock(&mut self, hash: &[u8]) {
         // If the file has been locked then we can't unlock it.
@@ -75,7 +81,7 @@ impl Locker {
     ///
     fn create_locker_file(&mut self) -> Result<File> {
         // Get the expected path to the locker file.
-        let locker_dir = self.get_locker_directory()?;
+        let locker_dir = self.get_locker_directory();
 
         // Attempt to create the path to the directory, if it doesn't already exist.
         if fs::create_dir_all(&locker_dir).is_err() {
@@ -95,7 +101,7 @@ impl Locker {
     ///
     /// # Arguments
     ///
-    /// * `hash` - The hash of the file to be unlocked.
+    /// * `hash` - The hash of the file.
     ///
     fn force_clear_file_lock(&mut self, hash: &[u8]) {
         if let Some(i) = self.get_entry_index_by_hash(hash) {
@@ -111,7 +117,7 @@ impl Locker {
     ///
     /// # Arguments
     ///
-    /// * `hash` - The hash of the file to be unlocked.
+    /// * `hash` - The hash of the file.
     ///
     pub(crate) fn get_entry_index_by_hash(&self, hash: &[u8]) -> Option<usize> {
         self.entries.iter().position(|e| e.hash == hash)
@@ -121,7 +127,7 @@ impl Locker {
     ///
     /// # Arguments
     ///
-    /// * `hash` - The hash of the file to be unlocked.
+    /// * `hash` - The hash of the file.
     ///
     fn get_entry_by_hash(&self, hash: &[u8]) -> Option<&LockerEntry> {
         self.entries.iter().find(|e| e.hash == hash)
@@ -131,7 +137,7 @@ impl Locker {
     ///
     /// # Arguments
     ///
-    /// * `hash` - The hash of the file to be unlocked.
+    /// * `hash` - The hash of the file.
     ///
     fn get_entry_by_hash_mut(&mut self, hash: &[u8]) -> Option<&mut LockerEntry> {
         self.entries.iter_mut().find(|e| e.hash == hash)
@@ -139,28 +145,26 @@ impl Locker {
 
     /// Get the directory in which the locker data file should be held.
     ///
-    fn get_locker_directory(&self) -> Result<PathBuf> {
+    fn get_locker_directory(&self) -> PathBuf {
         /*
-          The locker directory will start from the data directory
+          The locker base directory will found in the data directory
             (or temp directory for tests).
           The locker files will be found in a subdirectory containing
-            the name of the application, if not running tests.
+            the name of the application, unless running via tests.
         */
-        let path = if cfg!(test) {
+        if cfg!(test) {
             std::env::temp_dir()
         } else {
             let mut p = dirs::data_dir().unwrap();
             p.push(&self.application_name);
             p
-        };
-
-        Ok(path)
+        }
     }
 
     /// Get the full path to the locker data file.
     ///
     fn get_locker_file_path(&self) -> Result<String> {
-        let mut path = self.get_locker_directory()?;
+        let mut path = self.get_locker_directory();
 
         let file_name = if !self.file_name_postfix.is_empty() {
             format!("lock-{}.dat", self.file_name_postfix)
@@ -185,28 +189,27 @@ impl Locker {
     /// * `path` - The path to the image file.
     /// * `hash` - The hash of the file.
     ///
-    pub fn increment_file_lock(&mut self, path: &str, hash: &[u8]) {
-        // We need to update the locke entry, or add it if it
+    pub fn increment_attempts(&mut self, path: &str, hash: &[u8]) {
+        // We need to update the locker entry, or add it if it
         // doesn't already exist.
         if let Some(entry) = self.get_entry_by_hash_mut(hash) {
             // The entry exists within the entries list.
-            // We need to update the counter.
+            // We need to update the attempts counter.
             (*entry).attempts += 1;
         } else {
             // The entry does not exists within the entries list.
-            // We need to add it with the default attempt value of zero.
+            // We need to add it with the default attempt value.
             self.entries.push(LockerEntry::new(hash, 0));
         }
 
         // Do we need to lock the file?
         if self.is_file_locked(hash) {
-            // The entry exists within the list, has hit the attempt limited
-            // but hasn't been locked. We need to attempt to lock the file.
+            // The entry exists within the list, has reached the attempts limit
+            //   but hasn't been locked.
+            // We need to attempt to lock the file.
             // If successful then it can be removed from the list.
             if self.lock_file(path) {
                 self.force_clear_file_lock(hash);
-            } else {
-                // TODO: figure out if anything should be done here.
             }
         }
     }
@@ -246,7 +249,7 @@ impl Locker {
         }
 
         // This should never happen, but if it does then
-        // the entry should be removed from the list.
+        //   the entry should be removed from the list.
         // It isn't possible to lock a directory.
         if Path::new(path).is_dir() {
             return true;
@@ -254,7 +257,7 @@ impl Locker {
 
         let mut is_read_only = false;
 
-        // If the file is read only, then we need to unset that flag.
+        // If the file is read-only, then we need to unset that flag.
         if let Ok(state) = file_utils::get_file_read_only_state(path) {
             if state {
                 let _ = file_utils::toggle_file_read_only_state(path);
@@ -267,7 +270,7 @@ impl Locker {
 
         // Now we need to ensure that the file can never be decoded.
         // This will happen regardless of whether the image ever contained
-        // encoded data or not.
+        //   encoded data or not.
         let mut img = unwrap_res_or_return!(ImageWrapper::load_from_file(path, false), false);
 
         // Scramble the image.
@@ -377,8 +380,6 @@ impl Locker {
             // If successful then it can be removed from the list.
             if self.lock_file(path) {
                 self.force_clear_file_lock(hash);
-            } else {
-                // TODO: figure out if anything should be done here.
             }
         }
     }
@@ -401,8 +402,7 @@ impl Locker {
             // Cipher the bytes.
             Locker::cipher_slice(&mut vec, xor);
 
-            // If we hit an error then we will stop
-            // writing the file immediately.
+            // If we hit an error then stop writing the file immediately.
             if file.write(&vec).is_err() {
                 return Err(Error::LockerFileWrite);
             }
@@ -416,16 +416,31 @@ impl Locker {
 
 impl Drop for Locker {
     fn drop(&mut self) {
+        #[cfg(test)]
+        {
+            // If we are running a test, most of the time we will want to clear
+            // the locker data file upon exit.
+            if self.clear_on_exit {
+                let locker_path = unwrap_res_or_return!(self.get_locker_file_path());
+                if file_utils::path_exists(&locker_path) {
+                    // We will ignore any errors here as there is nothing
+                    // that can be done to delete the file.
+                    _ = fs::remove_file(&locker_path);
+                }
+                return;
+            }
+        }
+
         // If the file is read-only then we need to unset that
-        // option, otherwise we will be prevented from writing to the file.
-        let data_path = unwrap_res_or_return!(self.get_locker_file_path());
-        let state = unwrap_res_or_return!(file_utils::get_file_read_only_state(&data_path));
+        // option, otherwise we will be unable to write to the file.
+        let locker_path = unwrap_res_or_return!(self.get_locker_file_path());
+        let state = unwrap_res_or_return!(file_utils::get_file_read_only_state(&locker_path));
         if state {
-            let _ = file_utils::toggle_file_read_only_state(&data_path);
+            let _ = file_utils::toggle_file_read_only_state(&locker_path);
         }
 
         // Get the original last modified date of the file.
-        let meta = file_utils::get_file_metadata(&data_path);
+        let meta = file_utils::get_file_metadata(&locker_path);
         let mut mtime: FileTime = FileTime::now();
         if let Ok(m) = &meta {
             mtime = FileTime::from_last_modification_time(m);
@@ -442,11 +457,11 @@ impl Drop for Locker {
 
         // The file should be set as read-only again after the writing
         // operation has finished.
-        let _ = file_utils::toggle_file_read_only_state(&data_path);
+        let _ = file_utils::toggle_file_read_only_state(&locker_path);
 
         // Set the file last modification time of the data file.
         if meta.is_ok() {
-            let _ = file_utils::set_file_last_modified(&data_path, mtime);
+            let _ = file_utils::set_file_last_modified(&locker_path, mtime);
         }
     }
 }
@@ -496,9 +511,14 @@ mod tests_locker {
     const BASE: [&str; 1] = ["locker"];
 
     /// Create a file locker instance, or panic if it fails.
+    ///
+    /// `Note:` we will attempt to clear the locker file upon exit by default.
+    ///
     fn create_locker_instance_or_assert(file_name_postfix: &str) -> Locker {
-        Locker::new("PsiStega3-Tests", file_name_postfix)
-            .expect("could not initialize locker instance")
+        let mut l = Locker::new("PsiStega3-Tests", file_name_postfix)
+            .expect("could not initialize locker instance");
+        l.clear_on_exit = true;
+        l
     }
 
     #[test]
@@ -539,6 +559,7 @@ mod tests_locker {
         // The locker instance should save the entries when goes out of scope.
         {
             let mut locker = create_locker_instance_or_assert(&locker_pf);
+            locker.clear_on_exit = false;
             locker.entries.clear();
             locker.entries.push(entry.clone());
         }
@@ -550,8 +571,6 @@ mod tests_locker {
             !locker.entries.is_empty(),
             "incorrect number of locker entries present upon loads"
         );
-
-        locker.print_locker_list();
 
         // The entry should exist within the data loaded by the file locker instance.
         let entry2 = locker.get_entry_by_hash(&hash);
@@ -585,7 +604,7 @@ mod tests_locker {
             "entry was found in the entries list, and should not be"
         );
 
-        locker.increment_file_lock(&original_path, &hash);
+        locker.increment_attempts(&original_path, &hash);
 
         // The entry should now be present in the entries list, with a default attempts value of zero.
         let entry = locker.get_entry_by_hash(&hash);
@@ -600,7 +619,7 @@ mod tests_locker {
         );
 
         // Next we need to test of the entry correctly updates.
-        locker.increment_file_lock(&original_path, &hash);
+        locker.increment_attempts(&original_path, &hash);
         let entry = locker.get_entry_by_hash(&hash);
         assert_eq!(
             entry.unwrap().attempts,
@@ -632,7 +651,7 @@ mod tests_locker {
 
         // Add the entry with 4 (0th is the first attempt) attempts. The next failed attempt will lock the file.
         locker.entries.push(LockerEntry::new(&old_hash, 3));
-        locker.increment_file_lock(&copy_path, &old_hash);
+        locker.increment_attempts(&copy_path, &old_hash);
 
         // The file hash should have changed.
         let new_hash = hashers::sha3_512_file(&copy_path).expect("failed to create file hash");
