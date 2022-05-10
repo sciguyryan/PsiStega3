@@ -128,7 +128,7 @@ impl ImageWrapper {
             ImageRgba16(_) => ColorType::Rgb16,
             ImageRgb32F(_) => ColorType::Rgb32F,
             ImageRgba32F(_) => ColorType::Rgba32F,
-            _ => return Err(Error::ImageFormatUnknown),
+            _ => return Err(Error::ImageFormatNotRecognized),
         };
 
         let dimensions = image.dimensions();

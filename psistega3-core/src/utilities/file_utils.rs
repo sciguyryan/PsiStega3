@@ -32,7 +32,7 @@ pub(crate) fn get_file_metadata(path: &str) -> Result<Metadata> {
     let p = Path::new(&path);
 
     if !p.exists() || !p.is_file() {
-        return Err(Error::FileMetadata);
+        return Err(Error::PathInvalid);
     }
 
     if let Ok(meta) = p.metadata() {
@@ -80,7 +80,7 @@ pub(crate) fn read_file_to_u8_vec(path: &str) -> Result<Vec<u8>> {
         return Err(Error::PathInvalid);
     }
 
-    let mut file = unwrap_res_or_return!(File::open(&path), Err(Error::File));
+    let mut file = unwrap_res_or_return!(File::open(&path), Err(Error::FileOpen));
     let mut buffer = Vec::new();
     match file.read_to_end(&mut buffer) {
         Ok(_) => Ok(buffer),
