@@ -496,12 +496,7 @@ impl StegaV1 {
     /// Generate the bKGD chunk data containing the encoded flags.
     ///
     fn generate_bkgd_chunk_data(&self) -> [u8; 6] {
-        let mut data = [0u8; 6];
-
-        // Fill the data bytes with random values.
-        for b in &mut data {
-            *b = thread_rng().gen();
-        }
+        let mut data: [u8; 6] = misc_utils::secure_random_bytes();
 
         // The 1st bit will be stored in byte 1.
         misc_utils::set_bit_state(&mut data[0], 0, self.is_file_locker_enabled());
@@ -522,23 +517,28 @@ impl StegaV1 {
         misc_utils::set_bit_state(&mut data[5], 0, false);
         misc_utils::set_bit_state(&mut data[5], 1, false);
 
+        println!("generate_bkgd_chunk_data = {:?}", &data);
+
         // Return the data.
         data
     }
 
     /// Is the file locker enabled for this file?
+    ///
     #[inline]
     fn is_file_locker_enabled(&self) -> bool {
         misc_utils::is_bit_set(&self.flags, 0)
     }
 
     /// Is the file locker system required for this task?
+    ///
     #[inline]
     fn is_locker_needed(&self) -> bool {
         self.is_file_locker_enabled() || self.is_read_once_enabled()
     }
 
     /// Is the read-once file locker enabled for this file?
+    ///
     #[inline]
     fn is_read_once_enabled(&self) -> bool {
         misc_utils::is_bit_set(&self.flags, 1)
@@ -707,7 +707,7 @@ impl StegaV1 {
     ///
     #[inline]
     fn set_feature_flag_state(&mut self, index: usize, state: bool) {
-        misc_utils::set_bit_state(&mut self.flags, index, state)
+        misc_utils::set_bit_state(&mut self.flags, index, state);
     }
 
     /// Update the attempts field for a given file. Only used when use_file_locker is enabled.
