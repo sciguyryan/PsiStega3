@@ -9,10 +9,7 @@ use crate::{
     utilities::{png_utils::PngChunkType, *},
 };
 
-use aes_gcm::{
-    aead::{Aead, NewAead},
-    Aes256Gcm, Key, Nonce,
-};
+use aes_gcm::{aead::Aead, Aes256Gcm, Key, KeyInit, Nonce};
 use rand::prelude::*;
 use rand_xoshiro::Xoshiro512PlusPlus;
 use std::{
@@ -255,7 +252,7 @@ impl StegaV1 {
         // The AES-256 key is 256-bits (32 bytes) in length.
         let key_bytes = &key_bytes_full[..32];
 
-        let key = Key::from_slice(key_bytes);
+        let key = Key::<Aes256Gcm>::from_slice(key_bytes);
         let cipher = Aes256Gcm::new(key);
         let nonce = Nonce::from_slice(&nonce_bytes);
 
@@ -346,7 +343,7 @@ impl StegaV1 {
         // The AES-256 key is 256-bits (32 bytes) in length.
         let key_bytes = &key_bytes_full[..32];
 
-        let key = Key::from_slice(key_bytes);
+        let key = Key::<Aes256Gcm>::from_slice(key_bytes);
         let cipher = Aes256Gcm::new(key);
 
         // Generate a unique random 96-bit (12 byte) nonce (IV).

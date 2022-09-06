@@ -20,7 +20,7 @@ rand = "0.8.5"
 rand_core = { version = "0.6.3", features = ["std"] }
 rand_chacha = "0.3.1"
 rpassword = "7.0.0"
-simple_logger = "2.2.0"
+simple_logger = "2.3.0"
 
 [target.'cfg(windows)'.build-dependencies]
 winres = "0.1.12"
