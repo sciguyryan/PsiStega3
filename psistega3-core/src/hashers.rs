@@ -96,7 +96,7 @@ pub fn sha3_512_file(path: &str) -> Result<Vec<u8>> {
 #[cfg(test)]
 pub fn sha3_512_string(str: &str) -> Vec<u8> {
     let mut hasher = Sha3_512::new();
-    hasher.update(&str);
+    hasher.update(str);
     hasher.finalize().to_vec()
 }
 
@@ -108,6 +108,6 @@ pub fn sha3_512_string(str: &str) -> Vec<u8> {
 ///
 pub fn sha3_512_bytes(bytes: &[u8]) -> Vec<u8> {
     let mut hasher = Sha3_512::new();
-    hasher.update(&bytes);
+    hasher.update(bytes);
     hasher.finalize().to_vec()
 }

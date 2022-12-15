@@ -195,7 +195,7 @@ impl Locker {
         if let Some(entry) = self.get_entry_by_hash_mut(hash) {
             // The entry exists within the entries list.
             // We need to update the attempts counter.
-            (*entry).attempts += 1;
+            entry.attempts += 1;
         } else {
             // The entry does not exists within the entries list.
             // We need to add it with the default attempt value.
@@ -366,7 +366,7 @@ impl Locker {
         if let Some(entry) = self.get_entry_by_hash_mut(hash) {
             // The entry exists within the entries list.
             // We need to update the counter.
-            (*entry).attempts = attempts;
+            entry.attempts = attempts;
         } else {
             // The entry does not exists within the entries list.
             // We need to add it to the list.

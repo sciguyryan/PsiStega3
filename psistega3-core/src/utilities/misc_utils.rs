@@ -12,9 +12,8 @@ pub(crate) fn decode_base64_str_to_vec(b64_str: &str) -> Result<Vec<u8>> {
     // Since the capacity must be a usize, allocating the size
     //   of the encoded string will provide more than enough room within the
     //   vector for the output, thereby avoiding reallocation.
-    let mut buf: Vec<u8> = Vec::with_capacity(b64_str.len());
-    match base64::decode_config_buf(&b64_str, base64::STANDARD, &mut buf) {
-        Ok(_) => Ok(buf),
+    match base64::decode_engine(b64_str, &base64::engine::DEFAULT_ENGINE) {
+        Ok(buf) => Ok(buf),
         Err(_) => Err(Error::Base64Decoding),
     }
 }
@@ -27,9 +26,7 @@ pub(crate) fn encode_u8_slice_to_base64_str(bytes: &[u8]) -> String {
     // A base64 string is roughly 1.37 times large than the original string.
     // Since the capacity must be a usize, allocate double the capacity of the
     //   slice will avoid reallocation.
-    let mut buf = String::with_capacity(2 * bytes.len());
-    base64::encode_config_buf(bytes, base64::STANDARD, &mut buf);
-    buf
+    base64::encode_engine(bytes, &base64::engine::DEFAULT_ENGINE)
 }
 
 /// Calculate the Shannon entropy of a byte vector.

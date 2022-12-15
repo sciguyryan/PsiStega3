@@ -80,7 +80,7 @@ pub(crate) fn read_file_to_u8_vec(path: &str) -> Result<Vec<u8>> {
         return Err(Error::PathInvalid);
     }
 
-    let mut file = unwrap_res_or_return!(File::open(&path), Err(Error::FileOpen));
+    let mut file = unwrap_res_or_return!(File::open(path), Err(Error::FileOpen));
     let mut buffer = Vec::new();
     match file.read_to_end(&mut buffer) {
         Ok(_) => Ok(buffer),
@@ -222,7 +222,7 @@ pub(crate) fn toggle_file_read_only_state(path: &str) -> Result<()> {
 /// * `bytes` - The slice of u8 values to be written to the file.
 ///
 pub(crate) fn write_u8_slice_to_file(path: &str, bytes: &[u8]) -> Result<()> {
-    let mut file = unwrap_res_or_return!(File::create(&path), Err(Error::FileCreate));
+    let mut file = unwrap_res_or_return!(File::create(path), Err(Error::FileCreate));
 
     // Write the resulting bytes directly into the output file.
     match file.write_all(bytes) {
