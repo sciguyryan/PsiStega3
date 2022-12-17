@@ -49,7 +49,7 @@ impl TestUtils {
         let old_path = self.get_in_file(file);
         let new_path = self.get_out_file(ext, auto_clear);
 
-        let r = fs::copy(&old_path, &new_path);
+        let r = fs::copy(old_path, &new_path);
         assert!(r.is_ok(), "failed to create copy of file");
 
         new_path

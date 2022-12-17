@@ -84,7 +84,7 @@ impl Locker {
         let locker_dir = self.get_locker_directory();
 
         // Attempt to create the path to the directory, if it doesn't already exist.
-        if fs::create_dir_all(&locker_dir).is_err() {
+        if fs::create_dir_all(locker_dir).is_err() {
             return Err(Error::LockerFileCreation);
         }
 
