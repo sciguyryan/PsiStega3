@@ -2,7 +2,7 @@ use path_absolutize::Absolutize;
 use rand::Rng;
 use std::{fs, path::PathBuf};
 
-const FILE_CHARS: &str = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ123456789-__";
+const FILE_CHARS: &str = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ123456789-_";
 
 pub(crate) struct TestUtils {
     /// The base folder path for the test files.
@@ -37,8 +37,7 @@ impl TestUtils {
     /// * `ext` - The extension of the copy file.
     /// * `auto_clear` - Whether this file should be automatically cleared after the test has finished.
     ///
-    /// `Note:` This path is normalized to avoid creating any issues
-    /// with relative paths.
+    /// `Note:` This path is normalized to avoid creating any issues with relative paths.
     ///
     pub fn copy_in_file_to_random_out(
         &mut self,
@@ -88,8 +87,7 @@ impl TestUtils {
     /// * `ext` - The extension of the temporary file.
     /// * `auto_clear` - Whether this file should be automatically cleared after the test has finished.
     ///
-    /// `Note:` This path is normalized to avoid creating any issues
-    /// with relative paths.
+    /// `Note:` This path is normalized to avoid creating any issues with relative paths.
     ///
     pub fn get_out_file(&mut self, ext: &str, auto_clear: bool) -> String {
         let random: u128 = rand::thread_rng().gen();
@@ -114,8 +112,7 @@ impl TestUtils {
     ///
     /// * `file` - The name of the test file, including the extension.
     ///
-    /// `Note:` This path is normalized to avoid creating any issues
-    /// with relative paths.
+    /// `Note:` This path is normalized to avoid creating any issues with relative paths.
     ///
     pub fn get_in_file(&self, file: &str) -> String {
         let mut path = self.test_base_path.clone();
@@ -133,8 +130,7 @@ impl TestUtils {
     ///
     /// * `file` - The name of the test file, including the extension.
     ///
-    /// `Note:` This path is normalized to avoid creating any issues
-    /// with relative paths.
+    /// `Note:` This path is normalized to avoid creating any issues with relative paths.
     ///
     pub fn get_in_file_no_verify(&self, file: &str) -> String {
         let mut path = self.test_base_path.clone();

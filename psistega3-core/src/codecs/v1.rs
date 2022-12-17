@@ -40,7 +40,8 @@ pub struct StegaV1 {
     output_files: bool,
     /// Flags for use when encoding and decoding.
     /// Bit 0 indicates that the file locker is to be used with this file.
-    /// Bits 1 to 7 are reserved for future use.
+    /// Bit 1 indicates that the file is read-once.
+    /// Bits 2 to 7 are reserved for future use.
     flags: u8,
     /// The file locker instance for this codec.
     locker: Locker,
@@ -189,8 +190,8 @@ impl StegaV1 {
 
         // Now we can calculate how many bytes we need to read.
         let total_cells_needed = (4 /* number of cipher-text cells (u32) */
-            + 12 /* the length of the Argon2 salt (u8) */
-            + 12 /* the length of the AES-256 nonce (u8) */
+            + 12 /* the length of the Argon2 salt (12 * u8) */
+            + 12 /* the length of the AES-256 nonce (12 * u8) */
             + total_ct_cells as u64)
             * 2; /* 2 subcells per cell */
 
@@ -373,8 +374,8 @@ impl StegaV1 {
         */
         let total_ct_cells = ct_bytes.len();
         let total_cells_needed = (4 /* number of cipher-text cells (u32) */
-            + 12 /* the length of the Argon2 salt (u8) */
-            + 12 /* the length of the AES-256 nonce (u8) */
+            + 12 /* the length of the Argon2 salt (12 * u8) */
+            + 12 /* the length of the AES-256 nonce (12 * u8) */
             + ct_bytes.len() as u64)
             * 2; /* 2 subcells per cell */
 
@@ -606,9 +607,12 @@ impl StegaV1 {
         let mut flag_states = [false; 8];
 
         // The 1st bit will be stored in byte 1.
+        // Bit 1 stores the flag indicating whether the file locker should be
+        // used with this file.
         flag_states[0] = misc_utils::is_bit_set(&data[0], 0);
 
-        // The 2nd to 4th bits will be restores in bytes 2 to 4 respectively.
+        // The 2nd to 4th bits will be stored in bytes 2 to 4 respectively.
+        // Bit 2 stores the read-once flag.
         // Bits 3 and 4 are reserved fo future use.
         flag_states[1] = misc_utils::is_bit_set(&data[1], 0);
         flag_states[2] = misc_utils::is_bit_set(&data[2], 0);
