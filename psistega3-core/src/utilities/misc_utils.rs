@@ -119,9 +119,9 @@ pub(crate) fn u8_slice_to_hex(slice: &[u8], uppercase: bool) -> String {
     let mut str = String::with_capacity(2 * slice.len());
     for b in slice {
         if uppercase {
-            write!(str, "{:02X}", b);
+            write!(str, "{b:02X}");
         } else {
-            write!(str, "{:02x}", b);
+            write!(str, "{b:02x}");
         }
     }
     str
@@ -160,7 +160,7 @@ pub(crate) fn u8_slice_to_u64(bytes: &[u8]) -> u64 {
 #[allow(unused_must_use, dead_code)]
 pub(crate) fn u8_to_binary(byte: &u8) -> String {
     let mut str = String::with_capacity(8);
-    write!(str, "{:08b}", byte);
+    write!(str, "{byte:08b}");
     str
 }
 

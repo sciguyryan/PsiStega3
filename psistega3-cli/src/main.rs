@@ -221,7 +221,7 @@ fn get_codec_by_version(version: Version) -> Box<dyn Codec> {
 /// * `prompt` - The password prompt string.
 ///
 fn get_password(prompt: &str) -> Option<String> {
-    println!("{}", prompt);
+    println!("{prompt}");
     match rpassword::read_password() {
         Ok(s) => Some(s),
         Err(_) => None,
@@ -257,7 +257,7 @@ fn handle_decode(args: &[String], codec: &mut Box<dyn Codec>) -> Result<()> {
         println!("Please try decoding the data using the -df command instead.");
     } else {
         // Output the decoded string to the console.
-        println!("{}", plaintext);
+        println!("{plaintext}");
     }
 
     Ok(())
@@ -388,7 +388,7 @@ fn read_password(args: &[String]) -> Result<String> {
 /// * `prompt` - The question prompt to be supplied to the user.
 ///
 fn read_confirm_from_stdin(prompt: &str) -> bool {
-    println!("{}", prompt);
+    println!("{prompt}");
     let mut input_string = String::new();
     stdin()
         .read_line(&mut input_string)
@@ -461,7 +461,7 @@ fn read_password_with_verify(args: &[String]) -> Result<String> {
 /// * `error` - The [`Error`] to be displayed on screen.
 ///
 pub fn show_abort_message(error: Error) {
-    println!("Error: {}", error);
+    println!("Error: {error}");
 }
 
 /// Write some basic help information on screen.
@@ -492,26 +492,26 @@ fn show_help() {
 /// Write some example commands on screen.
 fn show_examples() {
     let split = "-".repeat(32);
-    println!("{}", split);
+    println!("{split}");
     println!(
         "psistega3 -e -v 1 \"C:\\reference.png\" \"C:\\encoded.png\" \"A very important message.\""
     );
     println!();
     println!("This command will attempt to encode a string into the reference image.");
     println!("You will be prompted twice for a password after executing this command.");
-    println!("{}", split);
+    println!("{split}");
     println!("psistega3 -d -v 1 \"C:\\reference.png\" \"C:\\encoded.png\"");
     println!();
     println!("You will be prompted for a password after executing this command.");
     println!("If any data was successfully decoded then it will be displayed on screen.");
-    println!("{}", split);
+    println!("{split}");
     println!(
         "psistega3 -ef -v 1 \"C:\\reference.png\" \"C:\\encoded.png\" \"C:\\input_file_path.foo\""
     );
     println!();
     println!("This command will attempt to encode a file into the reference image.");
     println!("You will be prompted twice for a password after executing this command.");
-    println!("{}", split);
+    println!("{split}");
     println!(
         "psistega3 -df -v 1 \"C:\\reference.png\" \"C:\\encoded.png\" \"C:\\output_file_path.foo\""
     );
@@ -520,5 +520,5 @@ fn show_examples() {
     println!(
         "If any data was successfully decoded then it will be written to the output file path."
     );
-    println!("{}", split);
+    println!("{split}");
 }

@@ -305,7 +305,7 @@ impl Locker {
     fn print_locker_list(&self) {
         println!("Total entries: {}", self.entries.len());
         for (i, e) in self.entries.iter().enumerate() {
-            eprintln!("Entry {} : {}", i, e);
+            eprintln!("Entry {i} : {e}");
         }
     }
 

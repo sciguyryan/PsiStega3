@@ -93,7 +93,7 @@ impl TestUtils {
         let random: u128 = rand::thread_rng().gen();
 
         let mut path = std::env::temp_dir();
-        path.push(format!("{}.{}", random, ext));
+        path.push(format!("{random}.{ext}"));
 
         let path = path.absolutize().unwrap();
         let path_str = path.to_str().unwrap().to_string();
