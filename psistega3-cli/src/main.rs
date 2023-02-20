@@ -80,7 +80,7 @@ fn main() {
 
     // Attempt to extract the codec version number.
     // No default codec needs to be implemented here as the statement below
-    // will always yield a valid codec.
+    //   will always yield a valid codec.
     let mut codec: Box<dyn Codec>;
     if needs_codec {
         let mut codec_version: Option<Version> = None;
@@ -98,8 +98,7 @@ fn main() {
             return;
         }
 
-        // The unwrap is safe here as we have verified the codec version
-        // is valid.
+        // The unwrap is safe as we have verified the codec version is valid.
         codec = get_codec_by_version(codec_version.unwrap());
 
         // Apply any settings that might have been specified.
@@ -174,7 +173,7 @@ fn apply_codec_settings(
         || args.contains(&String::from("--read-once"))
     {
         // We want to warn the user that enabling this option
-        // render the data unrecoverable.
+        //   render the data unrecoverable.
         let mut enabled = true;
         if !unattended {
             print!("WARNING: the file locker will render the encoded data unrecoverable after it has been successfully decoded once. ");
@@ -254,7 +253,7 @@ fn handle_decode(args: &[String], codec: &mut Box<dyn Codec>) -> Result<()> {
     println!("{}", "-".repeat(32));
     if plaintext.contains('�') {
         println!("One or more unprintable characters were detected in the decoded data. This could mean the data is binary data and cannot be printed here.");
-        println!("Please try decoding the data using the -df command instead.");
+        println!("Please try decoding the data using the -df argument instead.");
     } else {
         // Output the decoded string to the console.
         println!("{plaintext}");
@@ -372,7 +371,7 @@ fn read_password(args: &[String]) -> Result<String> {
     }
 
     // If no password was supplied then an empty string
-    // will be used as the password.
+    //   will be used as the password.
     // It isn't a safe password, but it is technically valid.
     if password.is_none() {
         password = Some("".to_string());
@@ -445,7 +444,7 @@ fn read_password_with_verify(args: &[String]) -> Result<String> {
     }
 
     // If no password was supplied then an empty string
-    // will be used as the password.
+    //   will be used as the password.
     // It isn't a safe password, but it is technically valid.
     if password.is_none() {
         password = Some("".to_string());

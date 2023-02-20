@@ -64,8 +64,7 @@ pub(crate) fn generate_bkgd_chunk(data: &[u8]) -> Vec<u8> {
 
     // bKGD chunk.
     // See: http://www.libpng.org/pub/png/spec/1.2/PNG-Structure.html
-    // The first four bytes will hold the length, which will be updated
-    // below.
+    // The first four bytes will hold the length, which will be updated below.
     let mut chunk: Vec<u8> = vec![0, 0, 0, 0];
     chunk.extend_from_slice(&BKGD);
     chunk.extend_from_slice(data);
@@ -146,8 +145,7 @@ pub fn insert_or_replace_bkgd_chunk(path: &str, data: &[u8]) -> Result<()> {
     let chunk = generate_bkgd_chunk(data);
 
     // Does a bKGD chunk already exists within the PNG file?
-    // If it does then we want to remove it, before replacing it
-    // with our own data.
+    // If it does we want to remove it, before replacing it with our own data.
     if find_chunk_start(path, PngChunkType::Bkgd).is_some() && !remove_bkgd_chunk(path) {
         return Err(Error::FileWrite);
     }

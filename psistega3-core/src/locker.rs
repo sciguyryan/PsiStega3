@@ -28,6 +28,12 @@ pub(crate) struct Locker {
 }
 
 impl Locker {
+    /// The size of an individual locker entry, in bytes.
+    const ENTRY_SIZE: usize = 65;
+
+    /// The value at which the XOR cipher will start.
+    const XOR_START: u8 = 170;
+
     pub fn new(application_name: &str, file_name_postfix: &str) -> Result<Self> {
         let mut l = Self {
             application_name: application_name.to_string(),
@@ -312,8 +318,6 @@ impl Locker {
     /// Attempt to read the entries within the locker data file.
     ///
     fn read_locker_file(&mut self) -> Result<()> {
-        const ENTRY_SIZE: usize = 65;
-
         let path = self.get_locker_file_path()?;
         if !file_utils::path_exists(&path) {
             return Ok(());
@@ -321,7 +325,7 @@ impl Locker {
 
         // This will indicate a corrupted locker file.
         let meta = file_utils::get_file_metadata(&path)?;
-        if meta.len() % (ENTRY_SIZE as u64) != 0 {
+        if meta.len() % (Locker::ENTRY_SIZE as u64) != 0 {
             return Err(Error::LockerFileRead);
         }
 
@@ -329,13 +333,13 @@ impl Locker {
         let mut file = unwrap_res_or_return!(File::open(path), Err(Error::LockerFileRead));
 
         // This will hold the chunk of data that is being read.
-        let mut buffer = [0u8; ENTRY_SIZE];
+        let mut buffer = [0u8; Locker::ENTRY_SIZE];
 
         // Loop until we have read the entire file (in chunks).
-        let mut xor = 170u8;
+        let mut xor = Locker::XOR_START;
         while let Ok(n) = file.read(&mut buffer) {
             // Either there are not enough bytes to create a file access struct instance.
-            if n < ENTRY_SIZE {
+            if n < Locker::ENTRY_SIZE {
                 break;
             }
 
@@ -343,7 +347,7 @@ impl Locker {
             Locker::cipher_slice(&mut buffer, xor);
 
             // Construct the entry based on the read bytes.
-            let last = ENTRY_SIZE - 1;
+            let last = Locker::ENTRY_SIZE - 1;
             let fa = LockerEntry::new(&buffer[..last], buffer[last]);
             self.entries.push(fa);
 
@@ -394,7 +398,7 @@ impl Locker {
         self.entries.shuffle(&mut rng);
 
         // Iterate over the entries in the attempts list.
-        let mut xor = 170u8;
+        let mut xor = Locker::XOR_START;
         for entry in &self.entries {
             let mut vec = entry.hash.clone();
             vec.push(entry.attempts);

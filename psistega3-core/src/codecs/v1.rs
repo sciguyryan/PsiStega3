@@ -80,19 +80,19 @@ impl StegaV1 {
     fn build_data_to_cell_index_map(&mut self, img: &ImageWrapper, key: &[u8]) {
         /*
           When we can't use the Argon2 hash for the positional RNG
-          as we will need the salt, which will not be available when
-          initially reading the data from the file.
+            as we will need the salt, which will not be available when
+            initially reading the data from the file.
         */
         let bytes = hashers::sha3_512_bytes(key);
         let seed = misc_utils::u8_slice_to_u64(&bytes);
         let mut rng = Xoshiro512PlusPlus::seed_from_u64(seed);
 
         // It doesn't matter if we call this on reference or encoded
-        // as they will have the same value at this point.
+        //   as they will have the same value at this point.
         let total_cells = StegaV1::get_total_cells(img) as usize;
 
         // Create and fill our vector with sequential values, one
-        // for each cell ID.
+        //   for each cell ID.
         let mut cell_list: Vec<usize> = (0..total_cells).into_iter().collect();
 
         // Randomize the order of the cell IDs.
@@ -117,7 +117,7 @@ impl StegaV1 {
         }
 
         // The decryption was successful, we can remove any file locker
-        // attempts that might be present.
+        //   attempts that might be present.
         self.locker.clear_file_lock(hash);
     }
 
@@ -140,7 +140,7 @@ impl StegaV1 {
         }
 
         // If the file locker system is enabled then we will need to computer
-        // the SHA3-512 has of the file here.
+        //   the SHA3-512 has of the file here.
         let mut enc_hash: Vec<u8> = vec![];
         if self.is_file_locker_enabled() {
             enc_hash = unwrap_res_or_return!(
@@ -149,9 +149,9 @@ impl StegaV1 {
             );
 
             // The first thing we need to do is to check whether the file hash
-            // exists within the locker file index.
+            //   exists within the locker file index.
             // If it does then we need to check whether the file is already locked.
-            // if it is then we will not try to decode the file.
+            //   if it is then we will not try to decode the file.
             if self.locker.is_file_locked(&enc_hash) {
                 return Err(Error::DecryptionFailed);
             }
@@ -165,7 +165,8 @@ impl StegaV1 {
             return Err(Error::ImageDimensionsMismatch);
         }
 
-        // Generate the composite key from the hash of the original file and the key.
+        // Generate the composite key from the hash of the original
+        //   file and the key.
         let mut composite_key = StegaV1::generate_composite_key(original_img_path, key)?;
 
         // Build the data index to positional cell index map.
@@ -185,7 +186,7 @@ impl StegaV1 {
         data.decode();
 
         // The next set of bytes should be the total number of cipher-text bytes
-        // cells that have been encoded.
+        //   cells that have been encoded.
         let total_ct_cells = data.pop_u32();
 
         // Now we can calculate how many bytes we need to read.
@@ -289,7 +290,7 @@ impl StegaV1 {
         unsafe {
             // The following code is safe.
             // We are working with internal code and it can't
-            // generate any invalid UTF-8 sequences.
+            //   generate any invalid UTF-8 sequences.
             str = String::from_utf8_unchecked(pt_bytes);
         }
 
@@ -380,8 +381,8 @@ impl StegaV1 {
             * 2; /* 2 subcells per cell */
 
         // In total we can never store more than 0xFFFFFFFF bytes of data to
-        // ensure that the values of usize never exceeds the maximum value
-        // of the u32 type.
+        //   ensure that the values of usize never exceeds the maximum value
+        //   of the u32 type.
         if total_cells_needed > u32::MAX as u64 {
             return Err(Error::DataTooLarge);
         }
@@ -441,7 +442,7 @@ impl StegaV1 {
     ///
     /// * `data_index` - The data index to be checked.
     ///
-    /// Note: this method will panic if the data cell is not present in the map.
+    /// `Note:` this method will panic if the data cell is not present in the map.
     /// In practice this should never occur.
     ///
     #[inline]
@@ -461,7 +462,7 @@ impl StegaV1 {
     #[inline]
     fn get_total_cells(img: &ImageWrapper) -> u64 {
         // 1 byte is 8 bits in length.
-        // We  can store 1 bit per channel.
+        // We can store 1 bit per channel.
         img.get_total_channels() / 8
     }
 
@@ -575,7 +576,7 @@ impl StegaV1 {
         let chunk = self.generate_bkgd_chunk_data();
 
         // Write the chunk data to the file. If the chunk
-        // is already present then the data will be overwritten.
+        //   is already present then the data will be overwritten.
         png_utils::insert_or_replace_bkgd_chunk(file_path, &chunk)
     }
 
@@ -608,7 +609,7 @@ impl StegaV1 {
 
         // The 1st bit will be stored in byte 1.
         // Bit 1 stores the flag indicating whether the file locker should be
-        // used with this file.
+        //   used with this file.
         flag_states[0] = misc_utils::is_bit_set(&data[0], 0);
 
         // The 2nd to 4th bits will be stored in bytes 2 to 4 respectively.
@@ -646,22 +647,20 @@ impl StegaV1 {
     /// * `enc_img` - A reference to the [`ImageWrapper`] that holds the encoded image.
     /// * `cell_start` - The index from which the encoded data should be read.
     ///
-    /// Note: this method will read 8 channels worth of data, starting at
-    /// the specified index.
+    /// `Note:` this method will read 8 channels worth of data, starting at the specified index.
     ///
     fn read_u8(&self, ref_img: &ImageWrapper, enc_img: &ImageWrapper, cell_start: usize) -> u8 {
-        // Extract the bytes representing the pixel channels
-        // from the images.
+        // Extract the bytes representing the pixel channels from the images.
         let rb = ref_img.get_subcells_from_index(cell_start, 2);
         let eb = enc_img.get_subcells_from_index(cell_start, 2);
 
         let mut byte = 0u8;
         for i in 0..8 {
-            // This block is actually safe because we verify that the loaded
-            // image has a total number of channels that is divisible by 8.
+            // This block is safe because we verify that the loaded image has
+            //   a total number of channels that is divisible by 8.
             unsafe {
                 // If there the two channels are identical then
-                // we do not need to set this bit of the output byte.
+                //   we do not need to set this bit of the output byte.
                 if *rb.get_unchecked(i) == *eb.get_unchecked(i) {
                     continue;
                 }
@@ -681,8 +680,7 @@ impl StegaV1 {
     /// * `enc_img` - A reference to the [`ImageWrapper`] that holds the encoded image.
     /// * `data_index` - The index of the data byte to be read.
     ///
-    /// Note: this method will read 8 channels worth of data, starting at
-    /// the specified index.
+    /// `Note:` this method will read 8 channels worth of data, starting at the specified index.
     ///
     #[inline]
     fn read_u8_by_index(
@@ -692,7 +690,7 @@ impl StegaV1 {
         data_index: usize,
     ) -> u8 {
         // We need to look up the cell to which this byte of data
-        //will be encoded within the image.
+        //   will be encoded within the image.
         let start_index = self.get_data_cell_index(&data_index) * 2;
 
         // Finally we can decode and read a byte of data from the cell.
@@ -740,8 +738,7 @@ impl StegaV1 {
         }
 
         // The total number of channels must be divisible by 8.
-        // This will ensure that we can always encode a given byte
-        // of data.
+        // This will ensure that we can always encode a given byte of data.
         if img.get_total_channels() % 8 != 0 {
             return Err(Error::ImageDimensionsInvalid);
         }
@@ -771,8 +768,6 @@ impl StegaV1 {
             *b = match *b {
                 0 => 1,
                 1..=254 => {
-                    // We do not need to calculate this if the value is either
-                    // 0 or 255. This will slightly improve performance.
                     if i % 2 == 0 {
                         *b + 1
                     } else {
@@ -795,13 +790,13 @@ impl StegaV1 {
     #[inline]
     fn write_u8_by_data_index(&mut self, img: &mut ImageWrapper, data: &u8, data_index: usize) {
         // If the data is zero then we can fast-path here as we will not
-        // have any actions to undertake.
+        //   have any actions to undertake.
         if *data == 0 {
             return;
         }
 
         // We need to look up the cell to which this byte of data
-        //  will be encoded within the image.
+        //   will be encoded within the image.
         // Each cell is 2 subcells (16 channels) in length.
         let start_index = self.get_data_cell_index(&data_index) * 2;
 
@@ -857,7 +852,7 @@ impl Codec for StegaV1 {
         let bytes = misc_utils::decode_base64_str_to_vec(&b64_str)?;
 
         // Convert the raw bytes back into a string. This is done lossy
-        // to ensure that any invalid sequences are handled.
+        //   to ensure that any invalid sequences are handled.
         Ok(String::from_utf8_lossy(&bytes).to_string())
     }
 
@@ -919,8 +914,7 @@ impl Drop for StegaV1 {
 
 /// This structure will hold the decoded data.
 ///
-/// Note: this structure handles little Endian conversions
-/// internally.
+/// `Note:` this structure handles little Endian conversions internally.
 ///
 struct DataDecoder {
     xor_bytes: VecDeque<u8>,
@@ -978,8 +972,7 @@ impl DataDecoder {
     ///
     /// `Note:` This method will pop `4` bytes from the internal vector.
     ///
-    /// `Note:` this method will automatically convert the returned value
-    /// from little Endian to the correct bit-format.
+    /// `Note:` this method will automatically convert the returned value from little Endian to the correct bit-format.
     ///
     pub fn pop_u32(&mut self) -> u32 {
         assert!(self.bytes.len() >= 4, "insufficient values available");
@@ -1013,8 +1006,7 @@ impl DataDecoder {
     ///
     /// * `value` - The byte to be stored in the internal vector.
     ///
-    /// `Note:` this method will automatically convert the returned value
-    /// from little Endian to the appropriate bit-format.
+    /// `Note:` this method will automatically convert the returned value from little Endian to the appropriate bit-format.
     ///
     pub fn push_u8(&mut self, value: u8) {
         self.xor_bytes.push_back(u8::from_le(value));
@@ -1026,8 +1018,7 @@ impl DataDecoder {
     ///
     /// * `values` - The bytes to be stored in the internal vector.
     ///
-    /// `Note:` this method will automatically convert the returned value
-    /// from little Endian to the appropriate bit-format.
+    /// `Note:` this method will automatically convert the returned value from little Endian to the appropriate bit-format.
     ///
     #[allow(dead_code)]
     pub fn push_u8_slice(&mut self, values: &[u8]) {
@@ -1078,8 +1069,7 @@ impl DataEncoder {
     ///
     /// * `value` - The byte to be stored.
     ///
-    /// `Note:` This method cannot be called outside of the [`DataEncoder`]
-    /// class to avoid confusion as it does not XOR encode the byte.
+    /// `Note:` This method cannot be called outside of the [`DataEncoder`] class to avoid confusion as it does not XOR encode the byte.
     ///
     fn push_u8_direct(&mut self, value: u8) {
         self.bytes.push(value);
