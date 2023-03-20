@@ -93,7 +93,7 @@ impl StegaV1 {
 
         // Create and fill our vector with sequential values, one
         //   for each cell ID.
-        let mut cell_list: Vec<usize> = (0..total_cells).into_iter().collect();
+        let mut cell_list: Vec<usize> = (0..total_cells).collect();
 
         // Randomize the order of the cell IDs.
         cell_list.shuffle(&mut rng);
@@ -141,7 +141,7 @@ impl StegaV1 {
 
         // If the file locker system is enabled then we will need to computer
         //   the SHA3-512 has of the file here.
-        let mut enc_hash: Vec<u8> = vec![];
+        let mut enc_hash = vec![];
         if self.is_file_locker_enabled() {
             enc_hash = unwrap_res_or_return!(
                 hashers::sha3_512_file(encoded_img_path),
@@ -485,7 +485,7 @@ impl StegaV1 {
 
         let file_hash_bytes = hashers::sha3_512_file(original_path)?;
 
-        let mut composite_key: Vec<u8> = Vec::new();
+        let mut composite_key = Vec::new();
         composite_key.extend_from_slice(&key.into_bytes());
         composite_key.extend_from_slice(&file_hash_bytes);
 

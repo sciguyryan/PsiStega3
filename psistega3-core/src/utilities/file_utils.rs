@@ -119,7 +119,7 @@ pub fn remove_file_segment(path: &str, remove_start: u64, remove_length: u64) ->
     unwrap_res_or_return!(file.seek(SeekFrom::Start(remove_end)), Err(Error::FileRead));
 
     // Read the chunk into a buffer.
-    let mut buf: Vec<u8> = Vec::new();
+    let mut buf = Vec::new();
     unwrap_res_or_return!(file.read_to_end(&mut buf), Err(Error::FileRead));
 
     // Set the cursor to the position of the start of the section to be removed.
@@ -184,7 +184,7 @@ pub(crate) fn splice_data_into_file(path: &str, splice_at: u64, data: &[u8]) -> 
     // Note: if this ever needs to be optimized for larger files,
     // the data of the second chunk should be read and written in chunks.
     // As we are dealing with small(ish) files, that shouldn't be a problem here.
-    let mut buf: Vec<u8> = Vec::new();
+    let mut buf = Vec::new();
     unwrap_res_or_return!(file.read_to_end(&mut buf), Err(Error::FileRead));
     unwrap_res_or_return!(file.seek(seek), Err(Error::FileRead));
 

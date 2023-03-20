@@ -65,7 +65,7 @@ pub(crate) fn generate_bkgd_chunk(data: &[u8]) -> Vec<u8> {
     // bKGD chunk.
     // See: http://www.libpng.org/pub/png/spec/1.2/PNG-Structure.html
     // The first four bytes will hold the length, which will be updated below.
-    let mut chunk: Vec<u8> = vec![0, 0, 0, 0];
+    let mut chunk = vec![0, 0, 0, 0];
     chunk.extend_from_slice(&BKGD);
     chunk.extend_from_slice(data);
 

@@ -27,19 +27,12 @@ pub fn argon2_string(
     t_cost: u32,
     version: argon2::Version,
 ) -> Result<[u8; 128]> {
-    let mut builder = argon2::ParamsBuilder::new();
-
-    if builder.m_cost(m_cost).is_err()
-        || builder.p_cost(p_cost).is_err()
-        || builder.t_cost(t_cost).is_err()
-    {
+    // Return an error if any of supplied parameters are incorrect.
+    let params = if let Ok(p) = argon2::Params::new(m_cost, p_cost, t_cost, None) {
+        p
+    } else {
         return Err(Error::Argon2InvalidParams);
     };
-
-    // This method return an error condition if any of supplied parameters
-    //   are incorrect prior to this statement.
-    // This unwrap should be safe as a result.
-    let params = builder.params().unwrap();
 
     // Construct the hasher.
     let hasher = Argon2::new(argon2::Algorithm::Argon2id, version, params);
