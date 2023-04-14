@@ -73,7 +73,7 @@ pub fn sha3_512_file(path: &str) -> Result<Vec<u8>> {
     let mmap = unsafe { unwrap_res_or_return!(Mmap::map(&file), Err(Error::FileHashingError)) };
 
     let mut hasher = Sha3_512::new();
-    for c in mmap.chunks(16384) {
+    for c in mmap.chunks(16 * 1024) {
         hasher.update(c);
     }
 
