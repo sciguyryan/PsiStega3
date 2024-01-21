@@ -19,6 +19,7 @@ use std::fs::File;
 /// * `t_cost` - The time cost (in iterations) to be applied to the Argon2 hashing function.
 /// * `version` - The version of the Argon2 hashing function to be used.
 ///
+#[inline]
 pub fn argon2_string(
     key_bytes: &[u8],
     salt: [u8; 12],
@@ -53,6 +54,7 @@ pub fn argon2_string(
 ///
 /// * `slice` - The u8 slice to be hashed.
 ///
+#[inline]
 pub fn crc32_slice(slice: &[u8]) -> u32 {
     let mut hasher = crc32fast::Hasher::new();
     hasher.update(slice);
@@ -65,6 +67,7 @@ pub fn crc32_slice(slice: &[u8]) -> u32 {
 ///
 /// * `path` - The path to the file.
 ///
+#[inline]
 pub fn sha3_512_file(path: &str) -> Result<Vec<u8>> {
     let file = unwrap_res_or_return!(File::open(path), Err(Error::FileHashingError));
 
@@ -87,6 +90,7 @@ pub fn sha3_512_file(path: &str) -> Result<Vec<u8>> {
 /// * `str` - The string slice to be hashed.
 ///
 #[cfg(test)]
+#[inline]
 pub fn sha3_512_string(str: &str) -> Vec<u8> {
     let mut hasher = Sha3_512::new();
     hasher.update(str);
@@ -99,6 +103,7 @@ pub fn sha3_512_string(str: &str) -> Vec<u8> {
 ///
 /// * `bytes` - The byte slice to be hashed.
 ///
+#[inline]
 pub fn sha3_512_bytes(bytes: &[u8]) -> Vec<u8> {
     let mut hasher = Sha3_512::new();
     hasher.update(bytes);

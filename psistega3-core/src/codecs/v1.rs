@@ -10,12 +10,12 @@ use crate::{
 };
 
 use aes_gcm::{aead::Aead, Aes256Gcm, Key, KeyInit, Nonce};
+use hashbrown::HashMap;
 use rand::prelude::*;
 use rand_xoshiro::Xoshiro512PlusPlus;
-use std::{
-    collections::{HashMap, VecDeque},
-    convert::TryInto,
-};
+use std::{collections::VecDeque, convert::TryInto};
+
+use self::misc_utils::BIT_MASKS;
 
 use super::codec::Config;
 
@@ -89,7 +89,7 @@ impl StegaV1 {
 
         // It doesn't matter if we call this on reference or encoded
         //   as they will have the same value at this point.
-        let total_cells = StegaV1::get_total_cells(img) as usize;
+        let total_cells = StegaV1::get_total_cells(img);
 
         // Create and fill our vector with sequential values, one
         //   for each cell ID.
@@ -193,7 +193,7 @@ impl StegaV1 {
         let total_cells_needed = (4 /* number of cipher-text cells (u32) */
             + 12 /* the length of the Argon2 salt (12 * u8) */
             + 12 /* the length of the AES-256 nonce (12 * u8) */
-            + total_ct_cells as u64)
+            + total_ct_cells as usize)
             * 2; /* 2 subcells per cell */
 
         /*
@@ -201,7 +201,7 @@ impl StegaV1 {
           This is done to keep the total number of cells below the maximum
             possible value for an unsigned 32-bit integer.
         */
-        if total_cells_needed > u32::MAX as u64 {
+        if total_cells_needed > u32::MAX as usize {
             // This error counts as a failed decryption attempt.
             self.update_file_lock(encoded_img_path, &enc_hash);
             return Err(Error::DataTooLarge);
@@ -215,9 +215,9 @@ impl StegaV1 {
         }
 
         // Read all of the XOR-encoded bytes that are relevant for our decode.
-        let mut data = DataDecoder::new(total_cells_needed as usize);
+        let mut data = DataDecoder::new(total_cells_needed);
         for i in 0..total_cells_needed {
-            let val = self.read_u8_by_index(&ref_image, &enc_image, i as usize);
+            let val = self.read_u8_by_index(&ref_image, &enc_image, i);
             data.push_u8(val);
         }
 
@@ -377,13 +377,13 @@ impl StegaV1 {
         let total_cells_needed = (4 /* number of cipher-text cells (u32) */
             + 12 /* the length of the Argon2 salt (12 * u8) */
             + 12 /* the length of the AES-256 nonce (12 * u8) */
-            + ct_bytes.len() as u64)
+            + ct_bytes.len() as usize)
             * 2; /* 2 subcells per cell */
 
         // In total we can never store more than 0xFFFFFFFF bytes of data to
         //   ensure that the values of usize never exceeds the maximum value
         //   of the u32 type.
-        if total_cells_needed > u32::MAX as u64 {
+        if total_cells_needed > u32::MAX as usize {
             return Err(Error::DataTooLarge);
         }
 
@@ -394,7 +394,7 @@ impl StegaV1 {
         }
 
         // This will hold all of the data to be encoded.
-        let mut data = DataEncoder::new(total_cells as usize);
+        let mut data = DataEncoder::new(total_cells);
 
         // Add the total number of cipher-text cells needed.
         data.push_u32(total_ct_cells as u32);
@@ -460,10 +460,10 @@ impl StegaV1 {
     /// * `img` - A reference to the [`ImageWrapper`] that holds the image.
     ///
     #[inline]
-    fn get_total_cells(img: &ImageWrapper) -> u64 {
+    fn get_total_cells(img: &ImageWrapper) -> usize {
         // 1 byte is 8 bits in length.
         // We can store 1 bit per channel.
-        img.get_total_channels() / 8
+        (img.get_total_channels() / 8) as usize
     }
 
     /// Generate a composite key from the hash of the original file and the plaintext key.
@@ -485,8 +485,7 @@ impl StegaV1 {
 
         let file_hash_bytes = hashers::sha3_512_file(original_path)?;
 
-        let mut composite_key = Vec::new();
-        composite_key.extend_from_slice(&key.into_bytes());
+        let mut composite_key = key.into_bytes();
         composite_key.extend_from_slice(&file_hash_bytes);
 
         Ok(composite_key)
@@ -515,8 +514,6 @@ impl StegaV1 {
         // These are currently reserved for future use.
         misc_utils::set_bit_state(&mut data[5], 0, false);
         misc_utils::set_bit_state(&mut data[5], 1, false);
-
-        println!("generate_bkgd_chunk_data = {:?}", &data);
 
         // Return the data.
         data
@@ -605,33 +602,58 @@ impl StegaV1 {
             return false;
         }
 
-        let mut flag_states = [false; 8];
+        let mut flags = 0;
 
         // The 1st bit will be stored in byte 1.
         // Bit 1 stores the flag indicating whether the file locker should be
         //   used with this file.
-        flag_states[0] = misc_utils::is_bit_set(&data[0], 0);
+        unsafe {
+            let state = misc_utils::is_bit_set(&data[0], 0) as u8;
+            flags |= state & BIT_MASKS.get_unchecked(0);
+        }
 
         // The 2nd to 4th bits will be stored in bytes 2 to 4 respectively.
         // Bit 2 stores the read-once flag.
         // Bits 3 and 4 are reserved fo future use.
-        flag_states[1] = misc_utils::is_bit_set(&data[1], 0);
-        flag_states[2] = misc_utils::is_bit_set(&data[2], 0);
-        flag_states[3] = misc_utils::is_bit_set(&data[3], 0);
+        unsafe {
+            let state = misc_utils::is_bit_set(&data[1], 0) as u8;
+            flags |= (state << 1) & BIT_MASKS.get_unchecked(1);
+        }
+        unsafe {
+            let mask = BIT_MASKS.get_unchecked(2);
+            let state = misc_utils::is_bit_set(&data[2], 0) as u8;
+            flags |= (state << 2) & mask;
+        }
+        unsafe {
+            let mask = BIT_MASKS.get_unchecked(3);
+            let state = misc_utils::is_bit_set(&data[3], 0) as u8;
+            flags |= (state << 3) & mask;
+        }
 
         // 5th and 6th bits will be stored in byte 5.
         // These are currently reserved for future use.
-        flag_states[4] = misc_utils::is_bit_set(&data[4], 0);
-        flag_states[5] = misc_utils::is_bit_set(&data[4], 1);
+        unsafe {
+            let mask = BIT_MASKS.get_unchecked(4);
+            let state = misc_utils::is_bit_set(&data[4], 0) as u8;
+            flags |= (state << 4) & mask;
+        }
+        unsafe {
+            let mask = BIT_MASKS.get_unchecked(5);
+            let state = misc_utils::is_bit_set(&data[4], 1) as u8;
+            flags |= (state << 5) & mask;
+        }
 
         // 7th and 8th bits will be stored in byte 6.
         // These are currently reserved for future use.
-        flag_states[6] = misc_utils::is_bit_set(&data[5], 0);
-        flag_states[7] = misc_utils::is_bit_set(&data[5], 1);
-
-        let mut flags = 0u8;
-        for (i, state) in flag_states.iter().enumerate() {
-            misc_utils::set_bit_state(&mut flags, i, *state);
+        unsafe {
+            let mask = BIT_MASKS.get_unchecked(6);
+            let state = misc_utils::is_bit_set(&data[5], 0) as u8;
+            flags |= (state << 6) & mask;
+        }
+        unsafe {
+            let mask = BIT_MASKS.get_unchecked(7);
+            let state = misc_utils::is_bit_set(&data[5], 1) as u8;
+            flags |= (state << 7) & mask;
         }
 
         self.flags = flags;
@@ -757,11 +779,11 @@ impl StegaV1 {
     fn write_u8(&mut self, img: &mut ImageWrapper, data: &u8, cell_start: usize) {
         // Get the image bytes relevant to this cell.
         let bytes = img.get_subcells_from_index_mut(cell_start, 2);
-        for (i, b) in bytes.iter_mut().enumerate() {
-            if !misc_utils::is_bit_set(data, i) {
-                continue;
-            }
-
+        for (i, b) in bytes
+            .iter_mut()
+            .enumerate()
+            .filter(|(i, _)| misc_utils::is_bit_set(data, *i))
+        {
             // If the value is 0 then the new value will always be 1.
             // If the value is 255 then the new value will always be 254.
             // Otherwise the value will be assigned to be ±1.
@@ -940,19 +962,18 @@ impl DataDecoder {
     pub fn decode(&mut self) {
         let len = self.xor_bytes.len() / 2;
         for _ in 0..len {
-            let xor_value = self.xor_bytes.pop_front().unwrap();
-            let xor = self.xor_bytes.pop_front();
+            let mut xor_value = self.xor_bytes.pop_front().unwrap();
 
             /*
               If the number of cells is not divisible by 2 then
                 the final cell will not have a corresponding XOR cell.
               In that case the final cell value will be the XOR value.
             */
-            if let Some(x) = xor {
-                self.bytes.push_back(xor_value ^ x);
-            } else {
-                self.bytes.push_back(xor_value);
+            if let Some(x) = self.xor_bytes.pop_front() {
+                xor_value ^= x;
             }
+
+            self.bytes.push_back(xor_value);
         }
 
         self.xor_bytes.shrink_to_fit();
@@ -1047,6 +1068,7 @@ impl DataEncoder {
 
     /// Fill any unused slots in the byte list with random byte data.
     ///
+    #[inline]
     pub fn fill_empty_bytes(&mut self) {
         const ARRAY_SIZE: usize = 128;
         let needed = self.bytes.capacity() - self.bytes.len();
@@ -1071,6 +1093,7 @@ impl DataEncoder {
     ///
     /// `Note:` This method cannot be called outside of the [`DataEncoder`] class to avoid confusion as it does not XOR encode the byte.
     ///
+    #[inline]
     fn push_u8_direct(&mut self, value: u8) {
         self.bytes.push(value);
     }
@@ -1085,6 +1108,7 @@ impl DataEncoder {
     ///
     /// `Note:` the 1st byte will be the XOR-encoded data and the second will be the XOR value byte.
     ///
+    #[inline]
     pub fn push_u8_slice(&mut self, slice: &[u8]) {
         for b in slice {
             self.push_u8(*b);
@@ -1101,10 +1125,10 @@ impl DataEncoder {
     ///
     /// `Note:` the 1st byte will be the XOR-encoded data and the second will be the XOR value byte.
     ///
+    #[inline]
     pub fn push_u8(&mut self, value: u8) {
         let xor = self.rng.gen::<u8>().to_le();
-        let xor_data = value.to_le() ^ xor;
-        self.push_u8_direct(xor_data);
+        self.push_u8_direct(value.to_le() ^ xor);
         self.push_u8_direct(xor);
     }
 
@@ -1114,14 +1138,16 @@ impl DataEncoder {
     ///
     /// * `value` - The u32 to be stored.
     ///
+    #[inline]
     pub fn push_u32(&mut self, value: u32) {
-        let bytes = value.to_le_bytes();
-        self.push_u8_slice(&bytes);
+        self.push_u8_slice(&value.to_le_bytes());
     }
 }
 
 #[cfg(test)]
 mod tests_encode_decode {
+    use hashbrown::HashMap;
+
     use crate::{
         codecs::codec::{Codec, Config},
         hashers,
@@ -1147,7 +1173,6 @@ mod tests_encode_decode {
     ///
     fn create_instance() -> StegaV1 {
         use crate::{locker::Locker, logger::Logger};
-        use std::collections::HashMap;
 
         let app_name = "PsiStega3-Tests";
 
