@@ -147,18 +147,13 @@ pub(crate) fn u8_slice_to_hex(slice: &[u8], uppercase: bool) -> String {
 ///
 #[inline]
 pub(crate) fn u8_slice_to_u64(bytes: &[u8]) -> u64 {
-    use byteorder::{LittleEndian, ReadBytesExt};
-
     assert!(
         bytes.len() == 64,
         "Byte vector is not 64 bytes (512-bits) in length."
     );
 
-    let mut rdr = std::io::Cursor::new(bytes);
-    let seed = rdr.read_u64::<LittleEndian>();
-    assert!(seed.is_ok(), "Failed to create a u64 from the key bytes.");
-
-    seed.unwrap()
+    let arr = <[u8; 8]>::try_from(&bytes[0..8]).expect("slice with incorrect length");
+    u64::from_le_bytes(arr)
 }
 
 /// Convert a u8 value into its binary representation.
