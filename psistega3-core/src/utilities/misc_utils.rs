@@ -126,6 +126,7 @@ pub(crate) fn set_bit_state(value: &mut u8, index: usize, state: bool) {
 ///  completely internal and is designed for use with debug code.
 ///
 #[allow(unused_must_use)]
+#[allow(dead_code)]
 #[inline]
 pub(crate) fn u8_slice_to_hex(slice: &[u8], uppercase: bool) -> String {
     let mut str = String::with_capacity(2 * slice.len());

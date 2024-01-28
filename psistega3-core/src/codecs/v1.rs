@@ -111,7 +111,7 @@ impl StegaV1 {
     ///
     /// * `hash` - The hash of the file to be unlocked.
     ///
-    fn clear_file_lock(&mut self, hash: &[u8]) {
+    fn clear_file_lock(&mut self, hash: &Vec<u8>) {
         if !self.is_file_locker_enabled() {
             return;
         }
@@ -738,7 +738,7 @@ impl StegaV1 {
     /// * `path` - The path to the image file.
     /// * `hash` - The hash of the image file.
     ///
-    fn update_file_lock(&mut self, path: &str, hash: &[u8]) {
+    fn update_file_lock(&mut self, path: &str, hash: &Vec<u8>) {
         if !self.is_locker_needed() {
             return;
         }
@@ -1435,7 +1435,7 @@ mod tests_encode_decode {
         );
 
         // No locker entry should exist for the file in this instance.
-        let locker_entry = stega.locker.get_entry_index_by_hash(&hash_original);
+        let locker_entry = stega.locker.get_entry_by_hash(&hash_original);
         assert!(
             locker_entry.is_none(),
             "found a locker entry when none was expected"
@@ -1469,7 +1469,7 @@ mod tests_encode_decode {
         _ = stega.decode(&input_path, KEY.to_string(), &output_img_path);
 
         // A locker entry should exist for the file here.
-        let locker_entry = stega.locker.get_entry_index_by_hash(&hash_original);
+        let locker_entry = stega.locker.get_entry_by_hash(&hash_original);
         assert!(
             locker_entry.is_some(),
             "no locker entry was found when one was expected"

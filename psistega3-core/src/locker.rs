@@ -1,15 +1,15 @@
-use crate::{
-    error::*,
-    macros::*,
-    utilities::{file_utils, misc_utils, png_utils},
-};
-
-use rand::prelude::SliceRandom;
+use hashbrown::HashMap;
+use rand::seq::SliceRandom;
 use std::{
-    fmt,
     fs::{self, File},
     io::{Read, Write},
     path::{Path, PathBuf},
+};
+
+use crate::{
+    error::*,
+    macros::*,
+    utilities::{file_utils, png_utils},
 };
 
 /// This struct holds the file locker attempts for the application.
@@ -17,8 +17,8 @@ use std::{
 pub(crate) struct Locker {
     /// The name of the application.
     application_name: String,
-    /// A list of [`LockerEntries] that are held by the application.
-    entries: Vec<LockerEntry>,
+    /// A list of locker entries that are held by the application.
+    entries: HashMap<Vec<u8>, u8>,
     /// The postfix to apply to the end of the locker data file.
     file_name_postfix: String,
 
@@ -37,7 +37,7 @@ impl Locker {
     pub fn new(application_name: &str, file_name_postfix: &str) -> Result<Self> {
         let mut l = Self {
             application_name: application_name.to_string(),
-            entries: Vec::with_capacity(20),
+            entries: HashMap::new(),
             file_name_postfix: file_name_postfix.to_string(),
 
             #[cfg(test)]
@@ -74,7 +74,7 @@ impl Locker {
     ///
     /// * `hash` - The hash of the file.
     ///
-    pub fn clear_file_lock(&mut self, hash: &[u8]) {
+    pub fn clear_file_lock(&mut self, hash: &Vec<u8>) {
         // If the file has been locked then we can't unlock it.
         if self.is_file_locked(hash) {
             return;
@@ -109,24 +109,8 @@ impl Locker {
     ///
     /// * `hash` - The hash of the file.
     ///
-    fn force_clear_file_lock(&mut self, hash: &[u8]) {
-        if let Some(i) = self.get_entry_index_by_hash(hash) {
-            // The hash exists within the list so we should remove it.
-            self.entries.remove(i);
-        }
-
-        // The hash is not in the entry list, we do not need to
-        // do anything here.
-    }
-
-    /// Attempt to get a locker entry index by the file's hash.
-    ///
-    /// # Arguments
-    ///
-    /// * `hash` - The hash of the file.
-    ///
-    pub(crate) fn get_entry_index_by_hash(&self, hash: &[u8]) -> Option<usize> {
-        self.entries.iter().position(|e| e.hash == hash)
+    fn force_clear_file_lock(&mut self, hash: &Vec<u8>) {
+        self.entries.remove(hash);
     }
 
     /// Attempt to get a reference to a locker entry by the file's hash.
@@ -135,18 +119,8 @@ impl Locker {
     ///
     /// * `hash` - The hash of the file.
     ///
-    fn get_entry_by_hash(&self, hash: &[u8]) -> Option<&LockerEntry> {
-        self.entries.iter().find(|e| e.hash == hash)
-    }
-
-    /// Attempt to get mutable reference to a locker entry by the file's hash.
-    ///
-    /// # Arguments
-    ///
-    /// * `hash` - The hash of the file.
-    ///
-    fn get_entry_by_hash_mut(&mut self, hash: &[u8]) -> Option<&mut LockerEntry> {
-        self.entries.iter_mut().find(|e| e.hash == hash)
+    pub fn get_entry_by_hash(&self, hash: &Vec<u8>) -> Option<&u8> {
+        self.entries.get(hash)
     }
 
     /// Get the directory in which the locker data file should be held.
@@ -195,17 +169,18 @@ impl Locker {
     /// * `path` - The path to the image file.
     /// * `hash` - The hash of the file.
     ///
-    pub fn increment_attempts(&mut self, path: &str, hash: &[u8]) {
+    pub fn increment_attempts(&mut self, path: &str, hash: &Vec<u8>) {
         // We need to update the locker entry, or add it if it
         // doesn't already exist.
-        if let Some(entry) = self.get_entry_by_hash_mut(hash) {
+
+        if let Some(attempts) = self.entries.get_mut(hash) {
             // The entry exists within the entries list.
             // We need to update the attempts counter.
-            entry.attempts += 1;
+            *attempts += 1;
         } else {
             // The entry does not exists within the entries list.
             // We need to add it with the default attempt value.
-            self.entries.push(LockerEntry::new(hash, 0));
+            self.entries.insert(hash.clone(), 0);
         }
 
         // Do we need to lock the file?
@@ -222,7 +197,7 @@ impl Locker {
 
     /// Check whether a given file's hash has received 5 or more unsuccessful attempts to decrypt the file.
     ///
-    pub fn is_file_locked(&self, hash: &[u8]) -> bool {
+    pub fn is_file_locked(&self, hash: &Vec<u8>) -> bool {
         /*
           A file is considered locked if 5 or more attempts have been made
             to decode it, where the decryption was unsuccessful, meaning instances
@@ -232,8 +207,8 @@ impl Locker {
             unsuccessful attempt, which means that the 0th attempt is actually
             the 1st attempt. Programmer logic!
         */
-        if let Some(entry) = self.get_entry_by_hash(hash) {
-            entry.attempts >= 4
+        if let Some(attempts) = self.entries.get(hash) {
+            *attempts >= 4
         } else {
             false
         }
@@ -310,8 +285,8 @@ impl Locker {
     #[cfg(debug_assertions)]
     fn print_locker_list(&self) {
         println!("Total entries: {}", self.entries.len());
-        for (i, e) in self.entries.iter().enumerate() {
-            eprintln!("Entry {i} : {e}");
+        for (i, (hash, attempts)) in self.entries.iter().enumerate() {
+            eprintln!("Entry {i} : {hash:?} = {attempts}");
         }
     }
 
@@ -348,8 +323,7 @@ impl Locker {
 
             // Construct the entry based on the read bytes.
             let last = Locker::ENTRY_SIZE - 1;
-            let fa = LockerEntry::new(&buffer[..last], buffer[last]);
-            self.entries.push(fa);
+            self.entries.insert(buffer[..last].to_vec(), buffer[last]);
 
             xor -= 1;
         }
@@ -364,17 +338,17 @@ impl Locker {
     /// * `path` - The path to the image file.
     /// * `hash` - The hash of the file to be unlocked.
     ///
-    pub(crate) fn set_attempts(&mut self, path: &str, hash: &[u8], attempts: u8) {
+    pub(crate) fn set_attempts(&mut self, path: &str, hash: &Vec<u8>, attempts: u8) {
         // We need to update the locke entry, or add it if it
         // doesn't already exist.
-        if let Some(entry) = self.get_entry_by_hash_mut(hash) {
+        if let Some(att) = self.entries.get_mut(hash) {
             // The entry exists within the entries list.
             // We need to update the counter.
-            entry.attempts = attempts;
+            *att = attempts;
         } else {
             // The entry does not exists within the entries list.
             // We need to add it to the list.
-            self.entries.push(LockerEntry::new(hash, attempts));
+            self.entries.insert(hash.clone(), attempts);
         }
 
         // Do we need to lock the file?
@@ -394,14 +368,16 @@ impl Locker {
         let mut file = self.create_locker_file()?;
 
         // Shuffle the vector, just for kicks.
+        let mut entries_vec: Vec<(Vec<u8>, u8)> =
+            self.entries.iter().map(|e| (e.0.clone(), *e.1)).collect();
         let mut rng = rand::thread_rng();
-        self.entries.shuffle(&mut rng);
+        entries_vec.shuffle(&mut rng);
 
         // Iterate over the entries in the attempts list.
         let mut xor = Locker::XOR_START;
-        for entry in &self.entries {
-            let mut vec = entry.hash.clone();
-            vec.push(entry.attempts);
+        for (hash, attempts) in &self.entries {
+            let mut vec = hash.clone();
+            vec.push(*attempts);
 
             // Cipher the bytes.
             Locker::cipher_slice(&mut vec, xor);
@@ -458,32 +434,6 @@ impl Drop for Locker {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
-struct LockerEntry {
-    hash: Vec<u8>,
-    attempts: u8,
-}
-
-impl LockerEntry {
-    pub fn new(hash: &[u8], attempts: u8) -> Self {
-        Self {
-            hash: hash.to_vec(),
-            attempts,
-        }
-    }
-}
-
-impl fmt::Display for LockerEntry {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "Hash: {}, Attempts: {}",
-            misc_utils::u8_slice_to_hex(&self.hash, true),
-            self.attempts
-        )
-    }
-}
-
 #[cfg(test)]
 mod tests_locker {
     use crate::{
@@ -495,7 +445,7 @@ mod tests_locker {
         },
     };
 
-    use super::{Locker, LockerEntry};
+    use super::Locker;
 
     /// The default entry for use when hashing.
     const HASH_STR: &str = "ElPsyKongroo";
@@ -526,7 +476,7 @@ mod tests_locker {
             "locker entry exists, without it being added."
         );
 
-        locker.entries.push(LockerEntry::new(&hash, 3));
+        locker.entries.insert(hash.clone(), 3);
 
         // A locker entry for the hash should exist, but there are not enough attempts for the entry to be locked.
         assert!(
@@ -535,7 +485,8 @@ mod tests_locker {
         );
 
         // This attempt value should be the threshold for entry to be locked.
-        locker.entries[0].attempts = 4;
+        let entry = locker.entries.get_mut(&hash).unwrap();
+        *entry = 4;
         assert!(
             locker.is_file_locked(&hash),
             "entry is not marked as locked, despite there being sufficient attempts"
@@ -546,14 +497,13 @@ mod tests_locker {
     fn test_read_write_locker_file() {
         let hash = hashers::sha3_512_string(HASH_STR);
         let locker_pf = TestUtils::generate_ascii_string(16);
-        let entry = LockerEntry::new(&hash, 3);
 
         // The locker instance should save the entries when goes out of scope.
         {
             let mut locker = create_locker_instance_or_assert(&locker_pf);
             locker.clear_on_exit = false;
             locker.entries.clear();
-            locker.entries.push(entry.clone());
+            locker.entries.insert(hash.clone(), 3);
         }
 
         // The new locker instance should read the prior list of entries upon creation.
@@ -565,7 +515,7 @@ mod tests_locker {
         );
 
         // The entry should exist within the data loaded by the file locker instance.
-        let entry2 = locker.get_entry_by_hash(&hash);
+        let entry2 = locker.entries.get(&hash);
         assert!(
             entry2.is_some(),
             "entry was not found upon loading the locker instance"
@@ -574,7 +524,7 @@ mod tests_locker {
         // The entry should be identical to the original entry that was added.
         assert_eq!(
             *entry2.unwrap(),
-            entry,
+            3,
             "entry was not the same after unloading and reloading"
         );
     }
@@ -590,7 +540,7 @@ mod tests_locker {
         let mut locker = create_locker_instance_or_assert(&locker_pf);
 
         // The file hash should not be in the entries list.
-        let entry = locker.get_entry_by_hash(&hash);
+        let entry = locker.entries.get(&hash);
         assert!(
             entry.is_none(),
             "entry was found in the entries list, and should not be"
@@ -599,22 +549,22 @@ mod tests_locker {
         locker.increment_attempts(&original_path, &hash);
 
         // The entry should now be present in the entries list, with a default attempts value of zero.
-        let entry = locker.get_entry_by_hash(&hash);
+        let entry = locker.entries.get(&hash);
         assert!(
             entry.is_some(),
             "entry was found in the entries list, and should not be"
         );
         assert_eq!(
-            entry.unwrap().attempts,
+            *entry.unwrap(),
             0,
             "entry was found in the entries list, but the attempts field was invalid"
         );
 
         // Next we need to test of the entry correctly updates.
         locker.increment_attempts(&original_path, &hash);
-        let entry = locker.get_entry_by_hash(&hash);
+        let entry = locker.entries.get(&hash);
         assert_eq!(
-            entry.unwrap().attempts,
+            *entry.unwrap(),
             1,
             "entry was found in the entries list, but the attempts field was invalid"
         );
@@ -638,7 +588,7 @@ mod tests_locker {
         let mut locker = create_locker_instance_or_assert(&locker_pf);
 
         // Add the entry with 4 (0th is the first attempt) attempts. The next failed attempt will lock the file.
-        locker.entries.push(LockerEntry::new(&old_hash, 3));
+        locker.entries.insert(old_hash.clone(), 3);
         locker.increment_attempts(&copy_path, &old_hash);
 
         // The file hash should have changed.
@@ -649,7 +599,7 @@ mod tests_locker {
         );
 
         // The (old) file hash should no longer be in the entries list.
-        let entry = locker.get_entry_by_hash(&old_hash);
+        let entry = locker.entries.get(&old_hash);
         assert!(
             entry.is_none(),
             "entry was found in the entries list, after it should have been removed"

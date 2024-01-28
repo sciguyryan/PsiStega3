@@ -38,7 +38,7 @@ impl ImageWrapper {
     pub fn get_subcells_from_index(&self, start_index: usize, count: u16) -> &[u8] {
         let start = start_index * 4;
         let end = start + (count * 4) as usize;
-        &self.image_bytes[start..end]
+        unsafe { self.image_bytes.get_unchecked(start..end) }
     }
 
     /// Get a mutable reference slice for a specified number of subcells of data, starting from a given start index.
@@ -54,7 +54,7 @@ impl ImageWrapper {
     pub fn get_subcells_from_index_mut(&mut self, start_index: usize, count: u16) -> &mut [u8] {
         let start = start_index * 4;
         let end = start + (count * 4) as usize;
-        &mut self.image_bytes[start..end]
+        unsafe { self.image_bytes.get_unchecked_mut(start..end) }
     }
 
     /// Get the format of the image.
@@ -76,7 +76,7 @@ impl ImageWrapper {
     pub fn get_subcell(&self, start_index: usize) -> &[u8] {
         let start = start_index * 4;
         let end = start + 4;
-        &self.image_bytes[start..end]
+        unsafe { self.image_bytes.get_unchecked(start..end) }
     }
 
     /// Get a mutable reference slice for a specified subcell of data, starting from a given start index.
@@ -92,7 +92,7 @@ impl ImageWrapper {
     pub fn get_subcell_mut(&mut self, start_index: usize) -> &mut [u8] {
         let start = start_index * 4;
         let end = start + 4;
-        &mut self.image_bytes[start..end]
+        unsafe { self.image_bytes.get_unchecked_mut(start..end) }
     }
 
     /// Calculate the total number of channels available in the image.
