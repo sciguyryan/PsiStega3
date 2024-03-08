@@ -119,6 +119,7 @@ impl Locker {
     ///
     /// * `hash` - The hash of the file.
     ///
+    #[allow(unused)]
     pub fn get_entry_by_hash(&self, hash: &Vec<u8>) -> Option<&u8> {
         self.entries.get(hash)
     }
