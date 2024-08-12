@@ -1,5 +1,3 @@
-cargo-features = ["strip"]
-
 [workspace]
 members = ["psistega3-core", "psistega3-cli"]
 resolver = "2"

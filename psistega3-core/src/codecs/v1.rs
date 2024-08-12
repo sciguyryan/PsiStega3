@@ -610,47 +610,37 @@ impl StegaV1 {
         unsafe {
             let state = misc_utils::is_bit_set(&data[0], 0) as u8;
             flags |= state & BIT_MASKS.get_unchecked(0);
-        }
 
-        // The 2nd to 4th bits will be stored in bytes 2 to 4 respectively.
-        // Bit 2 stores the read-once flag.
-        // Bits 3 and 4 are reserved fo future use.
-        unsafe {
+            // The 2nd to 4th bits will be stored in bytes 2 to 4 respectively.
+            // Bit 2 stores the read-once flag.
+            // Bits 3 and 4 are reserved fo future use.
             let state = misc_utils::is_bit_set(&data[1], 0) as u8;
             flags |= (state << 1) & BIT_MASKS.get_unchecked(1);
-        }
-        unsafe {
+
             let mask = BIT_MASKS.get_unchecked(2);
             let state = misc_utils::is_bit_set(&data[2], 0) as u8;
             flags |= (state << 2) & mask;
-        }
-        unsafe {
+
             let mask = BIT_MASKS.get_unchecked(3);
             let state = misc_utils::is_bit_set(&data[3], 0) as u8;
             flags |= (state << 3) & mask;
-        }
 
-        // 5th and 6th bits will be stored in byte 5.
-        // These are currently reserved for future use.
-        unsafe {
+            // 5th and 6th bits will be stored in byte 5.
+            // These are currently reserved for future use.
             let mask = BIT_MASKS.get_unchecked(4);
             let state = misc_utils::is_bit_set(&data[4], 0) as u8;
             flags |= (state << 4) & mask;
-        }
-        unsafe {
+
             let mask = BIT_MASKS.get_unchecked(5);
             let state = misc_utils::is_bit_set(&data[4], 1) as u8;
             flags |= (state << 5) & mask;
-        }
 
-        // 7th and 8th bits will be stored in byte 6.
-        // These are currently reserved for future use.
-        unsafe {
+            // 7th and 8th bits will be stored in byte 6.
+            // These are currently reserved for future use.
             let mask = BIT_MASKS.get_unchecked(6);
             let state = misc_utils::is_bit_set(&data[5], 0) as u8;
             flags |= (state << 6) & mask;
-        }
-        unsafe {
+
             let mask = BIT_MASKS.get_unchecked(7);
             let state = misc_utils::is_bit_set(&data[5], 1) as u8;
             flags |= (state << 7) & mask;
