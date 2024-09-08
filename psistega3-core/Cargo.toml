@@ -18,7 +18,7 @@ byteorder = "1.5.0"
 base64 = "0.22.1"
 crc32fast = "1.4.2"
 dirs = "5.0.1"
-filetime = "0.2.24"
+filetime = "0.2.25"
 hashbrown = "0.14.5"
 hex-literal = "0.4.1"
 image = { version = "0.25.2", features = ["png", "rayon"] }
