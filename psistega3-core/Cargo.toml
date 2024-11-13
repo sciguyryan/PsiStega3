@@ -19,11 +19,11 @@ base64 = "0.22.1"
 crc32fast = "1.4.2"
 dirs = "5.0.1"
 filetime = "0.2.25"
-hashbrown = "0.14.5"
+hashbrown = "0.15.1"
 hex-literal = "0.4.1"
-image = { version = "0.25.2", features = ["png", "rayon"] }
+image = { version = "0.25.5", features = ["png", "rayon"] }
 log = "0.4.22"
-memmap2 = "0.9.4"
+memmap2 = "0.9.5"
 rand = "0.8.5"
 rand_core = { version = "0.6.4", features = ["std"] }
 rand_xoshiro = "0.6.0"
