@@ -602,51 +602,30 @@ impl StegaV1 {
             return false;
         }
 
-        let mut flags = 0;
-
-        // The 1st bit will be stored in byte 1.
+        // The 1st bit are be stored in byte 1.
         // Bit 1 stores the flag indicating whether the file locker should be
         //   used with this file.
+        //
+        // The 2nd to 4th bits are be stored in bytes 2 to 4 respectively.
+        // Bit 2 stores the read-once flag.
+        // Bits 3 and 4 are reserved fo future use.
+        //
+        // 5th and 6th bits are be stored in byte 5.
+        // These are currently reserved for future use.
+        //
+        // 7th and 8th bits are be stored in byte 6.
+        // These are currently reserved for future use.
+
         unsafe {
-            let state = misc_utils::is_bit_set(&data[0], 0) as u8;
-            flags |= state & BIT_MASKS.get_unchecked(0);
-
-            // The 2nd to 4th bits will be stored in bytes 2 to 4 respectively.
-            // Bit 2 stores the read-once flag.
-            // Bits 3 and 4 are reserved fo future use.
-            let state = misc_utils::is_bit_set(&data[1], 0) as u8;
-            flags |= (state << 1) & BIT_MASKS.get_unchecked(1);
-
-            let mask = BIT_MASKS.get_unchecked(2);
-            let state = misc_utils::is_bit_set(&data[2], 0) as u8;
-            flags |= (state << 2) & mask;
-
-            let mask = BIT_MASKS.get_unchecked(3);
-            let state = misc_utils::is_bit_set(&data[3], 0) as u8;
-            flags |= (state << 3) & mask;
-
-            // 5th and 6th bits will be stored in byte 5.
-            // These are currently reserved for future use.
-            let mask = BIT_MASKS.get_unchecked(4);
-            let state = misc_utils::is_bit_set(&data[4], 0) as u8;
-            flags |= (state << 4) & mask;
-
-            let mask = BIT_MASKS.get_unchecked(5);
-            let state = misc_utils::is_bit_set(&data[4], 1) as u8;
-            flags |= (state << 5) & mask;
-
-            // 7th and 8th bits will be stored in byte 6.
-            // These are currently reserved for future use.
-            let mask = BIT_MASKS.get_unchecked(6);
-            let state = misc_utils::is_bit_set(&data[5], 0) as u8;
-            flags |= (state << 6) & mask;
-
-            let mask = BIT_MASKS.get_unchecked(7);
-            let state = misc_utils::is_bit_set(&data[5], 1) as u8;
-            flags |= (state << 7) & mask;
+            self.flags = (misc_utils::is_bit_set(&data[0], 0) as u8) & BIT_MASKS.get_unchecked(0)
+                | ((misc_utils::is_bit_set(&data[1], 0) as u8) << 1) & BIT_MASKS.get_unchecked(1)
+                | ((misc_utils::is_bit_set(&data[2], 0) as u8) << 2) & BIT_MASKS.get_unchecked(2)
+                | ((misc_utils::is_bit_set(&data[3], 0) as u8) << 3) & BIT_MASKS.get_unchecked(3)
+                | ((misc_utils::is_bit_set(&data[4], 0) as u8) << 4) & BIT_MASKS.get_unchecked(4)
+                | ((misc_utils::is_bit_set(&data[4], 1) as u8) << 5) & BIT_MASKS.get_unchecked(5)
+                | ((misc_utils::is_bit_set(&data[5], 0) as u8) << 6) & BIT_MASKS.get_unchecked(6)
+                | ((misc_utils::is_bit_set(&data[5], 1) as u8) << 7) & BIT_MASKS.get_unchecked(7);
         }
-
-        self.flags = flags;
 
         true
     }
@@ -661,27 +640,25 @@ impl StegaV1 {
     ///
     /// `Note:` this method will read 8 channels worth of data, starting at the specified index.
     ///
+    #[inline]
     fn read_u8(&self, ref_img: &ImageWrapper, enc_img: &ImageWrapper, cell_start: usize) -> u8 {
         // Extract the bytes representing the pixel channels from the images.
         let rb = ref_img.get_subcells_from_index(cell_start, 2);
         let eb = enc_img.get_subcells_from_index(cell_start, 2);
 
-        let mut byte = 0u8;
-        for i in 0..8 {
-            // This block is safe because we verify that the loaded image has
-            //   a total number of channels that is divisible by 8.
-            unsafe {
-                // If there the two channels are identical then
-                //   we do not need to set this bit of the output byte.
-                if *rb.get_unchecked(i) == *eb.get_unchecked(i) {
-                    continue;
-                }
-            }
+        // This block is safe because we verify that the loaded image has
+        //   a total number of channels that is divisible by 8.
 
-            misc_utils::set_bit_state(&mut byte, i, true);
+        unsafe {
+            (*rb.get_unchecked(0) != *eb.get_unchecked(0)) as u8
+                | ((*rb.get_unchecked(1) != *eb.get_unchecked(1)) as u8) << 1
+                | ((*rb.get_unchecked(2) != *eb.get_unchecked(2)) as u8) << 2
+                | ((*rb.get_unchecked(3) != *eb.get_unchecked(3)) as u8) << 3
+                | ((*rb.get_unchecked(4) != *eb.get_unchecked(4)) as u8) << 4
+                | ((*rb.get_unchecked(5) != *eb.get_unchecked(5)) as u8) << 5
+                | ((*rb.get_unchecked(6) != *eb.get_unchecked(6)) as u8) << 6
+                | ((*rb.get_unchecked(7) != *eb.get_unchecked(7)) as u8) << 7
         }
-
-        byte
     }
 
     /// Read a byte of encoded data for a specified data index.
@@ -766,9 +743,11 @@ impl StegaV1 {
     /// * `data` - The byte value to be encoded.
     /// * `cell_start` - The index of the first pixel of the cell into which the data will be encoded.
     ///
+    #[inline]
     fn write_u8(&mut self, img: &mut ImageWrapper, data: &u8, cell_start: usize) {
         // Get the image bytes relevant to this cell.
         let bytes = img.get_subcells_from_index_mut(cell_start, 2);
+
         for (i, b) in bytes
             .iter_mut()
             .enumerate()
