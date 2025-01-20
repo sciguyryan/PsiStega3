@@ -951,7 +951,7 @@ impl DataDecoder {
     /// Pop a XOR-decoded byte from the front of the byte list.
     ///
     pub fn pop_u8(&mut self) -> u8 {
-        assert!(!self.bytes.is_empty(), "insufficient values available");
+        debug_assert!(!self.bytes.is_empty(), "insufficient values available");
 
         // We do not need to worry about decoding these values from little
         // Endian because that will have been done when loading the values.
@@ -965,7 +965,7 @@ impl DataDecoder {
     /// `Note:` this method will automatically convert the returned value from little Endian to the correct bit-format.
     ///
     pub fn pop_u32(&mut self) -> u32 {
-        assert!(self.bytes.len() >= 4, "insufficient values available");
+        debug_assert!(self.bytes.len() >= 4, "insufficient values available");
 
         let mut bytes = [0u8; 4];
         bytes.iter_mut().for_each(|i| {
@@ -980,7 +980,7 @@ impl DataDecoder {
     /// `Note:` This method will pop `2` bytes from the internal vector for each byte returned.
     ///
     pub fn pop_vec(&mut self, count: usize) -> Vec<u8> {
-        assert!(self.bytes.len() >= count, "insufficient values available");
+        debug_assert!(self.bytes.len() >= count, "insufficient values available");
 
         let mut bytes = Vec::with_capacity(count);
         for _ in 0..count {
