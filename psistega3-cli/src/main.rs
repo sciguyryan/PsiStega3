@@ -25,25 +25,6 @@ enum ActionType {
 fn main() {
     SimpleLogger::new().init().unwrap();
 
-    use std::time::Instant;
-    let now = Instant::now();
-
-    {
-        for _ in 0..50 {
-            let mut s = StegaV1::new("aaaa");
-            let _ = s.encode(
-                "D:\\Pictures\\Jeff's Wallpapers\\RJ 1.png",
-                "aaaaaa".to_string(),
-                "aaaaaaaaaa",
-                "D:\\Temp\\output.png",
-            );
-        }
-    }
-
-    let elapsed = now.elapsed();
-    println!("Elapsed: {:.2?}", elapsed / 50);
-    return;
-
     let mut args: Vec<String> = env::args().collect();
     if args.len() == 1 {
         show_help();

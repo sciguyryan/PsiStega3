@@ -1,7 +1,4 @@
-use crate::{
-    error::{Error, Result},
-    macros::*,
-};
+use crate::error::{Error, Result};
 
 use argon2::Argon2;
 use memmap2::Mmap;
@@ -29,9 +26,7 @@ pub fn argon2_string(
     version: argon2::Version,
 ) -> Result<[u8; 128]> {
     // Return an error if any of supplied parameters are incorrect.
-    let params = if let Ok(p) = argon2::Params::new(m_cost, p_cost, t_cost, None) {
-        p
-    } else {
+    let Ok(params) = argon2::Params::new(m_cost, p_cost, t_cost, None) else {
         return Err(Error::Argon2InvalidParams);
     };
 
@@ -40,10 +35,9 @@ pub fn argon2_string(
 
     // Nom!
     let mut hashed_bytes = [0u8; 128];
-    unwrap_res_or_return!(
-        hasher.hash_password_into(key_bytes, &salt, &mut hashed_bytes),
-        Err(Error::Argon2NoHash)
-    );
+    let Ok(_) = hasher.hash_password_into(key_bytes, &salt, &mut hashed_bytes) else {
+        return Err(Error::Argon2NoHash);
+    };
 
     Ok(hashed_bytes)
 }
@@ -69,11 +63,19 @@ pub fn crc32_slice(slice: &[u8]) -> u32 {
 ///
 #[inline]
 pub fn sha3_512_file(path: &str) -> Result<Vec<u8>> {
-    let file = unwrap_res_or_return!(File::open(path), Err(Error::FileHashingError));
+    let Ok(file) = File::open(path) else {
+        return Err(Error::FileHashingError);
+    };
 
     // Create a read-only memory map of the file as it should improve
     // the performance of this function.
-    let mmap = unsafe { unwrap_res_or_return!(Mmap::map(&file), Err(Error::FileHashingError)) };
+    let mmap = unsafe {
+        if let Ok(m) = Mmap::map(&file) {
+            m
+        } else {
+            return Err(Error::FileHashingError);
+        }
+    };
 
     let mut hasher = Sha3_512::new();
     for c in mmap.chunks(16 * 1024) {

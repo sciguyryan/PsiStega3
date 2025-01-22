@@ -1,7 +1,4 @@
-use crate::{
-    error::{Error, Result},
-    macros::*,
-};
+use crate::error::{Error, Result};
 
 use filetime::FileTime;
 use std::{
@@ -35,11 +32,7 @@ pub(crate) fn get_file_metadata(path: &str) -> Result<Metadata> {
         return Err(Error::PathInvalid);
     }
 
-    if let Ok(meta) = p.metadata() {
-        Ok(meta)
-    } else {
-        Err(Error::FileMetadata)
-    }
+    p.metadata().map_or_else(|_| Err(Error::FileMetadata), Ok)
 }
 
 /// Get the read-only state of a file.
@@ -80,12 +73,12 @@ pub(crate) fn read_file_to_u8_vec(path: &str) -> Result<Vec<u8>> {
         return Err(Error::PathInvalid);
     }
 
-    let mut file = unwrap_res_or_return!(File::open(path), Err(Error::FileOpen));
+    let Ok(mut file) = File::open(path) else {
+        return Err(Error::FileOpen);
+    };
     let mut buffer = Vec::new();
-    match file.read_to_end(&mut buffer) {
-        Ok(_) => Ok(buffer),
-        Err(_) => Err(Error::FileRead),
-    }
+    file.read_to_end(&mut buffer)
+        .map_or_else(|_| Err(Error::FileRead), |_| Ok(buffer))
 }
 
 /// Remove a segment from a file.
@@ -97,10 +90,9 @@ pub(crate) fn read_file_to_u8_vec(path: &str) -> Result<Vec<u8>> {
 /// * `remove_length` - The number of consecutive u8 values to be removed.
 ///
 pub fn remove_file_segment(path: &str, remove_start: u64, remove_length: u64) -> Result<()> {
-    let mut file = unwrap_res_or_return!(
-        File::options().read(true).write(true).open(path),
-        Err(Error::FileOpen)
-    );
+    let Ok(mut file) = File::options().read(true).write(true).open(path) else {
+        return Err(Error::FileOpen);
+    };
 
     /*
       The data will essentially be split into three segments:
@@ -110,23 +102,28 @@ pub fn remove_file_segment(path: &str, remove_start: u64, remove_length: u64) ->
     */
 
     // Calculate the length of the file, after the data has been removed.
-    let meta = unwrap_res_or_return!(file.metadata(), Err(Error::FileMetadata));
+    let Ok(meta) = file.metadata() else {
+        return Err(Error::FileMetadata);
+    };
     let new_len = meta.len() - remove_length;
 
     // Set the cursor to the position where the data
     // to be kept begins (segment 3).
     let remove_end = remove_start + remove_length;
-    unwrap_res_or_return!(file.seek(SeekFrom::Start(remove_end)), Err(Error::FileRead));
+    let Ok(_) = file.seek(SeekFrom::Start(remove_end)) else {
+        return Err(Error::FileRead);
+    };
 
     // Read the chunk into a buffer.
     let mut buf = Vec::new();
-    unwrap_res_or_return!(file.read_to_end(&mut buf), Err(Error::FileRead));
+    let Ok(_) = file.read_to_end(&mut buf) else {
+        return Err(Error::FileRead);
+    };
 
     // Set the cursor to the position of the start of the section to be removed.
-    unwrap_res_or_return!(
-        file.seek(SeekFrom::Start(remove_start)),
-        Err(Error::FileRead)
-    );
+    let Ok(_) = file.seek(SeekFrom::Start(remove_start)) else {
+        return Err(Error::FileRead);
+    };
 
     // Write the saved chunk back into the file.
     if file.write_all(&buf).is_err() {
@@ -166,10 +163,9 @@ pub(crate) fn set_file_last_modified(path: &str, timestamp: FileTime) -> Result<
 /// * `data` - The data which should be spliced into the file.
 ///
 pub(crate) fn splice_data_into_file(path: &str, splice_at: u64, data: &[u8]) -> Result<()> {
-    let mut file = unwrap_res_or_return!(
-        File::options().read(true).write(true).open(path),
-        Err(Error::FileOpen)
-    );
+    let Ok(mut file) = File::options().read(true).write(true).open(path) else {
+        return Err(Error::FileOpen);
+    };
 
     /*
       The data will be split into two chunks.
@@ -179,14 +175,20 @@ pub(crate) fn splice_data_into_file(path: &str, splice_at: u64, data: &[u8]) -> 
         written into the file, it will then be written back into the file.
     */
     let seek = SeekFrom::Start(splice_at);
-    unwrap_res_or_return!(file.seek(seek), Err(Error::FileRead));
+    let Ok(_) = file.seek(seek) else {
+        return Err(Error::FileRead);
+    };
 
     // Note: if this ever needs to be optimized for larger files,
     // the data of the second chunk should be read and written in chunks.
     // As we are dealing with small(ish) files, that shouldn't be a problem here.
     let mut buf = Vec::new();
-    unwrap_res_or_return!(file.read_to_end(&mut buf), Err(Error::FileRead));
-    unwrap_res_or_return!(file.seek(seek), Err(Error::FileRead));
+    let Ok(_) = file.read_to_end(&mut buf) else {
+        return Err(Error::FileRead);
+    };
+    let Ok(_) = file.seek(seek) else {
+        return Err(Error::FileRead);
+    };
 
     if file.write_all(data).is_err() || file.write_all(&buf).is_err() {
         return Err(Error::FileWrite);
@@ -210,10 +212,7 @@ pub(crate) fn toggle_file_read_only_state(path: &str) -> Result<()> {
     permissions.set_readonly(!permissions.readonly());
 
     // Update the file system.
-    match fs::set_permissions(path, permissions) {
-        Ok(_) => Ok(()),
-        Err(_) => Err(Error::FileMetadata),
-    }
+    fs::set_permissions(path, permissions).map_or_else(|_| Err(Error::FileMetadata), |_| Ok(()))
 }
 
 /// Write a u8 slice to an output file.
@@ -222,11 +221,11 @@ pub(crate) fn toggle_file_read_only_state(path: &str) -> Result<()> {
 /// * `bytes` - The slice of u8 values to be written to the file.
 ///
 pub(crate) fn write_u8_slice_to_file(path: &str, bytes: &[u8]) -> Result<()> {
-    let mut file = unwrap_res_or_return!(File::create(path), Err(Error::FileCreate));
+    let Ok(mut file) = File::create(path) else {
+        return Err(Error::FileCreate);
+    };
 
     // Write the resulting bytes directly into the output file.
-    match file.write_all(bytes) {
-        Ok(_) => Ok(()),
-        Err(_) => Err(Error::FileWrite),
-    }
+    file.write_all(bytes)
+        .map_or_else(|_| Err(Error::FileWrite), |_| Ok(()))
 }

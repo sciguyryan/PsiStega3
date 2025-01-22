@@ -17,10 +17,9 @@ pub(crate) fn decode_base64_str_to_vec(b64_str: &str) -> Result<Vec<u8>> {
     // Since the capacity must be a usize, allocating the size
     //   of the encoded string will provide more than enough room within the
     //   vector for the output, thereby avoiding reallocation.
-    match base64::engine::general_purpose::STANDARD.decode(b64_str) {
-        Ok(buf) => Ok(buf),
-        Err(_) => Err(Error::Base64Decoding),
-    }
+    base64::engine::general_purpose::STANDARD
+        .decode(b64_str)
+        .map_or_else(|_| Err(Error::Base64Decoding), Ok)
 }
 
 /// Encode a u8 slice as a base64 string.

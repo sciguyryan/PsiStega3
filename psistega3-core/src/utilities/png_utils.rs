@@ -1,7 +1,4 @@
-use crate::{
-    error::{Error, Result},
-    macros::*,
-};
+use crate::error::{Error, Result};
 
 use memmap2::Mmap;
 use std::fs::File;
@@ -28,10 +25,18 @@ const IDAT: [u8; 4] = [0x49, 0x44, 0x41, 0x54];
 /// * `chunk_type` - The type of chunk to find.
 ///
 pub(crate) fn find_chunk_start(path: &str, chunk_type: PngChunkType) -> Option<usize> {
-    let file = unwrap_res_or_return!(File::open(path), None);
+    let Ok(file) = File::open(path) else {
+        return None;
+    };
 
     // Create a read-only memory map of the file.
-    let mmap = unsafe { unwrap_res_or_return!(Mmap::map(&file), None) };
+    let mmap = unsafe {
+        if let Ok(m) = Mmap::map(&file) {
+            m
+        } else {
+            return None;
+        }
+    };
 
     let seq = match chunk_type {
         PngChunkType::Bkgd => &BKGD,
@@ -169,8 +174,16 @@ pub(crate) fn read_chunk_raw(path: &str, chunk_type: PngChunkType) -> Option<Vec
     let start = find_chunk_start(path, chunk_type)?;
 
     // Create a read-only memory map of the file.
-    let file = unwrap_res_or_return!(File::open(path), None);
-    let mmap = unsafe { unwrap_res_or_return!(Mmap::map(&file), None) };
+    let Ok(file) = File::open(path) else {
+        return None;
+    };
+    let mmap = unsafe {
+        if let Ok(m) = Mmap::map(&file) {
+            m
+        } else {
+            return None;
+        }
+    };
 
     // The start of a chunk is always four bytes before the chunk header.
     // The initial four bytes of the chunk give the length of the data
@@ -208,9 +221,7 @@ pub(crate) fn read_chunk_raw(path: &str, chunk_type: PngChunkType) -> Option<Vec
 ///
 pub(crate) fn remove_bkgd_chunk(path: &str) -> bool {
     // Do we have a valid bKGD chunk to remove?
-    let chunk = if let Some(c) = read_chunk_raw(path, PngChunkType::Bkgd) {
-        c
-    } else {
+    let Some(chunk) = read_chunk_raw(path, PngChunkType::Bkgd) else {
         return true;
     };
 

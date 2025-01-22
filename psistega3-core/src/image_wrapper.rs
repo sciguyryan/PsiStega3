@@ -1,7 +1,4 @@
-use crate::{
-    error::{Error, Result},
-    macros::*,
-};
+use crate::error::{Error, Result};
 
 use image::{ColorType, ImageFormat};
 
@@ -115,7 +112,9 @@ impl ImageWrapper {
             return Err(Error::PathInvalid);
         }
 
-        let image = unwrap_res_or_return!(image::open(path), Err(Error::ImageOpening));
+        let Ok(image) = image::open(path) else {
+            return Err(Error::ImageOpening);
+        };
 
         let colour_type = match &image {
             ImageLuma8(_) => ColorType::L8,

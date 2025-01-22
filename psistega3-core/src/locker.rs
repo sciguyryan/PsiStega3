@@ -8,7 +8,6 @@ use std::{
 
 use crate::{
     error::*,
-    macros::*,
     utilities::{file_utils, png_utils},
 };
 
@@ -253,7 +252,9 @@ impl Locker {
         // Now we need to ensure that the file can never be decoded.
         // This will happen regardless of whether the image ever contained
         //   encoded data or not.
-        let mut img = unwrap_res_or_return!(ImageWrapper::load_from_file(path, false), false);
+        let Ok(mut img) = ImageWrapper::load_from_file(path, false) else {
+            return false;
+        };
 
         // Scramble the image.
         img.scramble();
@@ -306,7 +307,9 @@ impl Locker {
         }
 
         // The file will automatically be closed when it goes out of scope.
-        let mut file = unwrap_res_or_return!(File::open(path), Err(Error::LockerFileRead));
+        let Ok(mut file) = File::open(path) else {
+            return Err(Error::LockerFileRead);
+        };
 
         // This will hold the chunk of data that is being read.
         let mut buffer = [0u8; Locker::ENTRY_SIZE];
@@ -402,7 +405,10 @@ impl Drop for Locker {
             // If we are running a test, most of the time we will want to clear
             // the locker data file upon exit.
             if self.clear_on_exit {
-                let locker_path = unwrap_res_or_return!(self.get_locker_file_path());
+                let Ok(locker_path) = self.get_locker_file_path() else {
+                    return;
+                };
+
                 if file_utils::path_exists(&locker_path) {
                     // We will ignore any errors here as there is nothing
                     // that can be done to delete the file.
@@ -414,8 +420,12 @@ impl Drop for Locker {
 
         // If the file is read-only then we need to unset that
         // option, otherwise we will be unable to write to the file.
-        let locker_path = unwrap_res_or_return!(self.get_locker_file_path());
-        let state = unwrap_res_or_return!(file_utils::get_file_read_only_state(&locker_path));
+        let Ok(locker_path) = self.get_locker_file_path() else {
+            return;
+        };
+        let Ok(state) = file_utils::get_file_read_only_state(&locker_path) else {
+            return;
+        };
         if state {
             let _ = file_utils::toggle_file_read_only_state(&locker_path);
         }

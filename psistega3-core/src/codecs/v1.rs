@@ -5,7 +5,6 @@ use crate::{
     image_wrapper::ImageWrapper,
     locker::Locker,
     logger::Logger,
-    macros::unwrap_res_or_return,
     utilities::{png_utils::PngChunkType, *},
 };
 
@@ -143,10 +142,11 @@ impl StegaV1 {
         //   the SHA3-512 has of the file here.
         let mut enc_hash = vec![];
         if self.is_file_locker_enabled() {
-            enc_hash = unwrap_res_or_return!(
-                hashers::sha3_512_file(encoded_img_path),
-                Err(Error::FileHashingError)
-            );
+            if let Ok(v) = hashers::sha3_512_file(encoded_img_path) {
+                enc_hash = v;
+            } else {
+                return Err(Error::FileHashingError);
+            }
 
             // The first thing we need to do is to check whether the file hash
             //   exists within the locker file index.
@@ -354,10 +354,9 @@ impl StegaV1 {
 
         // We will convert the input data byte vector into a base64 string.
         let plaintext = misc_utils::encode_u8_slice_to_base64_str(data);
-        let ct_bytes = unwrap_res_or_return!(
-            cipher.encrypt(nonce, plaintext.as_bytes()),
-            Err(Error::EncryptionFailed)
-        );
+        let Ok(ct_bytes) = cipher.encrypt(nonce, plaintext.as_bytes()) else {
+            return Err(Error::EncryptionFailed);
+        };
 
         /*
           4 cells for the total number of stored cipher-text cells,
@@ -377,7 +376,7 @@ impl StegaV1 {
         let total_cells_needed = (4 /* number of cipher-text cells (u32) */
             + 12 /* the length of the Argon2 salt (12 * u8) */
             + 12 /* the length of the AES-256 nonce (12 * u8) */
-            + ct_bytes.len() as usize)
+            + ct_bytes.len())
             * 2; /* 2 subcells per cell */
 
         // In total we can never store more than 0xFFFFFFFF bytes of data to
@@ -582,17 +581,13 @@ impl StegaV1 {
     /// * `path` - The path to the PNG file.
     ///
     pub fn process_bkgd_chunk(&mut self, path: &str) -> bool {
-        let chunk = if let Some(c) = png_utils::read_chunk_raw(path, PngChunkType::Bkgd) {
-            c
-        } else {
+        let Some(chunk) = png_utils::read_chunk_raw(path, PngChunkType::Bkgd) else {
             // This is an error as we should always have a bKGD chunk.
             return false;
         };
 
         // We have a bKGD chunk to process!
-        let data = if let Some(d) = png_utils::get_chunk_data(&chunk) {
-            d
-        } else {
+        let Some(data) = png_utils::get_chunk_data(&chunk) else {
             // This is an error as we should always have a bKGD chunk.
             return false;
         };
