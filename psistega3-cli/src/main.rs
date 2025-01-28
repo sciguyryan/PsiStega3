@@ -5,6 +5,7 @@ use crate::error::{Error, Result};
 
 use psistega3_core::codecs::codec::{Codec, Config};
 use psistega3_core::codecs::v1::StegaV1;
+use psistega3_core::codecs::v2::StegaV2;
 use psistega3_core::version::*;
 
 use simple_logger::SimpleLogger;
@@ -210,6 +211,7 @@ fn apply_codec_settings(
 fn get_codec_by_version(version: Version) -> Box<dyn Codec> {
     match version {
         Version::V0x01 => Box::new(StegaV1::new("")),
+        Version::V0x02 => Box::new(StegaV2::new("")),
     }
 }
 

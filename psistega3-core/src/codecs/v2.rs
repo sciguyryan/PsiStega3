@@ -10,8 +10,8 @@ use crate::{
 
 use aes_gcm::{aead::Aead, Aes256Gcm, Key, KeyInit, Nonce};
 use hashbrown::HashMap;
-use rand_codec_v1::prelude::*;
-use rand_xoshiro_codec_v1::Xoshiro512PlusPlus;
+use rand::prelude::*;
+use rand_xoshiro::Xoshiro512PlusPlus;
 use std::{collections::VecDeque, convert::TryInto};
 
 use self::misc_utils::BIT_MASKS;
@@ -28,7 +28,7 @@ const M_COST: u32 = 65536;
 const ARGON_VER: argon2::Version = argon2::Version::V0x13;
 
 /// The struct that holds the v1 Steganography algorithm.
-pub struct StegaV1 {
+pub struct StegaV2 {
     /// The application name.
     application_name: String,
     /// The data index to cell ID map.
@@ -48,7 +48,7 @@ pub struct StegaV1 {
     logger: Logger,
 }
 
-impl StegaV1 {
+impl StegaV2 {
     pub fn new(application_name: &str) -> Self {
         let mut application_name = application_name;
         if application_name.is_empty() {
@@ -88,7 +88,7 @@ impl StegaV1 {
 
         // It doesn't matter if we call this on reference or encoded
         //   as they will have the same value at this point.
-        let total_cells = StegaV1::get_total_cells(img);
+        let total_cells = StegaV2::get_total_cells(img);
 
         // Create and fill our vector with sequential values, one
         //   for each cell ID.
@@ -157,8 +157,8 @@ impl StegaV1 {
             }
         }
 
-        let ref_image = StegaV1::load_image(original_img_path, true)?;
-        let enc_image = StegaV1::load_image(encoded_img_path, true)?;
+        let ref_image = StegaV2::load_image(original_img_path, true)?;
+        let enc_image = StegaV2::load_image(encoded_img_path, true)?;
 
         // The reference and encoded images must have the same dimensions.
         if enc_image.dimensions() != ref_image.dimensions() {
@@ -167,7 +167,7 @@ impl StegaV1 {
 
         // Generate the composite key from the hash of the original
         //   file and the key.
-        let mut composite_key = StegaV1::generate_composite_key(original_img_path, key)?;
+        let mut composite_key = StegaV2::generate_composite_key(original_img_path, key)?;
 
         // Build the data index to positional cell index map.
         self.build_data_to_cell_index_map(&enc_image, &composite_key);
@@ -208,7 +208,7 @@ impl StegaV1 {
         }
 
         // Do we have enough space within the image to decode the data?
-        if total_cells_needed > StegaV1::get_total_cells(&enc_image) {
+        if total_cells_needed > StegaV2::get_total_cells(&enc_image) {
             // This error counts as a failed decryption attempt.
             self.update_file_lock(encoded_img_path, &enc_hash);
             return Err(Error::ImageInsufficientSpace);
@@ -326,10 +326,10 @@ impl StegaV1 {
         encoded_img_path: &str,
     ) -> Result<()> {
         // We don't need to hold a separate reference image instance here.
-        let mut img = StegaV1::load_image(original_img_path, false)?;
+        let mut img = StegaV2::load_image(original_img_path, false)?;
 
         // Generate the composite key from the hash of the original file and the key.
-        let mut composite_key = StegaV1::generate_composite_key(original_img_path, key)?;
+        let mut composite_key = StegaV2::generate_composite_key(original_img_path, key)?;
 
         // Generate a random salt for the Argon2 hashing function.
         let salt_bytes: [u8; 12] = misc_utils::secure_random_bytes();
@@ -387,7 +387,7 @@ impl StegaV1 {
         }
 
         // Do we have enough space within the image to encode the data?
-        let total_cells = StegaV1::get_total_cells(&img);
+        let total_cells = StegaV2::get_total_cells(&img);
         if total_cells_needed > total_cells {
             return Err(Error::ImageInsufficientSpace);
         }
@@ -556,7 +556,7 @@ impl StegaV1 {
         let img = ImageWrapper::load_from_file(file_path, read_only)?;
 
         // Validate if the image file can be used.
-        StegaV1::validate_image(&img)?;
+        StegaV2::validate_image(&img)?;
 
         Ok(img)
     }
@@ -791,7 +791,7 @@ impl StegaV1 {
     }
 }
 
-impl Codec for StegaV1 {
+impl Codec for StegaV2 {
     fn encode(
         &mut self,
         original_img_path: &str,
@@ -888,13 +888,13 @@ impl Codec for StegaV1 {
     }
 }
 
-impl Default for StegaV1 {
+impl Default for StegaV2 {
     fn default() -> Self {
         Self::new("")
     }
 }
 
-impl Drop for StegaV1 {
+impl Drop for StegaV2 {
     fn drop(&mut self) {}
 }
 
@@ -1026,7 +1026,7 @@ impl DataEncoder {
     pub fn new(capacity: usize) -> Self {
         Self {
             bytes: Vec::with_capacity(capacity),
-            rng: Xoshiro512PlusPlus::from_entropy(),
+            rng: Xoshiro512PlusPlus::from_os_rng(),
         }
     }
 
@@ -1045,7 +1045,7 @@ impl DataEncoder {
             self.bytes.extend_from_slice(&bytes);
         }
 
-        let vec: Vec<u8> = (0..remainder).map(|_| self.rng.gen()).collect();
+        let vec: Vec<u8> = (0..remainder).map(|_| self.rng.random()).collect();
         self.bytes.extend_from_slice(&vec);
     }
 
@@ -1091,7 +1091,7 @@ impl DataEncoder {
     ///
     #[inline]
     pub fn push_u8(&mut self, value: u8) {
-        let xor = self.rng.gen::<u8>().to_le();
+        let xor = self.rng.random::<u8>().to_le();
         self.push_u8_direct(value.to_le() ^ xor);
         self.push_u8_direct(xor);
     }
@@ -1122,20 +1122,20 @@ mod tests_encode_decode {
         },
     };
 
-    use super::StegaV1;
+    use super::StegaV2;
 
     // The generic key used for encoding text.
     const KEY: &str = "ElPsyKongroo";
     // The generic text used to text encoding and decoding.
     const TEXT: &str = "3.1415926535";
     /// The sub directory to the test files.
-    const BASE: [&str; 1] = ["encoding_decoding_v1"];
+    const BASE: [&str; 1] = ["encoding_decoding_v2"];
 
-    /// Create a StegaV1 instance.
+    /// Create a StegaV2 instance.
     ///
     /// `Note:` we will attempt to clear the locker file upon exit by default.
     ///
-    fn create_instance() -> StegaV1 {
+    fn create_instance() -> StegaV2 {
         use crate::{locker::Locker, logger::Logger};
 
         let app_name = "PsiStega3-Tests";
@@ -1147,7 +1147,7 @@ mod tests_encode_decode {
         locker.clear_on_exit = true;
 
         // Return a new StegaV1 instance.
-        StegaV1 {
+        StegaV2 {
             application_name: app_name.to_string(),
             data_cell_map: HashMap::new(),
             noise_layer: false, // We do not need this here.
@@ -1163,7 +1163,7 @@ mod tests_encode_decode {
         let tu = TestUtils::new(&BASE);
 
         let input_path = tu.get_in_file("text-file.txt");
-        let key = StegaV1::generate_composite_key(&input_path, KEY.to_string())
+        let key = StegaV2::generate_composite_key(&input_path, KEY.to_string())
             .expect("failed to generate a composite key");
         let expected_key = vec![
             0x45, 0x6C, 0x50, 0x73, 0x79, 0x4B, 0x6F, 0x6E, 0x67, 0x72, 0x6F, 0x6F, 0x47, 0x86,
@@ -1487,6 +1487,22 @@ mod tests_encode_decode {
     }
 
     #[test]
+    #[should_panic]
+    fn test_decode_string_wrong_version() {
+        let tu = TestUtils::new(&["encoding_decoding_v1"]);
+
+        let ref_img_path = tu.get_in_file("reference-valid.png");
+        let enc_img_path = tu.get_in_file("encoded-text.png");
+
+        // Attempt to decode the string.
+        let mut stega = create_instance();
+
+        let _ = stega
+            .decode(&ref_img_path, KEY.to_string(), &enc_img_path)
+            .expect("failed to decode string");
+    }
+
+    #[test]
     fn test_decode_string() {
         let tu = TestUtils::new(&BASE);
 
@@ -1696,9 +1712,10 @@ mod tests_encryption_decryption {
         utilities::test_utils::TestUtils,
     };
 
-    use super::StegaV1;
+    use super::StegaV2;
 
     /// The sub directory to the test files.
+    /// NOTE - these are compatible with v1, so there is no need for separate ones.
     const BASE: [&str; 1] = ["loading_and_validation"];
 
     struct TestEntry {
@@ -1752,7 +1769,7 @@ mod tests_encryption_decryption {
         let tu = TestUtils::new(&BASE);
         for test in tests {
             let path = tu.get_in_file_no_verify(&test.file);
-            let result = match StegaV1::load_image(&path, true) {
+            let result = match StegaV2::load_image(&path, true) {
                 Ok(_) => Ok(()),
                 Err(e) => Err(e),
             };
