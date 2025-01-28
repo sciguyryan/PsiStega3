@@ -10,8 +10,8 @@ use crate::{
 
 use aes_gcm::{aead::Aead, Aes256Gcm, Key, KeyInit, Nonce};
 use hashbrown::HashMap;
-use rand_old::prelude::*;
-use rand_xoshiro_old::Xoshiro512PlusPlus;
+use rand_codec_v1::prelude::*;
+use rand_xoshiro_codec_v1::Xoshiro512PlusPlus;
 use std::{collections::VecDeque, convert::TryInto};
 
 use self::misc_utils::BIT_MASKS;
