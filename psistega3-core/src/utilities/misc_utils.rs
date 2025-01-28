@@ -2,7 +2,8 @@ use crate::error::{Error, Result};
 
 use base64::Engine;
 use core::fmt::Write;
-use rand_core::{OsRng, RngCore};
+use rand::TryRngCore;
+use rand_core::OsRng;
 
 /// Precomputed u8 bit masks.
 pub const BIT_MASKS: [u8; 8] = [0x1, 0x2, 0x4, 0x8, 0x10, 0x20, 0x40, 0x80];
@@ -177,6 +178,9 @@ pub(crate) fn u8_to_binary(byte: &u8) -> String {
 #[inline]
 pub fn secure_random_bytes<const N: usize>() -> [u8; N] {
     let mut arr = [0u8; N];
-    OsRng.fill_bytes(&mut arr);
+    OsRng
+        .try_fill_bytes(&mut arr)
+        .expect("failed to generate random bytes");
+    //OsRng.fill_bytes(&mut arr);
     arr
 }

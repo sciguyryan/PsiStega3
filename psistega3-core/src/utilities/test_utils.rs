@@ -66,7 +66,7 @@ impl TestUtils {
         let chars_len = FILE_CHARS.len();
 
         for _ in 0..len {
-            let index = rand::thread_rng().gen_range(0..chars_len);
+            let index = rand::rng().random_range(0..chars_len);
             let char = FILE_CHARS.chars().nth(index).unwrap();
             str.push(char);
         }
@@ -90,7 +90,7 @@ impl TestUtils {
     /// `Note:` This path is normalized to avoid creating any issues with relative paths.
     ///
     pub fn get_out_file(&mut self, ext: &str, auto_clear: bool) -> String {
-        let random: u128 = rand::thread_rng().gen();
+        let random: u128 = rand::rng().random();
 
         let mut path = std::env::temp_dir();
         path.push(format!("{random}.{ext}"));

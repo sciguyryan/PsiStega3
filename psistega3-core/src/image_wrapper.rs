@@ -167,7 +167,7 @@ impl ImageWrapper {
     /// Scramble the data within the image file.
     ///
     pub fn scramble(&mut self) {
-        use rand::{thread_rng, Rng};
+        use rand::Rng;
 
         // Iterate over each of the image bytes and modify them randomly.
         // The file will be visually the same, but will be modified such that
@@ -181,7 +181,7 @@ impl ImageWrapper {
                 1..=254 => {
                     // We do not need to calculate this if the value is either
                     // 0 or 255. This will slightly improve performance.
-                    if thread_rng().gen_bool(0.5) {
+                    if rand::rng().random_bool(0.5) {
                         *b + 1
                     } else {
                         *b - 1

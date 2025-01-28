@@ -374,7 +374,7 @@ impl Locker {
         // Shuffle the vector, just for kicks.
         let mut entries_vec: Vec<(Vec<u8>, u8)> =
             self.entries.iter().map(|e| (e.0.clone(), *e.1)).collect();
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         entries_vec.shuffle(&mut rng);
 
         // Iterate over the entries in the attempts list.
