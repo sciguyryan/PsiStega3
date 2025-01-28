@@ -105,7 +105,7 @@ fn main() {
         // Apply any settings that might have been specified.
         apply_codec_settings(&mut codec, &args[4..], action_type, unattended);
     } else {
-        codec = Box::<StegaV1>::default();
+        codec = Box::<StegaV2>::default();
     }
 
     // Execute the requested action with the provided arguments.
