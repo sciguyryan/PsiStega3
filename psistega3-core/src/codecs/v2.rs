@@ -39,6 +39,8 @@ pub struct StegaV2 {
     noise_layer: bool,
     /// If the resulting image file should be saved when encoding.
     output_files: bool,
+    /// Should we skip version checks?
+    skip_version_checks: bool,
     /// Flags for use when encoding and decoding.
     /// Bit 0 indicates that the file locker is to be used with this file.
     /// Bit 1 indicates that the file is read-once.
@@ -65,6 +67,7 @@ impl StegaV2 {
             data_cell_map: HashMap::new(),
             noise_layer: true,
             output_files: true,
+            skip_version_checks: false,
             flags: 0,
             locker,
             logger: Logger::new(false),
@@ -597,6 +600,11 @@ impl StegaV2 {
             return false;
         }
 
+        if !self.skip_version_checks && data[5] != CODED_VERSION {
+            // The codec version does not match.
+            return false;
+        }
+
         // The 1st bit are be stored in byte 1.
         // Bit 1 stores the flag indicating whether the file locker should be
         //   used with this file.
@@ -881,6 +889,9 @@ impl Codec for StegaV2 {
             Config::ReadOnce => {
                 self.set_feature_flag_state(1, state);
             }
+            Config::SkipVersionChecks => {
+                self.skip_version_checks = state;
+            }
         }
     }
 }
@@ -1149,6 +1160,7 @@ mod tests_encode_decode {
             data_cell_map: HashMap::new(),
             noise_layer: false, // We do not need this here.
             output_files: true,
+            skip_version_checks: false,
             flags: 0,
             locker,
             logger: Logger::new(false),

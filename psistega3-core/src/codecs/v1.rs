@@ -881,6 +881,7 @@ impl Codec for StegaV1 {
             Config::ReadOnce => {
                 self.set_feature_flag_state(1, state);
             }
+            Config::SkipVersionChecks => {}
         }
     }
 }

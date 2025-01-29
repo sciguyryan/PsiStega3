@@ -89,22 +89,26 @@ pub trait Codec {
 pub enum Config {
     /// Enable or disable the noise map.
     ///
-    /// Applicable to: v1.
+    /// Applicable to: v1, v2.
     NoiseLayer,
     /// Enable or disable verbose mode.
     ///
-    /// Applicable to: v1.
+    /// Applicable to: v1, v2.
     Verbose,
     /// Enable or disable the saving of files when encoding or decoding.
     ///
-    /// Applicable to: v1.
+    /// Applicable to: v1, v2.
     OutputFiles,
     /// Enable or disable the file access locking system for this file.
     ///
-    /// Applicable to: v1.
+    /// Applicable to: v1, v2.
     Locker,
     /// Enable or disable the single-read locker system.
     ///
-    /// Applicable to: v1.
+    /// Applicable to: v1, v2.
     ReadOnce,
+    /// Enable or disable version checking.
+    ///
+    /// Applicable to: v2. This is not applicable to v1 as checks are never performed.
+    SkipVersionChecks,
 }

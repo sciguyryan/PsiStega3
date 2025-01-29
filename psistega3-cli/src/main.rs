@@ -89,6 +89,7 @@ fn main() {
     // Attempt to extract the codec version number.
     // No default codec needs to be implemented here as the statement below
     //   will always yield a valid codec.
+    let mut skip_version_checks = false;
     let mut codec: Box<dyn Codec>;
     if needs_codec {
         let mut codec_version: Option<Version> = None;
@@ -106,6 +107,8 @@ fn main() {
                 } else {
                     show_abort_message(Error::VersionGuessingFailed);
                 }
+
+                skip_version_checks = true;
             }
 
             if let Ok(v) = version.parse::<u8>() {
@@ -128,6 +131,9 @@ fn main() {
     } else {
         codec = Box::<StegaV2>::default();
     }
+
+    // When using the version guessing system, the checks are skipped.
+    codec.set_config_state(Config::SkipVersionChecks, skip_version_checks);
 
     // Execute the requested action with the provided arguments.
     let result = match action.as_str() {
