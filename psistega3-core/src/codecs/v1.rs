@@ -580,7 +580,7 @@ impl StegaV1 {
     ///
     /// * `path` - The path to the PNG file.
     ///
-    pub fn process_bkgd_chunk(&mut self, path: &str) -> bool {
+    pub(crate) fn process_bkgd_chunk(&mut self, path: &str) -> bool {
         let Some(chunk) = png_utils::read_chunk_raw(path, PngChunkType::Bkgd) else {
             // This is an error as we should always have a bKGD chunk.
             return false;
@@ -596,9 +596,6 @@ impl StegaV1 {
             // This is an error as there should always be 6 bytes.
             return false;
         }
-
-        // NOTE: in v2 and beyond we will enforce the version here, but for this legacy
-        // version we will not do so.
 
         // The 1st bit are be stored in byte 1.
         // Bit 1 stores the flag indicating whether the file locker should be

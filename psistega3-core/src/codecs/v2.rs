@@ -580,7 +580,7 @@ impl StegaV2 {
     ///
     /// * `path` - The path to the PNG file.
     ///
-    pub fn process_bkgd_chunk(&mut self, path: &str) -> bool {
+    pub(crate) fn process_bkgd_chunk(&mut self, path: &str) -> bool {
         let Some(chunk) = png_utils::read_chunk_raw(path, PngChunkType::Bkgd) else {
             // This is an error as we should always have a bKGD chunk.
             return false;
@@ -594,11 +594,6 @@ impl StegaV2 {
 
         if data.len() < 6 {
             // This is an error as there should always be 6 bytes.
-            return false;
-        }
-
-        if data[5] != CODED_VERSION {
-            // The codec version does not match.
             return false;
         }
 

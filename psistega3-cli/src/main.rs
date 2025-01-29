@@ -3,16 +3,23 @@ mod error;
 
 use crate::error::{Error, Result};
 
-use psistega3_core::codecs::codec::{Codec, Config};
-use psistega3_core::codecs::v1::StegaV1;
-use psistega3_core::codecs::v2::StegaV2;
-use psistega3_core::version::*;
+use psistega3_core::{
+    codecs::{
+        codec::{Codec, Config},
+        v1::StegaV1,
+        v2::StegaV2,
+    },
+    utilities::png_utils::{self, PngChunkType},
+    version::*,
+};
 
 use simple_logger::SimpleLogger;
 use std::{convert::TryFrom, env, io::stdin};
 
 /// The prompt for confirming a yes/no option.
 const CONFIRM_PROMPT: &str = "Are you sure you wish to enable this feature?";
+/// The current highest codec version.
+const CURRENT_MAX_VERSION: u8 = 0x2;
 
 //ooneporlygs
 
@@ -86,7 +93,21 @@ fn main() {
     if needs_codec {
         let mut codec_version: Option<Version> = None;
         if &args[2] == "-v" {
-            let version = &args[3];
+            let mut version = args[3].clone();
+
+            // Have we been asked to guess the version, based on the file itself?
+            if version.to_uppercase() == "GUESS" {
+                if action_type == ActionType::Encode {
+                    show_abort_message(Error::NoVersionGuessing);
+                }
+
+                if let Some(v) = read_bkgd_chunk(&args[5]) {
+                    version = v;
+                } else {
+                    show_abort_message(Error::VersionGuessingFailed);
+                }
+            }
+
             if let Ok(v) = version.parse::<u8>() {
                 if let Ok(cv) = Version::try_from(v) {
                     codec_version = Some(cv);
@@ -134,6 +155,26 @@ fn main() {
     if !unattended {
         read_from_stdin();
     }
+}
+
+fn read_bkgd_chunk(path: &str) -> Option<String> {
+    let chunk = png_utils::read_chunk_raw(path, PngChunkType::Bkgd)?;
+
+    // We have a bKGD chunk to process!
+    let data = png_utils::get_chunk_data(&chunk)?;
+
+    if data.len() < 6 {
+        return None;
+    }
+
+    // This could be a legacy file, so we can assume that it is a V1 file here.
+    // In a v1 file the specific segment could be anything, as it was randomly generated.
+    if data[5] > CURRENT_MAX_VERSION {
+        return Some("1".to_string());
+    }
+
+    // Since the versions are zero-indexed, we need to add one here to get the correct version.
+    Some((data[5] + 1).to_string())
 }
 
 /// Apply any specified codec settings.
@@ -503,6 +544,12 @@ fn show_examples() {
     println!("{split}");
     println!("psistega3 -d -v 1 \"C:\\reference.png\" \"C:\\encoded.png\"");
     println!();
+    println!("You will be prompted for a password after executing this command.");
+    println!("If any data was successfully decoded then it will be displayed on screen.");
+    println!("{split}");
+    println!("psistega3 -d -v GUESS \"C:\\reference.png\" \"C:\\encoded.png\"");
+    println!();
+    println!("This command will attempt to guess the version, based on the file contents. If this fails, it will default to v1 file for legacy reasons.");
     println!("You will be prompted for a password after executing this command.");
     println!("If any data was successfully decoded then it will be displayed on screen.");
     println!("{split}");

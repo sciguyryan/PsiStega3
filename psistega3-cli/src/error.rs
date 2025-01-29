@@ -16,6 +16,10 @@ pub enum Error {
     InvalidVersion,
     /// The supplied passwords did not match.
     PasswordMismatch,
+    /// Version guessing is not supported for encoding files.
+    NoVersionGuessing,
+    /// Version guessing failed to find a valid version.
+    VersionGuessingFailed,
 }
 
 impl fmt::Display for Error {
@@ -30,6 +34,8 @@ impl fmt::Display for Error {
             Error::PasswordMismatch => {
                 "The entered passwords did not match. Please check and try again."
             }
+            Error::NoVersionGuessing => "Version guessing is not supported for encoding files.",
+            Error::VersionGuessingFailed => "Version guessing failed to find a valid version.",
         })
     }
 }

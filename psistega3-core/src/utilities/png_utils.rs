@@ -6,7 +6,7 @@ use std::fs::File;
 use super::{file_utils, misc_utils};
 
 #[allow(dead_code)]
-pub(crate) enum PngChunkType {
+pub enum PngChunkType {
     Bkgd,
     Idat,
 }
@@ -96,7 +96,7 @@ pub(crate) fn generate_bkgd_chunk(data: &[u8]) -> Vec<u8> {
 ///
 /// * `data` - The contents of the PNG chunk.
 ///
-pub(crate) fn get_chunk_data(data: &[u8]) -> Option<&[u8]> {
+pub fn get_chunk_data(data: &[u8]) -> Option<&[u8]> {
     let data_len = get_chunk_length(data)?;
 
     let start = 8;
@@ -168,7 +168,7 @@ pub fn insert_or_replace_bkgd_chunk(path: &str, data: &[u8]) -> Result<()> {
 ///
 /// `Note:` this function is only designed to read the **first** instance of the chunk present within the file.
 ///
-pub(crate) fn read_chunk_raw(path: &str, chunk_type: PngChunkType) -> Option<Vec<u8>> {
+pub fn read_chunk_raw(path: &str, chunk_type: PngChunkType) -> Option<Vec<u8>> {
     // If we have a chunk present then the index of
     // the header will be returned.
     let start = find_chunk_start(path, chunk_type)?;
