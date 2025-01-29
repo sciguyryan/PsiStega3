@@ -26,6 +26,8 @@ const P_COST: u32 = 8;
 const M_COST: u32 = 65536;
 /// The version of the Argon2 hashing algorithm to use.
 const ARGON_VER: argon2::Version = argon2::Version::V0x13;
+/// The version of this codec.
+const CODED_VERSION: u8 = 0x1;
 
 /// The struct that holds the v1 Steganography algorithm.
 pub struct StegaV2 {
@@ -509,10 +511,8 @@ impl StegaV2 {
         misc_utils::set_bit_state(&mut data[4], 0, false);
         misc_utils::set_bit_state(&mut data[4], 1, false);
 
-        // 7th and 8th bits will be stored in byte 6.
-        // These are currently reserved for future use.
-        misc_utils::set_bit_state(&mut data[5], 0, false);
-        misc_utils::set_bit_state(&mut data[5], 1, false);
+        // There are no 7th or 8th flags as the entire byte is used to hold the codec version.
+        data[5] = CODED_VERSION;
 
         // Return the data.
         data
@@ -597,6 +597,11 @@ impl StegaV2 {
             return false;
         }
 
+        if data[5] != CODED_VERSION {
+            // The codec version does not match.
+            return false;
+        }
+
         // The 1st bit are be stored in byte 1.
         // Bit 1 stores the flag indicating whether the file locker should be
         //   used with this file.
@@ -608,8 +613,7 @@ impl StegaV2 {
         // 5th and 6th bits are be stored in byte 5.
         // These are currently reserved for future use.
         //
-        // 7th and 8th bits are be stored in byte 6.
-        // These are currently reserved for future use.
+        // There are no 7th or 8th flags as the entire byte is used to hold the codec version.
 
         unsafe {
             self.flags = (misc_utils::is_bit_set(&data[0], 0) as u8) & BIT_MASKS.get_unchecked(0)
@@ -617,9 +621,7 @@ impl StegaV2 {
                 | ((misc_utils::is_bit_set(&data[2], 0) as u8) << 2) & BIT_MASKS.get_unchecked(2)
                 | ((misc_utils::is_bit_set(&data[3], 0) as u8) << 3) & BIT_MASKS.get_unchecked(3)
                 | ((misc_utils::is_bit_set(&data[4], 0) as u8) << 4) & BIT_MASKS.get_unchecked(4)
-                | ((misc_utils::is_bit_set(&data[4], 1) as u8) << 5) & BIT_MASKS.get_unchecked(5)
-                | ((misc_utils::is_bit_set(&data[5], 0) as u8) << 6) & BIT_MASKS.get_unchecked(6)
-                | ((misc_utils::is_bit_set(&data[5], 1) as u8) << 7) & BIT_MASKS.get_unchecked(7);
+                | ((misc_utils::is_bit_set(&data[4], 1) as u8) << 5) & BIT_MASKS.get_unchecked(5);
         }
 
         true
