@@ -493,17 +493,7 @@ impl StegaV2 {
 
         let mut composite_key = file_hash_bytes;
         composite_key.extend_from_slice(&key.into_bytes());
-
-        let adjusted_version = u128::MAX - CODED_VERSION as u128;
-        composite_key.extend_from_slice(&adjusted_version.to_le_bytes());
-
-        let mut seed: [u8; 64] = [0; 64];
-        for (i, s) in seed.iter_mut().enumerate() {
-            *s = ((adjusted_version >> ((i % 16) * 8)) as u8) ^ (i as u8);
-        }
-
-        let mut rng = Xoshiro512PlusPlus::from_seed(rand_xoshiro::Seed512(seed));
-        composite_key.shuffle(&mut rng);
+        composite_key.extend_from_slice(&CODED_VERSION.to_le_bytes());
 
         Ok(composite_key)
     }
@@ -978,11 +968,11 @@ mod tests_encode_decode {
         let key = StegaV2::generate_composite_key(&input_path, KEY.to_string())
             .expect("failed to generate a composite key");
         let expected_key = vec![
-            103, 83, 45, 3, 66, 231, 97, 255, 160, 75, 80, 70, 101, 255, 168, 6, 99, 178, 202, 111,
-            164, 249, 69, 255, 20, 173, 123, 111, 192, 242, 147, 5, 255, 255, 71, 115, 255, 135,
-            84, 254, 72, 76, 138, 10, 54, 45, 186, 255, 153, 114, 26, 222, 66, 219, 184, 234, 225,
-            108, 104, 255, 134, 111, 26, 123, 234, 119, 108, 66, 255, 121, 255, 206, 126, 174, 255,
-            51, 79, 114, 151, 255, 255, 11, 108, 174, 112, 110, 81, 69, 180, 176, 255, 255,
+            71, 134, 114, 66, 180, 168, 138, 97, 112, 83, 231, 160, 178, 184, 119, 26, 45, 123, 79,
+            45, 101, 151, 174, 222, 6, 108, 69, 242, 66, 76, 249, 51, 234, 135, 206, 72, 147, 153,
+            66, 173, 164, 26, 176, 234, 219, 123, 11, 70, 99, 186, 81, 104, 126, 3, 108, 20, 174,
+            84, 225, 202, 192, 54, 10, 5, 69, 108, 80, 115, 121, 75, 111, 110, 103, 114, 111, 111,
+            1,
         ];
 
         assert_eq!(
