@@ -484,16 +484,26 @@ impl StegaV2 {
     pub fn generate_composite_key(original_path: &str, key: String) -> Result<Vec<u8>> {
         /*
           The key for the encryption is the SHA3-512 hash of the input image file
-            combined with the plaintext key.
+            combined with the plaintext key and the version number.
 
           It intentional that we take ownership of the key as it will be
             cleared from memory when this function exits.
         */
-
         let file_hash_bytes = hashers::sha3_512_file(original_path)?;
 
-        let mut composite_key = key.into_bytes();
-        composite_key.extend_from_slice(&file_hash_bytes);
+        let mut composite_key = file_hash_bytes;
+        composite_key.extend_from_slice(&key.into_bytes());
+
+        let adjusted_version = u128::MAX - CODED_VERSION as u128;
+        composite_key.extend_from_slice(&adjusted_version.to_le_bytes());
+
+        let mut seed: [u8; 64] = [0; 64];
+        for (i, s) in seed.iter_mut().enumerate() {
+            *s = ((adjusted_version >> ((i % 16) * 8)) as u8) ^ (i as u8);
+        }
+
+        let mut rng = Xoshiro512PlusPlus::from_seed(rand_xoshiro::Seed512(seed));
+        composite_key.shuffle(&mut rng);
 
         Ok(composite_key)
     }
@@ -968,12 +978,11 @@ mod tests_encode_decode {
         let key = StegaV2::generate_composite_key(&input_path, KEY.to_string())
             .expect("failed to generate a composite key");
         let expected_key = vec![
-            0x45, 0x6C, 0x50, 0x73, 0x79, 0x4B, 0x6F, 0x6E, 0x67, 0x72, 0x6F, 0x6F, 0x47, 0x86,
-            0x72, 0x42, 0xB4, 0xA8, 0x8A, 0x61, 0x70, 0x53, 0xE7, 0xA0, 0xB2, 0xB8, 0x77, 0x1A,
-            0x2D, 0x7B, 0x4F, 0x2D, 0x65, 0x97, 0xAE, 0xDE, 0x06, 0x6C, 0x45, 0xF2, 0x42, 0x4C,
-            0xF9, 0x33, 0xEA, 0x87, 0xCE, 0x48, 0x93, 0x99, 0x42, 0xAD, 0xA4, 0x1A, 0xB0, 0xEA,
-            0xDB, 0x7B, 0x0B, 0x46, 0x63, 0xBA, 0x51, 0x68, 0x7E, 0x03, 0x6C, 0x14, 0xAE, 0x54,
-            0xE1, 0xCA, 0xC0, 0x36, 0x0A, 0x05,
+            103, 83, 45, 3, 66, 231, 97, 255, 160, 75, 80, 70, 101, 255, 168, 6, 99, 178, 202, 111,
+            164, 249, 69, 255, 20, 173, 123, 111, 192, 242, 147, 5, 255, 255, 71, 115, 255, 135,
+            84, 254, 72, 76, 138, 10, 54, 45, 186, 255, 153, 114, 26, 222, 66, 219, 184, 234, 225,
+            108, 104, 255, 134, 111, 26, 123, 234, 119, 108, 66, 255, 121, 255, 206, 126, 174, 255,
+            51, 79, 114, 151, 255, 255, 11, 108, 174, 112, 110, 81, 69, 180, 176, 255, 255,
         ];
 
         assert_eq!(
@@ -990,18 +999,17 @@ mod tests_encode_decode {
             which prevented the decoding of any files created prior to that change.
           This will ensure backwards compatibility is maintained within a version.
         */
-
         let mut tu = TestUtils::new(&BASE);
 
-        let input_path = tu.get_in_file("reference-valid.png");
-        let output_img_path = tu.get_out_file("png", true);
+        let ref_path = tu.get_in_file("reference-valid.png");
+        let enc_path = tu.get_out_file("png", true);
 
         // Attempt to encode the file.
         let mut stega = create_instance();
-        let r = stega.encode(&input_path, KEY.to_string(), TEXT, &output_img_path);
+        let r = stega.encode(&ref_path, KEY.to_string(), TEXT, &enc_path);
 
         assert!(
-            file_utils::path_exists(&output_img_path),
+            file_utils::path_exists(&enc_path),
             "file not written to disk."
         );
 
@@ -1013,21 +1021,16 @@ mod tests_encode_decode {
     fn test_encode_file() {
         let mut tu = TestUtils::new(&BASE);
 
-        let input_path = tu.get_in_file("reference-valid.png");
+        let ref_path = tu.get_in_file("reference-valid.png");
         let input_file_path = tu.get_in_file("text-file.txt");
-        let output_img_path = tu.get_out_file("png", true);
+        let enc_path = tu.get_out_file("png", true);
 
         // Attempt to encode the file.
         let mut stega = create_instance();
-        let r = stega.encode_file(
-            &input_path,
-            KEY.to_string(),
-            &input_file_path,
-            &output_img_path,
-        );
+        let r = stega.encode_file(&ref_path, KEY.to_string(), &input_file_path, &enc_path);
 
         assert!(
-            file_utils::path_exists(&output_img_path),
+            file_utils::path_exists(&enc_path),
             "file not written to disk"
         );
 
@@ -1039,21 +1042,16 @@ mod tests_encode_decode {
     fn test_encode_file_binary() {
         let mut tu = TestUtils::new(&BASE);
 
-        let input_path = tu.get_in_file("reference-valid.png");
+        let ref_path = tu.get_in_file("reference-valid.png");
         let input_file_path = tu.get_in_file("binary-file.bin");
-        let output_img_path = tu.get_out_file("png", true);
+        let enc_path = tu.get_out_file("png", true);
 
         // Attempt to encode the file.
         let mut stega = create_instance();
-        let r = stega.encode_file(
-            &input_path,
-            KEY.to_string(),
-            &input_file_path,
-            &output_img_path,
-        );
+        let r = stega.encode_file(&ref_path, KEY.to_string(), &input_file_path, &enc_path);
 
         assert!(
-            file_utils::path_exists(&output_img_path),
+            file_utils::path_exists(&enc_path),
             "file not written to disk."
         );
 
@@ -1065,8 +1063,8 @@ mod tests_encode_decode {
     fn test_encode_decode_locker_enabled() {
         let mut tu = TestUtils::new(&BASE);
 
-        let input_path = tu.get_in_file("reference-valid.png");
-        let output_img_path = tu.get_out_file("png", true);
+        let ref_path = tu.get_in_file("reference-valid.png");
+        let enc_path = tu.get_out_file("png", true);
 
         // Attempt to encode the file.
         let mut stega = create_instance();
@@ -1075,7 +1073,7 @@ mod tests_encode_decode {
         stega.set_config_state(Config::Locker, true);
 
         stega
-            .encode(&input_path, KEY.to_string(), TEXT, &output_img_path)
+            .encode(&ref_path, KEY.to_string(), TEXT, &enc_path)
             .expect("failed to encode the data");
 
         // Disable the file locker system again.
@@ -1083,7 +1081,7 @@ mod tests_encode_decode {
 
         // Attempt to decode the string.
         stega
-            .decode(&input_path, KEY.to_string(), &output_img_path)
+            .decode(&ref_path, KEY.to_string(), &enc_path)
             .expect("failed to decode the data");
 
         // Was the file locker enabled upon decoding?
@@ -1097,8 +1095,8 @@ mod tests_encode_decode {
     fn test_encode_decode_read_once_enabled() {
         let mut tu = TestUtils::new(&BASE);
 
-        let input_path = tu.get_in_file("reference-valid.png");
-        let output_img_path = tu.get_out_file("png", true);
+        let ref_path = tu.get_in_file("reference-valid.png");
+        let enc_path = tu.get_out_file("png", true);
 
         // Attempt to encode the file.
         let mut stega = create_instance();
@@ -1107,7 +1105,7 @@ mod tests_encode_decode {
         stega.set_config_state(Config::ReadOnce, true);
 
         stega
-            .encode(&input_path, KEY.to_string(), TEXT, &output_img_path)
+            .encode(&ref_path, KEY.to_string(), TEXT, &enc_path)
             .expect("failed to encode the data");
 
         // Disable the read-once file locker system again.
@@ -1115,7 +1113,7 @@ mod tests_encode_decode {
 
         // Attempt to decode the string.
         stega
-            .decode(&input_path, KEY.to_string(), &output_img_path)
+            .decode(&ref_path, KEY.to_string(), &enc_path)
             .expect("failed to decode the data");
 
         // Was the read-once file locker enabled upon decoding?
@@ -1135,8 +1133,8 @@ mod tests_encode_decode {
     fn test_read_once_roundtrip_successful() {
         let mut tu = TestUtils::new(&BASE);
 
-        let input_path = tu.get_in_file("reference-valid.png");
-        let output_img_path = tu.get_out_file("png", true);
+        let ref_path = tu.get_in_file("reference-valid.png");
+        let enc_path = tu.get_out_file("png", true);
 
         // Attempt to encode the file.
         let mut stega = create_instance();
@@ -1145,19 +1143,19 @@ mod tests_encode_decode {
         stega.set_config_state(Config::ReadOnce, true);
 
         stega
-            .encode(&input_path, KEY.to_string(), TEXT, &output_img_path)
+            .encode(&ref_path, KEY.to_string(), TEXT, &enc_path)
             .expect("failed to encode the data");
 
         // Hash the original file, this should change upon successful decryption.
-        let hash_original = hashers::sha3_512_file(&output_img_path);
+        let hash_original = hashers::sha3_512_file(&enc_path);
 
         // Attempt to decode the string.
         stega
-            .decode(&input_path, KEY.to_string(), &output_img_path)
+            .decode(&ref_path, KEY.to_string(), &enc_path)
             .expect("failed to decode the data");
 
         // Hash the file again.
-        let hash_new = hashers::sha3_512_file(&output_img_path);
+        let hash_new = hashers::sha3_512_file(&enc_path);
 
         // Was the read-once file locked after successfully decoding the data?
         assert_ne!(
@@ -1170,8 +1168,8 @@ mod tests_encode_decode {
     fn test_read_once_roundtrip_unsuccessful() {
         let mut tu = TestUtils::new(&BASE);
 
-        let input_path = tu.get_in_file("reference-valid.png");
-        let output_img_path = tu.get_out_file("png", true);
+        let ref_path = tu.get_in_file("reference-valid.png");
+        let enc_path = tu.get_out_file("png", true);
 
         // Attempt to encode the file.
         let mut stega = create_instance();
@@ -1180,19 +1178,17 @@ mod tests_encode_decode {
         stega.set_config_state(Config::ReadOnce, true);
 
         stega
-            .encode(&input_path, "banana".to_string(), TEXT, &output_img_path)
+            .encode(&ref_path, "banana".to_string(), TEXT, &enc_path)
             .expect("failed to encode the data");
 
         // Hash the original file, this should not change upon unsuccessful decryption.
-        let hash_original =
-            hashers::sha3_512_file(&output_img_path).expect("failed to create file hash");
+        let hash_original = hashers::sha3_512_file(&enc_path).expect("failed to create file hash");
 
         // Attempt to decode the string. We do not care about the return result here.
-        _ = stega.decode(&input_path, KEY.to_string(), &output_img_path);
+        _ = stega.decode(&ref_path, KEY.to_string(), &enc_path);
 
         // Hash the file again.
-        let hash_new =
-            hashers::sha3_512_file(&output_img_path).expect("failed to create file hash");
+        let hash_new = hashers::sha3_512_file(&enc_path).expect("failed to create file hash");
 
         // Was the read-once file locked after failing to decoding the data?
         assert_eq!(
@@ -1212,8 +1208,8 @@ mod tests_encode_decode {
     fn test_read_once_roundtrip_with_locker() {
         let mut tu = TestUtils::new(&BASE);
 
-        let input_path = tu.get_in_file("reference-valid.png");
-        let output_img_path = tu.get_out_file("png", true);
+        let ref_path = tu.get_in_file("reference-valid.png");
+        let enc_path = tu.get_out_file("png", true);
         let correct_key = "banana";
 
         // Attempt to encode the file.
@@ -1224,15 +1220,14 @@ mod tests_encode_decode {
         stega.set_config_state(Config::ReadOnce, true);
 
         stega
-            .encode(&input_path, correct_key.to_string(), TEXT, &output_img_path)
+            .encode(&ref_path, correct_key.to_string(), TEXT, &enc_path)
             .expect("failed to encode the data");
 
         // Hash the original file.
-        let hash_original =
-            hashers::sha3_512_file(&output_img_path).expect("failed to create file hash");
+        let hash_original = hashers::sha3_512_file(&enc_path).expect("failed to create file hash");
 
         // Attempt to decode the string. We do not care about the return result here.
-        _ = stega.decode(&input_path, KEY.to_string(), &output_img_path);
+        _ = stega.decode(&ref_path, KEY.to_string(), &enc_path);
 
         // A locker entry should exist for the file here.
         let locker_entry = stega.locker.get_entry_by_hash(&hash_original);
@@ -1242,8 +1237,7 @@ mod tests_encode_decode {
         );
 
         // Hash the file again.
-        let hash_new =
-            hashers::sha3_512_file(&output_img_path).expect("failed to create file hash");
+        let hash_new = hashers::sha3_512_file(&enc_path).expect("failed to create file hash");
 
         // Was the file locked?
         // It should not be locked here as a single unsuccessful attempt was made.
@@ -1254,12 +1248,11 @@ mod tests_encode_decode {
 
         // Attempt to decode the string. We do not care about the return result here.
         _ = stega
-            .decode(&input_path, correct_key.to_string(), &output_img_path)
+            .decode(&ref_path, correct_key.to_string(), &enc_path)
             .expect("failed to decrypt the data");
 
         // Hash the file again.
-        let hash_final =
-            hashers::sha3_512_file(&output_img_path).expect("failed to create file hash");
+        let hash_final = hashers::sha3_512_file(&enc_path).expect("failed to create file hash");
 
         // Was the file locked?
         // It should have been locked as it was successfully decoded.
@@ -1273,17 +1266,17 @@ mod tests_encode_decode {
     fn test_encode_bkgd_chunk() {
         let mut tu = TestUtils::new(&BASE);
 
-        let input_path = tu.get_in_file("reference-valid.png");
-        let output_img_path = tu.get_out_file("png", true);
+        let ref_path = tu.get_in_file("reference-valid.png");
+        let enc_path = tu.get_out_file("png", true);
 
         // Attempt to encode the file.
         let mut stega = create_instance();
         stega
-            .encode(&input_path, KEY.to_string(), TEXT, &output_img_path)
+            .encode(&ref_path, KEY.to_string(), TEXT, &enc_path)
             .expect("failed to encode the data");
 
         assert!(
-            png_utils::find_chunk_start(&output_img_path, PngChunkType::Bkgd).is_some(),
+            png_utils::find_chunk_start(&enc_path, PngChunkType::Bkgd).is_some(),
             "bKGD chunk was not written to the PNG file"
         );
     }
@@ -1293,14 +1286,14 @@ mod tests_encode_decode {
     fn test_decode_string_wrong_version() {
         let tu = TestUtils::new(&["encoding_decoding_v1"]);
 
-        let ref_img_path = tu.get_in_file("reference-valid.png");
-        let enc_img_path = tu.get_in_file("encoded-text.png");
+        let ref_path = tu.get_in_file("reference-valid.png");
+        let enc_path = tu.get_in_file("encoded-text.png");
 
         // Attempt to decode the string.
         let mut stega = create_instance();
 
         let _ = stega
-            .decode(&ref_img_path, KEY.to_string(), &enc_img_path)
+            .decode(&ref_path, KEY.to_string(), &enc_path)
             .expect("failed to decode string");
     }
 
@@ -1308,14 +1301,14 @@ mod tests_encode_decode {
     fn test_decode_string() {
         let tu = TestUtils::new(&BASE);
 
-        let ref_img_path = tu.get_in_file("reference-valid.png");
-        let enc_img_path = tu.get_in_file("encoded-text.png");
+        let ref_path = tu.get_in_file("reference-valid.png");
+        let enc_path = tu.get_in_file("encoded-text.png");
 
         // Attempt to decode the string.
         let mut stega = create_instance();
 
         let r = stega
-            .decode(&ref_img_path, KEY.to_string(), &enc_img_path)
+            .decode(&ref_path, KEY.to_string(), &enc_path)
             .expect("failed to decode string");
 
         // Did we successfully decode the string?
@@ -1326,13 +1319,13 @@ mod tests_encode_decode {
     fn test_decode_string_invalid_key() {
         let tu = TestUtils::new(&BASE);
 
-        let ref_img_path = tu.get_in_file("reference-valid.png");
-        let enc_img_path = tu.get_in_file("encoded-text.png");
+        let ref_path = tu.get_in_file("reference-valid.png");
+        let enc_path = tu.get_in_file("encoded-text.png");
 
         // Attempt to decode the string.
         let mut stega = create_instance();
 
-        let r = stega.decode(&ref_img_path, "A".to_string(), &enc_img_path);
+        let r = stega.decode(&ref_path, "A".to_string(), &enc_path);
 
         // Did we successfully decode the string?
         assert!(
@@ -1469,23 +1462,18 @@ mod tests_encode_decode {
     fn test_roundtrip_string_invalid_sequences() {
         let mut tu = TestUtils::new(&BASE);
 
-        let input_path = tu.get_in_file("reference-valid.png");
-        let output_img_path = tu.get_out_file("png", true);
+        let ref_path = tu.get_in_file("reference-valid.png");
+        let enc_path = tu.get_out_file("png", true);
 
         let invalid_utf8 = unsafe { String::from_utf8_unchecked(vec![65, 159, 146, 150, 65]) };
 
         // Attempt to encode the file.
         let mut stega = create_instance();
 
-        let r = stega.encode(
-            &input_path,
-            KEY.to_string(),
-            &invalid_utf8,
-            &output_img_path,
-        );
+        let r = stega.encode(&ref_path, KEY.to_string(), &invalid_utf8, &enc_path);
 
         assert!(
-            file_utils::path_exists(&output_img_path),
+            file_utils::path_exists(&enc_path),
             "file not written to disk"
         );
 
@@ -1494,7 +1482,7 @@ mod tests_encode_decode {
 
         // Now we will attempt to decode the string.
         let str = stega
-            .decode(&input_path, KEY.to_string(), &output_img_path)
+            .decode(&ref_path, KEY.to_string(), &enc_path)
             .expect("failed to decode string");
 
         // Did we successfully decode the string?
