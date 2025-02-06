@@ -168,13 +168,13 @@ fn read_bkgd_chunk(path: &str) -> Option<String> {
 
     // We have a bKGD chunk to process!
     let data = png_utils::get_chunk_data(&chunk)?;
-
     if data.len() < 6 {
         return None;
     }
 
-    // This could be a legacy file, so we can assume that it is a V1 file here.
-    // In a v1 file the specific segment could be anything, as it was randomly generated.
+    // This could be a legacy file, so we can assume that it is a v1 file here.
+    // In a v1 file the specific segment could be anything, as it was
+    // randomly generated in early iterations of the codec.
     if data[5] > CURRENT_MAX_VERSION {
         return Some("1".to_string());
     }
