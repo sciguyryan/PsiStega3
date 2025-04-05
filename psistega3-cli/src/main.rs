@@ -270,10 +270,7 @@ fn get_codec_by_version(version: Version) -> Box<dyn Codec> {
 ///
 fn get_password(prompt: &str) -> Option<String> {
     println!("{prompt}");
-    match rpassword::read_password() {
-        Ok(s) => Some(s),
-        Err(_) => None,
-    }
+    rpassword::read_password().ok()
 }
 
 /// Handle a text decode command.

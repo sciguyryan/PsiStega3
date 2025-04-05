@@ -653,14 +653,14 @@ impl StegaV2 {
         //   a total number of channels that is divisible by 8.
 
         unsafe {
-            (*rb.get_unchecked(0) != *eb.get_unchecked(0)) as u8
-                | ((*rb.get_unchecked(1) != *eb.get_unchecked(1)) as u8) << 1
-                | ((*rb.get_unchecked(2) != *eb.get_unchecked(2)) as u8) << 2
-                | ((*rb.get_unchecked(3) != *eb.get_unchecked(3)) as u8) << 3
-                | ((*rb.get_unchecked(4) != *eb.get_unchecked(4)) as u8) << 4
-                | ((*rb.get_unchecked(5) != *eb.get_unchecked(5)) as u8) << 5
-                | ((*rb.get_unchecked(6) != *eb.get_unchecked(6)) as u8) << 6
-                | ((*rb.get_unchecked(7) != *eb.get_unchecked(7)) as u8) << 7
+            ((*rb.get_unchecked(0) != *eb.get_unchecked(0)) as u8)
+                | (((*rb.get_unchecked(1) != *eb.get_unchecked(1)) as u8) << 1)
+                | (((*rb.get_unchecked(2) != *eb.get_unchecked(2)) as u8) << 2)
+                | (((*rb.get_unchecked(3) != *eb.get_unchecked(3)) as u8) << 3)
+                | (((*rb.get_unchecked(4) != *eb.get_unchecked(4)) as u8) << 4)
+                | (((*rb.get_unchecked(5) != *eb.get_unchecked(5)) as u8) << 5)
+                | (((*rb.get_unchecked(6) != *eb.get_unchecked(6)) as u8) << 6)
+                | (((*rb.get_unchecked(7) != *eb.get_unchecked(7)) as u8) << 7)
         }
     }
 
