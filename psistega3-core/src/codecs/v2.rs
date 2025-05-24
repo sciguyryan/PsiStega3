@@ -13,6 +13,7 @@ use hashbrown::HashMap;
 use rand::prelude::*;
 use rand_xoshiro::Xoshiro512PlusPlus;
 use std::convert::TryInto;
+use zeroize::Zeroize;
 
 use self::misc_utils::BIT_MASKS;
 
@@ -247,7 +248,7 @@ impl StegaV2 {
         let ct_bytes = data.pop_vec(total_ct_cells as usize);
 
         // Now we can compute the Argon2 hash.
-        let key_bytes_full = hashers::argon2_string(
+        let mut key_bytes_full = hashers::argon2_string(
             &composite_key,
             salt_bytes,
             M_COST,
@@ -255,9 +256,6 @@ impl StegaV2 {
             T_COST,
             ARGON_VER,
         )?;
-
-        // Clear the key since it is no longer needed.
-        composite_key.clear();
 
         // The AES-256 key is 256-bits (32 bytes) in length.
         let key_bytes = &key_bytes_full[..32];
@@ -314,6 +312,10 @@ impl StegaV2 {
             self.locker.set_attempts(encoded_img_path, &enc_hash, 4);
         }
 
+        // Zero out sensitive material.
+        composite_key.zeroize();
+        key_bytes_full.zeroize();
+
         Ok(str)
     }
 
@@ -341,7 +343,7 @@ impl StegaV2 {
 
         // Generate a random salt for the Argon2 hashing function.
         let salt_bytes: [u8; 12] = misc_utils::secure_random_bytes();
-        let key_bytes_full = hashers::argon2_string(
+        let mut key_bytes_full = hashers::argon2_string(
             &composite_key,
             salt_bytes,
             M_COST,
@@ -423,8 +425,9 @@ impl StegaV2 {
         // Build the data index to positional cell index map.
         self.build_data_to_cell_index_map(&img, &composite_key);
 
-        // Clear the key since it is no longer needed.
-        composite_key.clear();
+        // Zeroize sensitive material
+        composite_key.zeroize();
+        key_bytes_full.zeroize();
 
         // Iterate over each byte of data to be encoded.
         for (i, byte) in data.bytes.iter().enumerate() {
@@ -492,7 +495,7 @@ impl StegaV2 {
         let file_hash_bytes = hashers::sha3_512_file(original_path)?;
 
         let mut composite_key = file_hash_bytes;
-        composite_key.extend_from_slice(&key.into_bytes());
+        composite_key.extend_from_slice(key.as_bytes());
         composite_key.extend_from_slice(&CODED_VERSION.to_le_bytes());
 
         Ok(composite_key)
@@ -588,47 +591,25 @@ impl StegaV2 {
     ///
     pub fn process_bkgd_chunk(&mut self, path: &str) -> bool {
         let Some(chunk) = png_utils::read_chunk_raw(path, PngChunkType::Bkgd) else {
-            // This is an error as we should always have a bKGD chunk.
             return false;
         };
-
-        // We have a bKGD chunk to process!
         let Some(data) = png_utils::get_chunk_data(&chunk) else {
-            // This is an error as we should always have a bKGD chunk.
             return false;
         };
-
         if data.len() < 6 {
-            // This is an error as there should always be 6 bytes.
             return false;
         }
-
         if !self.skip_version_checks && data[5] != CODED_VERSION {
-            // The codec version does not match.
             return false;
         }
 
-        // The 1st bit are be stored in byte 1.
-        // Bit 1 stores the flag indicating whether the file locker should be
-        //   used with this file.
-        //
-        // The 2nd to 4th bits are be stored in bytes 2 to 4 respectively.
-        // Bit 2 stores the read-once flag.
-        // Bits 3 and 4 are reserved fo future use.
-        //
-        // 5th and 6th bits are be stored in byte 5.
-        // These are currently reserved for future use.
-        //
-        // There are no 7th or 8th flags as the entire byte is used to hold the codec version.
-
-        unsafe {
-            self.flags = (misc_utils::is_bit_set(&data[0], 0) as u8) & BIT_MASKS.get_unchecked(0)
-                | ((misc_utils::is_bit_set(&data[1], 0) as u8) << 1) & BIT_MASKS.get_unchecked(1)
-                | ((misc_utils::is_bit_set(&data[2], 0) as u8) << 2) & BIT_MASKS.get_unchecked(2)
-                | ((misc_utils::is_bit_set(&data[3], 0) as u8) << 3) & BIT_MASKS.get_unchecked(3)
-                | ((misc_utils::is_bit_set(&data[4], 0) as u8) << 4) & BIT_MASKS.get_unchecked(4)
-                | ((misc_utils::is_bit_set(&data[4], 1) as u8) << 5) & BIT_MASKS.get_unchecked(5);
-        }
+        // Use safe indexing, as length is checked above.
+        self.flags = (misc_utils::is_bit_set(&data[0], 0) as u8) & BIT_MASKS[0]
+            | ((misc_utils::is_bit_set(&data[1], 0) as u8) << 1) & BIT_MASKS[1]
+            | ((misc_utils::is_bit_set(&data[2], 0) as u8) << 2) & BIT_MASKS[2]
+            | ((misc_utils::is_bit_set(&data[3], 0) as u8) << 3) & BIT_MASKS[3]
+            | ((misc_utils::is_bit_set(&data[4], 0) as u8) << 4) & BIT_MASKS[4]
+            | ((misc_utils::is_bit_set(&data[4], 1) as u8) << 5) & BIT_MASKS[5];
 
         true
     }
@@ -783,18 +764,10 @@ impl StegaV2 {
     ///
     #[inline]
     fn write_u8_by_data_index(&mut self, img: &mut ImageWrapper, data: &u8, data_index: usize) {
-        // If the data is zero then we can fast-path here as we will not
-        //   have any actions to undertake.
         if *data == 0 {
             return;
         }
-
-        // We need to look up the cell to which this byte of data
-        //   will be encoded within the image.
-        // Each cell is 2 subcells (16 channels) in length.
         let start_index = self.get_data_cell_index(&data_index) * 2;
-
-        // Finally we can write a byte of data to the cell.
         self.write_u8(img, data, start_index);
     }
 }
