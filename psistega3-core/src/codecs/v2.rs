@@ -99,20 +99,19 @@ impl StegaV2 {
         //   as they will have the same value at this point.
         let total_cells = StegaV2::get_total_cells(img);
 
-        // Create and fill our vector with sequential values, one
-        //   for each cell ID.
-        let mut cell_list: Vec<usize> = (0..total_cells).collect();
+        // Pre-allocate vector and map for performance.
+        let mut cell_list: Vec<usize> = Vec::with_capacity(total_cells);
+        cell_list.extend(0..total_cells);
 
         // Randomize the order of the cell IDs.
         cell_list.shuffle(&mut rng);
 
-        // Add the randomized entries to our cell map.
-        self.data_cell_map = cell_list
-            .iter()
-            .rev()
-            .enumerate()
-            .map(|(i, id)| (i, *id))
-            .collect();
+        // Pre-allocate map for performance
+        let mut map = HashMap::with_capacity(total_cells);
+        for (i, id) in cell_list.iter().rev().enumerate() {
+            map.insert(i, *id);
+        }
+        self.data_cell_map = map;
     }
 
     /// Clear the lock on a file. Only used when use_file_locker is enabled.
@@ -217,7 +216,8 @@ impl StegaV2 {
         }
 
         // Do we have enough space within the image to decode the data?
-        if total_cells_needed > StegaV2::get_total_cells(&enc_image) {
+        let total_cells = StegaV2::get_total_cells(&enc_image);
+        if total_cells_needed > total_cells {
             // This error counts as a failed decryption attempt.
             self.update_file_lock(encoded_img_path, &enc_hash);
             return Err(Error::ImageInsufficientSpace);
@@ -494,9 +494,11 @@ impl StegaV2 {
         */
         let file_hash_bytes = hashers::sha3_512_file(original_path)?;
 
-        let mut composite_key = file_hash_bytes;
+        // Pre-allocate with known size for performance
+        let mut composite_key = Vec::with_capacity(file_hash_bytes.len() + key.len() + 1);
+        composite_key.extend_from_slice(&file_hash_bytes);
         composite_key.extend_from_slice(key.as_bytes());
-        composite_key.extend_from_slice(&CODED_VERSION.to_le_bytes());
+        composite_key.push(CODED_VERSION);
 
         Ok(composite_key)
     }
@@ -1079,7 +1081,7 @@ mod tests_encode_decode {
             .decode(&ref_path, KEY.to_string(), &enc_path)
             .expect("failed to decode the data");
 
-        // Was the read-once file locker enabled upon decoding?
+        // Was the read-once flag set for this file?
         assert!(
             stega.is_read_once_enabled(),
             "read-once was not enabled after decoding the file"
