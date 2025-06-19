@@ -425,7 +425,6 @@ impl StegaV2 {
         // Build the data index to positional cell index map.
         self.build_data_to_cell_index_map(&img, &composite_key);
 
-        // Zeroize sensitive material
         composite_key.zeroize();
         key_bytes_full.zeroize();
 
