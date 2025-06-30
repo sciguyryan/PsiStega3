@@ -20,7 +20,7 @@ impl Logger {
         }
 
         #[cfg(debug_assertions)]
-        log::debug!("{}", string);
+        log::debug!("{string}");
 
         #[cfg(not(debug_assertions))]
         println!("{}", string);
