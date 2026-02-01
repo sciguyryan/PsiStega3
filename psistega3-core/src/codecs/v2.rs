@@ -139,7 +139,7 @@ impl StegaV2 {
         original_img_path: &str,
         key: String,
         encoded_img_path: &str,
-    ) -> Result<String> {
+    ) -> Result<Vec<u8>> {
         // Process the bKGD chunk data.
         // If it isn't present then we will not attempt to decode the file.
         if !self.process_bkgd_chunk(encoded_img_path) {
@@ -245,7 +245,7 @@ impl StegaV2 {
         let nonce_bytes: [u8; 12] = data.pop_vec(12).try_into().unwrap();
 
         // Add the cipher-text bytes.
-        let ct_bytes = data.pop_vec(total_ct_cells as usize);
+        let cipher_text_bytes = data.pop_vec(total_ct_cells as usize);
 
         // Now we can compute the Argon2 hash.
         let mut key_bytes_full = hashers::argon2_string(
@@ -275,7 +275,7 @@ impl StegaV2 {
             * One or more of the files were modified.
             * The decrypted key was incorrect.
         */
-        let pt_bytes = match cipher.decrypt(nonce, ct_bytes.as_ref()) {
+        let plaintext_bytes = match cipher.decrypt(nonce, cipher_text_bytes.as_ref()) {
             Ok(v) => v,
             Err(_) => {
                 // This error counts as a failed decryption attempt.
@@ -292,17 +292,9 @@ impl StegaV2 {
             self.clear_file_lock(&enc_hash);
         }
 
-        let str: String;
-        unsafe {
-            // The following code is safe.
-            // We are working with internal code and it can't
-            //   generate any invalid UTF-8 sequences.
-            str = String::from_utf8_unchecked(pt_bytes);
-        }
-
         // We successfully decrypt the data.
         // Was the read-once flag set for this file?
-        if !str.is_empty() && self.is_read_once_enabled() {
+        if self.is_read_once_enabled() {
             /*
               Update the attempts counter and attempt to lock the file.
               We intentionally do this, rather than directly locking the file,
@@ -316,7 +308,7 @@ impl StegaV2 {
         composite_key.zeroize();
         key_bytes_full.zeroize();
 
-        Ok(str)
+        Ok(plaintext_bytes)
     }
 
     /// The internal implementation of the encoding algorithm.
@@ -363,8 +355,8 @@ impl StegaV2 {
         let nonce = Nonce::from_slice(&nonce_bytes);
 
         // We will convert the input data byte vector into a base64 string.
-        let plaintext = misc_utils::encode_u8_slice_to_base64_str(data);
-        let Ok(ct_bytes) = cipher.encrypt(nonce, plaintext.as_bytes()) else {
+        //let plaintext = misc_utils::encode_u8_slice_to_base64_str(data);
+        let Ok(ct_bytes) = cipher.encrypt(nonce, data) else {
             return Err(Error::EncryptionFailed);
         };
 
@@ -830,10 +822,7 @@ impl Codec for StegaV2 {
         encoded_img_path: &str,
     ) -> Result<String> {
         // Decode the data to yield a base64 string.
-        let b64_str = self.decode_internal(original_img_path, key, encoded_img_path)?;
-
-        // Decode the base64 string into the raw bytes.
-        let bytes = misc_utils::decode_base64_str_to_vec(&b64_str)?;
+        let bytes = self.decode_internal(original_img_path, key, encoded_img_path)?;
 
         // Convert the raw bytes back into a string. This is done lossy
         //   to ensure that any invalid sequences are handled.
@@ -848,10 +837,7 @@ impl Codec for StegaV2 {
         output_file_path: &str,
     ) -> Result<()> {
         // First, we need to extract the information from the target image.
-        let b64_str = self.decode_internal(original_img_path, key, encoded_img_path)?;
-
-        // Decode the base64 string into the raw bytes.
-        let bytes = misc_utils::decode_base64_str_to_vec(&b64_str)?;
+        let bytes = self.decode_internal(original_img_path, key, encoded_img_path)?;
 
         // Write the raw bytes directly to the output file.
         if self.output_files {
@@ -1263,7 +1249,7 @@ mod tests_encode_decode {
 
     #[test]
     #[should_panic]
-    fn test_decode_string_wrong_version() {
+    fn test_decode_fixed_string_wrong_version() {
         let tu = TestUtils::new(&["encoding_decoding_v1"]);
 
         let ref_path = tu.get_in_file("reference-valid.png");
@@ -1335,7 +1321,7 @@ mod tests_encode_decode {
     }
 
     #[test]
-    fn test_decode_file() {
+    fn test_decode_fixed_file() {
         let mut tu = TestUtils::new(&BASE);
 
         let ref_path = tu.get_in_file("reference-valid.png");
@@ -1408,7 +1394,7 @@ mod tests_encode_decode {
     }
 
     #[test]
-    fn test_decode_file_binary() {
+    fn test_decode_fixed_file_binary() {
         let mut tu = TestUtils::new(&BASE);
 
         let ref_path = tu.get_in_file("reference-valid.png");

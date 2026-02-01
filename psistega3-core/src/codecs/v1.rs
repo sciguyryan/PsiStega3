@@ -1259,7 +1259,7 @@ mod tests_encode_decode {
     }
 
     #[test]
-    fn test_decode_string() {
+    fn test_decode_fixed_string() {
         let tu = TestUtils::new(&BASE);
 
         let ref_path = tu.get_in_file("reference-valid.png");
@@ -1316,7 +1316,7 @@ mod tests_encode_decode {
     }
 
     #[test]
-    fn test_decode_file() {
+    fn test_decode_fixed_file() {
         let mut tu = TestUtils::new(&BASE);
 
         let ref_path = tu.get_in_file("reference-valid.png");
@@ -1389,7 +1389,7 @@ mod tests_encode_decode {
     }
 
     #[test]
-    fn test_decode_file_binary() {
+    fn test_decode_fixed_file_binary() {
         let mut tu = TestUtils::new(&BASE);
 
         let ref_path = tu.get_in_file("reference-valid.png");
