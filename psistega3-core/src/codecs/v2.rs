@@ -639,19 +639,8 @@ impl StegaV2 {
         let rb = ref_img.get_subcells_from_index(cell_start, 2);
         let eb = enc_img.get_subcells_from_index(cell_start, 2);
 
-        // This block is safe because we verify that the loaded image has
-        //   a total number of channels that is divisible by 8.
-
-        unsafe {
-            ((*rb.get_unchecked(0) != *eb.get_unchecked(0)) as u8)
-                | (((*rb.get_unchecked(1) != *eb.get_unchecked(1)) as u8) << 1)
-                | (((*rb.get_unchecked(2) != *eb.get_unchecked(2)) as u8) << 2)
-                | (((*rb.get_unchecked(3) != *eb.get_unchecked(3)) as u8) << 3)
-                | (((*rb.get_unchecked(4) != *eb.get_unchecked(4)) as u8) << 4)
-                | (((*rb.get_unchecked(5) != *eb.get_unchecked(5)) as u8) << 5)
-                | (((*rb.get_unchecked(6) != *eb.get_unchecked(6)) as u8) << 6)
-                | (((*rb.get_unchecked(7) != *eb.get_unchecked(7)) as u8) << 7)
-        }
+        // Load 8 bytes and compute XOR mask.
+        (0..8).fold(0u8, |acc, i| acc | (((rb[i] != eb[i]) as u8) << i))
     }
 
     /// Read a byte of encoded data for a specified data index.
@@ -773,9 +762,6 @@ impl StegaV2 {
     ///
     #[inline]
     fn write_u8_by_data_index(&mut self, img: &mut ImageWrapper, data: &u8, data_index: usize) {
-        if *data == 0 {
-            return;
-        }
         let start_index = self.get_data_cell_index(&data_index) * 2;
         self.write_u8(img, data, start_index);
     }
