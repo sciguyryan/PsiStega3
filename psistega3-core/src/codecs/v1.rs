@@ -32,7 +32,7 @@ const ARGON_VER: argon2::Version = argon2::Version::V0x13;
 /// The version of this codec.
 const CODED_VERSION: u8 = 0x0;
 
-/// The struct that holds the v1 Steganography algorithm.
+/// The struct that holds the v1 steganography algorithm.
 pub struct StegaV1 {
     /// The application name.
     application_name: String,

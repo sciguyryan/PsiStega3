@@ -31,9 +31,9 @@ const M_COST: u32 = 65536;
 /// The version of the Argon2 hashing algorithm to use.
 const ARGON_VER: argon2::Version = argon2::Version::V0x13;
 /// The version of this codec.
-const CODED_VERSION: u8 = 0x1;
+const CODED_VERSION: u8 = 0x2; // Changing this to 0x2 breaks things.
 
-/// The struct that holds the v1 Steganography algorithm.
+/// The struct that holds the v2 steganography algorithm.
 pub struct StegaV2 {
     /// The application name.
     application_name: String,
@@ -505,7 +505,7 @@ impl StegaV2 {
     /// Generate the bKGD chunk data containing the encoded flags.
     ///
     fn generate_bkgd_chunk_data(&self) -> [u8; 6] {
-        let mut data: [u8; 6] = misc_utils::secure_random_bytes();
+        let mut data: [u8; 6] = [0; 6];
 
         // The 1st bit will be stored in byte 1.
         misc_utils::set_bit_state(&mut data[0], 0, self.is_file_locker_enabled());
@@ -946,7 +946,7 @@ mod tests_encode_decode {
             45, 101, 151, 174, 222, 6, 108, 69, 242, 66, 76, 249, 51, 234, 135, 206, 72, 147, 153,
             66, 173, 164, 26, 176, 234, 219, 123, 11, 70, 99, 186, 81, 104, 126, 3, 108, 20, 174,
             84, 225, 202, 192, 54, 10, 5, 69, 108, 80, 115, 121, 75, 111, 110, 103, 114, 111, 111,
-            1,
+            2,
         ];
 
         assert_eq!(
