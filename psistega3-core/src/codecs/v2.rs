@@ -195,13 +195,13 @@ impl StegaV2 {
 
         // The next set of bytes should be the total number of cipher-text bytes
         //   cells that have been encoded.
-        let total_ct_cells = data.pop_u32();
+        let total_ciphertext_cells = data.pop_u32();
 
         // Now we can calculate how many bytes we need to read.
         let total_cells_needed = (4 /* number of cipher-text cells (u32) */
             + 12 /* the length of the Argon2 salt (12 * u8) */
             + 12 /* the length of the AES-256 nonce (12 * u8) */
-            + total_ct_cells as usize)
+            + total_ciphertext_cells as usize)
             * 2; /* 2 subcells per cell */
 
         /*
@@ -245,7 +245,7 @@ impl StegaV2 {
         let nonce_bytes: [u8; 12] = data.pop_vec(12).try_into().unwrap();
 
         // Add the cipher-text bytes.
-        let cipher_text_bytes = data.pop_vec(total_ct_cells as usize);
+        let ciphertext_bytes = data.pop_vec(total_ciphertext_cells as usize);
 
         // Now we can compute the Argon2 hash.
         let mut key_bytes_full = hashers::argon2_string(
@@ -275,7 +275,7 @@ impl StegaV2 {
             * One or more of the files were modified.
             * The decrypted key was incorrect.
         */
-        let plaintext_bytes = match cipher.decrypt(nonce, cipher_text_bytes.as_ref()) {
+        let plaintext_bytes = match cipher.decrypt(nonce, ciphertext_bytes.as_ref()) {
             Ok(v) => v,
             Err(_) => {
                 // This error counts as a failed decryption attempt.
