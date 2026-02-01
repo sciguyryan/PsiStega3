@@ -504,27 +504,41 @@ impl StegaV2 {
 
     /// Generate the bKGD chunk data containing the encoded flags.
     ///
+    /// Important notes:
+    /// - Bytes 0, 2, 4 should NEVER be modified; non-zero values may break PNG validators.
+    /// - Only bytes 1, 3, 5 may store flags or metadata.
+    /// - Bits in the safe bytes that are currently unused are set to random values
+    ///   for entropy/obfuscation, but this is optional as those values aren't read.
+    ///
     fn generate_bkgd_chunk_data(&self) -> [u8; 6] {
-        let mut data: [u8; 6] = [0; 6];
+        let mut rng = rand::rng();
+        let mut data = [0u8; 6];
 
-        // The 1st bit will be stored in byte 1.
-        misc_utils::set_bit_state(&mut data[0], 0, self.is_file_locker_enabled());
+        // Byte 0 (red high byte) — unused for as noted above.
 
-        // The 2nd to 4th bits will be restores in bytes 2 to 4 respectively.
-        // Bits 3 and 4 are currently reserved for future use.
-        misc_utils::set_bit_state(&mut data[1], 0, self.is_read_once_enabled());
-        misc_utils::set_bit_state(&mut data[2], 0, false);
-        misc_utils::set_bit_state(&mut data[3], 0, false);
+        // Byte 1 (red low byte) — primary flags.
+        // Bit 0 - file locker flag.
+        misc_utils::set_bit_state(&mut data[1], 0, self.is_file_locker_enabled());
+        // Bit 1 - read once flag.
+        misc_utils::set_bit_state(&mut data[1], 1, self.is_read_once_enabled());
+        // Bits 2–7 - currently unused; filled with random values for entropy.
+        for bit in 2..8 {
+            misc_utils::set_bit_state(&mut data[1], bit, rng.random_bool(0.5));
+        }
 
-        // 5th and 6th bits will be stored in byte 5.
-        // These are currently reserved for future use.
-        misc_utils::set_bit_state(&mut data[4], 0, false);
-        misc_utils::set_bit_state(&mut data[4], 1, false);
+        // Byte 2 (green high byte) — unused for as noted above.
 
-        // There are no 7th or 8th flags as the entire byte is used to hold the codec version.
+        // Byte 3 (green low byte) — reserved for future flags.
+        // All 8 bits are currently unused; fill with random values.
+        for bit in 0..8 {
+            misc_utils::set_bit_state(&mut data[3], bit, rng.random_bool(0.5));
+        }
+
+        // Byte 4 (blue high byte) — unused for as noted above.
+
+        // Byte 5 (Blue low byte) — codec version.
         data[5] = CODED_VERSION;
 
-        // Return the data.
         data
     }
 
@@ -604,13 +618,15 @@ impl StegaV2 {
             return false;
         }
 
-        // Use safe indexing, as length is checked above.
-        self.flags = (misc_utils::is_bit_set(&data[0], 0) as u8) & BIT_MASKS[0]
-            | ((misc_utils::is_bit_set(&data[1], 0) as u8) << 1) & BIT_MASKS[1]
-            | ((misc_utils::is_bit_set(&data[2], 0) as u8) << 2) & BIT_MASKS[2]
-            | ((misc_utils::is_bit_set(&data[3], 0) as u8) << 3) & BIT_MASKS[3]
-            | ((misc_utils::is_bit_set(&data[4], 0) as u8) << 4) & BIT_MASKS[4]
-            | ((misc_utils::is_bit_set(&data[4], 1) as u8) << 5) & BIT_MASKS[5];
+        self.flags = 0;
+
+        // Byte 1 (red low byte) — primary flags.
+        if misc_utils::is_bit_set(&data[1], 0) {
+            self.flags |= BIT_MASKS[0]; // File locker.
+        }
+        if misc_utils::is_bit_set(&data[1], 1) {
+            self.flags |= BIT_MASKS[1]; // Read-once.
+        }
 
         true
     }
