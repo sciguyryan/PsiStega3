@@ -31,7 +31,7 @@ const M_COST: u32 = 65536;
 /// The version of the Argon2 hashing algorithm to use.
 const ARGON_VER: argon2::Version = argon2::Version::V0x13;
 /// The version of this codec.
-const CODED_VERSION: u8 = 0x2; // Changing this to 0x2 breaks things.
+const CODED_VERSION: u8 = 0x2;
 
 /// The struct that holds the v2 steganography algorithm.
 pub struct StegaV2 {
