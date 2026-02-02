@@ -1,4 +1,5 @@
 #[cfg(feature = "bench")]
+#[allow(unused)]
 macro_rules! bench_visible {
     () => { pub };
 }

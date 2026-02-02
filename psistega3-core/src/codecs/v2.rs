@@ -729,28 +729,39 @@ impl StegaV2 {
     ///
     #[inline]
     fn write_u8(&mut self, img: &mut ImageWrapper, data: &u8, cell_start: usize) {
-        // Get the image bytes relevant to this cell.
         let bytes = img.get_subcells_from_index_mut(cell_start, 2);
 
-        for (_i, b) in bytes
-            .iter_mut()
-            .enumerate()
-            .filter(|(i, _)| misc_utils::is_bit_set(data, *i))
-        {
-            // If the value is 0 then the new value will always be 1.
-            // If the value is 255 then the new value will always be 254.
-            // Otherwise the value will be assigned to be ±1.
-            *b = match *b {
-                0 => 1,
-                255 => 254,
-                v => {
-                    if self.position_rng.random_bool(0.5) {
-                        v + 1
-                    } else {
-                        v - 1
-                    }
-                }
-            };
+        let mut rand_bits: u8 = self.position_rng.random();
+
+        for i in 0..8 {
+            if (data >> i) & 1 == 0 {
+                continue;
+            }
+
+            let b = &mut bytes[i];
+            let v = *b;
+
+            // One random bit from our random bit pool.
+            let r = rand_bits & 1;
+            rand_bits >>= 1;
+            let delta = r.wrapping_mul(2).wrapping_sub(1);
+
+            // Apply the delta.
+            let mut out = v.wrapping_add(delta);
+
+            // Handle wrap cases.
+            // v == 0   && delta == 255 → out == 255 - force to 1.
+            // v == 255 && delta == 1   → out == 0   - force to 254.
+            let wrapped_down = (v == 0) as u8 & (delta == 255) as u8;
+            let wrapped_up = (v == 255) as u8 & (delta == 1) as u8;
+
+            out = out
+                .wrapping_add(wrapped_down) // 255 → 0
+                .wrapping_add(wrapped_down) // 0 → 1
+                .wrapping_sub(wrapped_up) // 0 → 255
+                .wrapping_sub(wrapped_up); // 255 → 254
+
+            *b = out;
         }
     }
 
