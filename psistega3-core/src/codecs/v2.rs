@@ -54,6 +54,8 @@ pub struct StegaV2 {
     locker: Locker,
     /// The logger instance for this codec.
     logger: Logger,
+    // The RNG for the cell value adjustments.
+    position_rng: Xoshiro512PlusPlus,
 }
 
 impl StegaV2 {
@@ -75,6 +77,7 @@ impl StegaV2 {
             flags: 0,
             locker,
             logger: Logger::new(false),
+            position_rng: Xoshiro512PlusPlus::from_os_rng(),
         }
     }
 
@@ -106,12 +109,11 @@ impl StegaV2 {
         // Randomize the order of the cell IDs.
         cell_list.shuffle(&mut rng);
 
-        // Pre-allocate map for performance
-        let mut map = HashMap::with_capacity(total_cells);
+        // Pre-allocate map for performance.
+        self.data_cell_map = HashMap::with_capacity(total_cells);
         for (i, id) in cell_list.iter().rev().enumerate() {
-            map.insert(i, *id);
+            self.data_cell_map.insert(i, *id);
         }
-        self.data_cell_map = map;
     }
 
     /// Clear the lock on a file. Only used when use_file_locker is enabled.
@@ -730,7 +732,7 @@ impl StegaV2 {
         // Get the image bytes relevant to this cell.
         let bytes = img.get_subcells_from_index_mut(cell_start, 2);
 
-        for (i, b) in bytes
+        for (_i, b) in bytes
             .iter_mut()
             .enumerate()
             .filter(|(i, _)| misc_utils::is_bit_set(data, *i))
@@ -740,14 +742,14 @@ impl StegaV2 {
             // Otherwise the value will be assigned to be ±1.
             *b = match *b {
                 0 => 1,
-                1..=254 => {
-                    if i % 2 == 0 {
-                        *b + 1
+                255 => 254,
+                v => {
+                    if self.position_rng.random_bool(0.5) {
+                        v + 1
                     } else {
-                        *b - 1
+                        v - 1
                     }
                 }
-                255 => 254,
             };
         }
     }
@@ -874,6 +876,8 @@ impl Drop for StegaV2 {
 #[cfg(test)]
 mod tests_encode_decode {
     use hashbrown::HashMap;
+    use rand::SeedableRng;
+    use rand_xoshiro::Xoshiro512PlusPlus;
 
     use crate::{
         codecs::codec::{Codec, Config},
@@ -919,6 +923,7 @@ mod tests_encode_decode {
             flags: 0,
             locker,
             logger: Logger::new(false),
+            position_rng: Xoshiro512PlusPlus::from_os_rng(),
         }
     }
 
