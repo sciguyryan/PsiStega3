@@ -9,7 +9,6 @@ use crate::{
 };
 
 use aes_gcm::{aead::Aead, Aes256Gcm, Key, KeyInit, Nonce};
-use hashbrown::HashMap;
 use rand::prelude::*;
 use rand_xoshiro::Xoshiro512PlusPlus;
 use std::convert::TryInto;
@@ -38,7 +37,7 @@ pub struct StegaV2 {
     /// The application name.
     application_name: String,
     /// The data index to cell ID map.
-    data_cell_map: HashMap<usize, usize>,
+    data_cell_vec: Vec<usize>,
     /// If the noise layer should be applied to the output image.
     noise_layer: bool,
     /// If the resulting image file should be saved when encoding.
@@ -70,7 +69,7 @@ impl StegaV2 {
 
         Self {
             application_name: application_name.to_string(),
-            data_cell_map: HashMap::new(),
+            data_cell_vec: Vec::new(),
             noise_layer: true,
             output_files: true,
             skip_version_checks: false,
@@ -110,10 +109,7 @@ impl StegaV2 {
         cell_list.shuffle(&mut rng);
 
         // Pre-allocate map for performance.
-        self.data_cell_map = HashMap::with_capacity(total_cells);
-        for (i, id) in cell_list.iter().rev().enumerate() {
-            self.data_cell_map.insert(i, *id);
-        }
+        self.data_cell_vec = cell_list.into_iter().rev().collect();
     }
 
     /// Clear the lock on a file. Only used when use_file_locker is enabled.
@@ -450,10 +446,7 @@ impl StegaV2 {
     ///
     #[inline]
     fn get_data_cell_index(&self, data_index: &usize) -> usize {
-        *self
-            .data_cell_map
-            .get(data_index)
-            .expect("The data index was not found in the cell map")
+        self.data_cell_vec[*data_index]
     }
 
     /// Calculate the total number of cells available in a given image.
@@ -886,7 +879,6 @@ impl Drop for StegaV2 {
 
 #[cfg(test)]
 mod tests_encode_decode {
-    use hashbrown::HashMap;
     use rand::SeedableRng;
     use rand_xoshiro::Xoshiro512PlusPlus;
 
@@ -927,7 +919,7 @@ mod tests_encode_decode {
         // Return a new StegaV2 instance.
         StegaV2 {
             application_name: app_name.to_string(),
-            data_cell_map: HashMap::new(),
+            data_cell_vec: Vec::new(),
             noise_layer: false, // We do not need this here.
             output_files: true,
             skip_version_checks: false,
