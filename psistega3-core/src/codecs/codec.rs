@@ -101,14 +101,33 @@ pub enum Config {
     OutputFiles,
     /// Enable or disable the file access locking system for this file.
     ///
-    /// Applicable to: v1+.
+    /// Applicable to: v1, v2.
     Locker,
     /// Enable or disable the single-read locker system.
     ///
-    /// Applicable to: v1+.
+    /// Applicable to: v1, v2.
     ReadOnce,
     /// Enable or disable version checking.
     ///
-    /// Applicable to: v2+. This is not applicable to v1 as checks are never performed.
+    /// Applicable to: v2.
+    /// This is not applicable to v1 and v2 as checks are never performed.
     SkipVersionChecks,
+    /// The time cost (iterations) for use with the Argon2 hashing algorithm.
+    ///
+    /// Applicable to: v3.
+    ///
+    /// `Note:` If unspecified then the default value for the codec will be used.
+    TCost(u32),
+    /// The parallel cost (threads) for use with the Argon2 hashing algorithm.
+    ///
+    /// Applicable to: v3.
+    ///
+    /// `Note:` If unspecified then the default value for the codec will be used.
+    PCost(u32),
+    /// The memory cost (kilobytes) for use with the Argon2 hashing algorithm.
+    ///
+    /// Applicable to: v3.
+    ///
+    /// `Note:` If unspecified then the default value for the codec will be used.
+    MCost(u32),
 }

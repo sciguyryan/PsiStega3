@@ -26,7 +26,7 @@ const T_COST: u32 = 8;
 /// The parallel cost (threads) for use with the Argon2 hashing algorithm.
 const P_COST: u32 = 8;
 /// The memory cost (kilobytes) for use with the Argon2 hashing algorithm.
-const M_COST: u32 = 65536;
+const M_COST: u32 = 65_536;
 /// The version of the Argon2 hashing algorithm to use.
 const ARGON_VER: argon2::Version = argon2::Version::V0x13;
 /// The version of this codec.
@@ -862,6 +862,21 @@ impl Codec for StegaV2 {
             }
             Config::SkipVersionChecks => {
                 self.skip_version_checks = state;
+            }
+            Config::TCost(_) => {
+                self.logger.log(
+                    "the time cost (TCost) parameter is fixed and cannot be modified for this codec.",
+                );
+            }
+            Config::PCost(_) => {
+                self.logger.log(
+                    "the parallelism cost (PCost) parameter is fixed and cannot be modified for this codec.",
+                );
+            }
+            Config::MCost(_) => {
+                self.logger.log(
+                    "the memory cost (MCost) parameter is fixed and cannot be modified for this codec.",
+                );
             }
         }
     }

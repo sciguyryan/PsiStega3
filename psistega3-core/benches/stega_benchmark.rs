@@ -1,5 +1,8 @@
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
-use psistega3_core::codecs::{codec::Codec, v2::StegaV2};
+use psistega3_core::codecs::{
+    codec::Codec,
+    {v2::StegaV2, v3::StegaV3},
+};
 use std::{env, hint::black_box, time::Duration};
 
 fn benchmark_v2_encoding(c: &mut Criterion) {
@@ -40,6 +43,67 @@ fn benchmark_v2_encoding(c: &mut Criterion) {
     group.warm_up_time(Duration::from_secs(10)); // 10 second warmup
 
     let mut stega = StegaV2::new("benchmark");
+    for (name, img_path) in test_configs.iter() {
+        group.bench_with_input(
+            BenchmarkId::from_parameter(name),
+            img_path,
+            |b, img_path| {
+                let output_path = get_temp_output_path();
+                b.iter(|| {
+                    stega.encode(
+                        black_box(img_path),
+                        black_box("we're benchmarking!!!".to_string()),
+                        black_box("It's a fez. I wear a fez now, fezzes are cool."),
+                        black_box(&output_path),
+                    )
+                });
+
+                // Cleanup after all iterations.
+                std::fs::remove_file(&output_path).ok();
+            },
+        );
+    }
+    group.finish();
+}
+
+fn benchmark_v3_encoding(c: &mut Criterion) {
+    let mut group = c.benchmark_group("encoding");
+
+    // Get absolute paths to reference images
+    let manifest_dir = env!("CARGO_MANIFEST_DIR");
+    let test_configs = [
+        (
+            "tiny",
+            format!("{manifest_dir}/benches/reference_images/ref_tiny.png"),
+        ),
+        (
+            "small",
+            format!("{manifest_dir}/benches/reference_images/ref_small.png"),
+        ),
+        (
+            "medium",
+            format!("{manifest_dir}/benches/reference_images/ref_medium.png"),
+        ),
+        (
+            "large",
+            format!("{manifest_dir}/benches/reference_images/ref_large.png"),
+        ),
+        (
+            "checkerboard",
+            format!("{manifest_dir}/benches/reference_images/ref_checkerboard.png"),
+        ),
+        (
+            "noise",
+            format!("{manifest_dir}/benches/reference_images/ref_noise.png"),
+        ),
+    ];
+
+    // More meaningful timings for slow cryptographic operations.
+    group.sample_size(10); // Fewer samples for long-running operations.
+    group.measurement_time(Duration::from_secs(60)); // 1 minute per benchmark.
+    group.warm_up_time(Duration::from_secs(10)); // 10 second warmup
+
+    let mut stega = StegaV3::new();
     for (name, img_path) in test_configs.iter() {
         group.bench_with_input(
             BenchmarkId::from_parameter(name),
@@ -142,7 +206,8 @@ fn get_temp_output_path() -> String {
 
 criterion_group!(
     benches,
-    benchmark_v2_encoding,
+    //benchmark_v2_encoding,
+    benchmark_v3_encoding,
     //benchmark_v2_decoding,
     //benchmark_v2_read_u8,
     //benchmark_v2_scramble
