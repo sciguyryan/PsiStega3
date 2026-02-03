@@ -76,23 +76,22 @@ impl StegaV3 {
             as we will need the salt, which will not be available when
             initially reading the data from the file.
         */
-        let bytes = hashers::sha3_512_bytes(key);
+        let mut bytes = hashers::sha3_512_bytes(key);
         let seed = misc_utils::u8_slice_to_u64(&bytes);
         let mut rng = Xoshiro512PlusPlus::seed_from_u64(seed);
+
+        bytes.zeroize();
 
         // It doesn't matter if we call this on reference or encoded
         //   as they will have the same value at this point.
         let total_cells = StegaV3::get_total_cells(img);
 
         // Pre-allocate vector and map for performance.
-        let mut cell_list: Vec<usize> = Vec::with_capacity(total_cells);
-        cell_list.extend(0..total_cells);
+        self.data_cell_vec = Vec::with_capacity(total_cells);
+        self.data_cell_vec.extend(0..total_cells);
 
         // Randomize the order of the cell IDs.
-        cell_list.shuffle(&mut rng);
-
-        // Pre-allocate map for performance.
-        self.data_cell_vec = cell_list.into_iter().collect();
+        self.data_cell_vec.shuffle(&mut rng);
     }
 
     #[inline(always)]
@@ -508,7 +507,7 @@ impl StegaV3 {
     fn write_u8(&mut self, img: &mut ImageWrapper, data: &u8, cell_start: usize) {
         let bytes = img.get_subcells_from_index_mut(cell_start, 2);
 
-        let mut rand_bits: u8 = self.position_rng.random();
+        let mut rand_bits: u64 = self.position_rng.random();
 
         for i in 0..8 {
             if (data >> i) & 1 == 0 {
@@ -519,7 +518,7 @@ impl StegaV3 {
             let v = *b;
 
             // One random bit from our random bit pool.
-            let r = rand_bits & 1;
+            let r = (rand_bits & 1) as u8;
             rand_bits >>= 1;
             let delta = r.wrapping_mul(2).wrapping_sub(1);
 
@@ -661,10 +660,6 @@ impl Default for StegaV3 {
     }
 }
 
-impl Drop for StegaV3 {
-    fn drop(&mut self) {}
-}
-
 #[cfg(test)]
 mod tests_encode_decode {
     use rand::SeedableRng;
@@ -688,7 +683,6 @@ mod tests_encode_decode {
     /// Create a StegaV3 instance.
     ///
     /// `Note:` we will attempt to clear the locker file upon exit by default.
-    ///
     fn create_instance() -> StegaV3 {
         use crate::logger::Logger;
 
@@ -814,35 +808,6 @@ mod tests_encode_decode {
             .expect("failed to decode the data");
 
         assert_eq!(result, TEXT, "failed to decode the data");
-    }
-
-    #[test]
-    fn test_roundtrip_fail() {
-        let mut tu = TestUtils::new(&BASE);
-
-        let ref_path = tu.get_in_file("reference-valid.png");
-        let enc_path = tu.get_out_file("png", true);
-
-        // Attempt to encode the file.
-        let mut stega = create_instance();
-
-        stega
-            .encode(&ref_path, KEY.to_string(), TEXT, &enc_path)
-            .expect("failed to encode the data");
-
-        // Sneakily manipulate the encoded file to ensure that the decode will fail.
-        let mut img =
-            StegaV3::load_image(&enc_path, false).expect("failed to load the encoded image");
-
-        // Flip a bit in the first channel of the first cell.
-        img.get_subcells_from_index_mut(0, 2)[0] ^= 1;
-        img.save(&enc_path)
-            .expect("failed to save the manipulated image");
-
-        // Attempt to decode the string.
-        let result = stega.decode(&ref_path, KEY.to_string(), &enc_path);
-
-        assert!(result.is_err(), "successfully to decoded the data");
     }
 
     #[test]

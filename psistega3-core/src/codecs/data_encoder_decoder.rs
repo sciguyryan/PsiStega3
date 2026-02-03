@@ -5,17 +5,18 @@ use std::collections::VecDeque;
 /// This structure will hold the decoded data.
 ///
 /// `Note:` this structure handles little Endian conversions internally.
-///
 pub struct DataDecoder {
     xor_bytes: VecDeque<u8>,
-    bytes: VecDeque<u8>,
+    bytes: Vec<u8>,
+    read_idx: usize,
 }
 
 impl DataDecoder {
     pub fn new(capacity: usize) -> Self {
         Self {
             xor_bytes: VecDeque::with_capacity(capacity),
-            bytes: VecDeque::with_capacity(capacity / 2),
+            bytes: Vec::with_capacity(capacity / 2 + 1),
+            read_idx: 0,
         }
     }
 
@@ -23,96 +24,91 @@ impl DataDecoder {
     pub fn clear(&mut self) {
         self.xor_bytes.clear();
         self.bytes.clear();
+        self.read_idx = 0;
     }
 
-    /// Iterates through each XOR'ed byte and XOR pair, adds the value produced by applying the XOR operation on them to the internal list.
-    ///
+    /// Iterates through each XOR'ed byte and XOR pair, adds the value produced
+    /// by applying the XOR operation on them to the internal list.
     pub fn decode(&mut self) {
-        let len = self.xor_bytes.len() / 2;
-        for _ in 0..len {
-            let mut xor_value = self.xor_bytes.pop_front().unwrap();
+        // Reserve capacity to avoid reallocations.
+        self.bytes.clear();
 
-            /*
-              If the number of cells is not divisible by 2 then
-                the final cell will not have a corresponding XOR cell.
-              In that case the final cell value will be the XOR value.
-            */
-            if let Some(x) = self.xor_bytes.pop_front() {
-                xor_value ^= x;
-            }
+        let mut i = 0;
+        let len = self.xor_bytes.len();
 
-            self.bytes.push_back(xor_value);
+        // Process all full (normal) pairs.
+        while i + 1 < len {
+            // Safe indexing; no bounds checks in debug due to while condition.
+            self.bytes.push(self.xor_bytes[i] ^ self.xor_bytes[i + 1]);
+            i += 2;
         }
 
-        self.xor_bytes.shrink_to_fit();
+        // Handle the final byte if the length is odd.
+        if i < len {
+            self.bytes.push(self.xor_bytes[i]);
+        }
+
+        // Clear input buffer and reset read index.
+        self.xor_bytes.clear();
+        self.read_idx = 0;
     }
 
     /// Pop a XOR-decoded byte from the front of the byte list.
-    ///
     pub fn pop_u8(&mut self) -> u8 {
-        debug_assert!(!self.bytes.is_empty(), "insufficient values available");
+        assert!(
+            self.read_idx < self.bytes.len(),
+            "insufficient values available"
+        );
 
-        // We do not need to worry about decoding these values from little
-        // Endian because that will have been done when loading the values.
-        self.bytes.pop_front().unwrap()
+        let v = unsafe { *self.bytes.get_unchecked(self.read_idx) };
+        self.read_idx += 1;
+        v
     }
 
     /// Pop a XOR-decoded u32 from the front of the byte list.
     ///
     /// `Note:` This method will pop `4` bytes from the internal vector.
     ///
-    /// `Note:` this method will automatically convert the returned value from little Endian to the correct bit-format.
-    ///
+    /// `Note:` this method will automatically convert the returned value
+    /// from little Endian to the correct bit-format.
     pub fn pop_u32(&mut self) -> u32 {
-        debug_assert!(self.bytes.len() >= 4, "insufficient values available");
+        assert!(
+            self.bytes.len() - self.read_idx >= 4,
+            "insufficient values available"
+        );
 
-        let mut bytes = [0u8; 4];
-        bytes.iter_mut().for_each(|i| {
-            *i = self.pop_u8();
-        });
+        let b0 = self.pop_u8();
+        let b1 = self.pop_u8();
+        let b2 = self.pop_u8();
+        let b3 = self.pop_u8();
 
-        u32::from_le_bytes(bytes)
+        u32::from_le_bytes([b0, b1, b2, b3])
     }
 
-    /// Pop a XOR-decoded vector of bytes front of the byte list.
-    ///
-    /// `Note:` This method will pop `2` bytes from the internal vector for each byte returned.
-    ///
+    /// Pop a XOR-decoded vector of bytes from the front of the byte list.
     pub fn pop_vec(&mut self, count: usize) -> Vec<u8> {
-        debug_assert!(self.bytes.len() >= count, "insufficient values available");
+        assert!(
+            self.bytes.len() - self.read_idx >= count,
+            "insufficient values available"
+        );
 
-        let mut bytes = Vec::with_capacity(count);
+        let mut out = Vec::with_capacity(count);
         for _ in 0..count {
-            bytes.push(self.pop_u8());
+            out.push(self.pop_u8());
         }
-
-        bytes
+        out
     }
 
-    /// Add a byte of data into the byte list.
-    ///
-    /// # Arguments
-    ///
-    /// * `value` - The byte to be stored in the internal vector.
-    ///
-    /// `Note:` this method will automatically convert the returned value from little Endian to the appropriate bit-format.
-    ///
+    /// Add a byte of data into the XOR byte list.
     pub fn push_u8(&mut self, value: u8) {
-        self.xor_bytes.push_back(u8::from_le(value));
+        self.xor_bytes.push_back(value);
     }
 
     /// Add each byte from a slice of bytes into the XOR byte list.
-    ///
-    /// # Arguments
-    ///
-    /// * `values` - The bytes to be stored in the internal vector.
-    ///
-    /// `Note:` this method will automatically convert the returned value from little Endian to the appropriate bit-format.
-    ///
     #[allow(dead_code)]
     pub fn push_u8_slice(&mut self, values: &[u8]) {
-        for v in values {
-            self.push_u8(*v);
+        for &v in values {
+            self.push_u8(v);
         }
     }
 }
@@ -135,9 +131,10 @@ impl DataEncoder {
     }
 
     /// Fill any unused slots in the byte list with random byte data.
-    ///
     #[inline]
     pub fn fill_empty_bytes(&mut self) {
+        debug_assert!(self.bytes.len() <= self.bytes.capacity());
+
         const ARRAY_SIZE: usize = 128;
         let needed = self.bytes.capacity() - self.bytes.len();
         let iterations = needed / ARRAY_SIZE;
@@ -149,8 +146,9 @@ impl DataEncoder {
             self.bytes.extend_from_slice(&bytes);
         }
 
-        let vec: Vec<u8> = (0..remainder).map(|_| self.rng.random()).collect();
-        self.bytes.extend_from_slice(&vec);
+        let mut tail = [0u8; ARRAY_SIZE];
+        self.rng.fill(&mut tail[..remainder]);
+        self.bytes.extend_from_slice(&tail[..remainder]);
     }
 
     /// Add a byte of data into the byte list.
@@ -160,7 +158,6 @@ impl DataEncoder {
     /// * `value` - The byte to be stored.
     ///
     /// `Note:` This method cannot be called outside of the [`DataEncoder`] class to avoid confusion as it does not XOR encode the byte.
-    ///
     #[inline]
     fn push_u8_direct(&mut self, value: u8) {
         self.bytes.push(value);
@@ -175,7 +172,6 @@ impl DataEncoder {
     /// `Note:` byte yielded by the slice will be added `2` bytes to the internal byte list.
     ///
     /// `Note:` the 1st byte will be the XOR-encoded data and the second will be the XOR value byte.
-    ///
     #[inline]
     pub fn push_u8_slice(&mut self, slice: &[u8]) {
         for b in slice {
@@ -192,10 +188,9 @@ impl DataEncoder {
     /// `Note:` every byte added will add `2` bytes to the internal byte list.
     ///
     /// `Note:` the 1st byte will be the XOR-encoded data and the second will be the XOR value byte.
-    ///
     #[inline]
     pub fn push_u8(&mut self, value: u8) {
-        let xor = self.rng.random::<u8>().to_le();
+        let xor = self.rng.random::<u8>();
         self.push_u8_direct(value.to_le() ^ xor);
         self.push_u8_direct(xor);
     }
@@ -205,7 +200,6 @@ impl DataEncoder {
     /// # Arguments
     ///
     /// * `value` - The u32 to be stored.
-    ///
     #[inline]
     pub fn push_u32(&mut self, value: u32) {
         self.push_u8_slice(&value.to_le_bytes());
