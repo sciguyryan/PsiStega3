@@ -41,6 +41,12 @@ pub struct StegaV3 {
     logger: Logger,
     // The RNG for the cell value adjustments.
     position_rng: Xoshiro512PlusPlus,
+    // The Argon2 time cost.
+    t_cost: u32,
+    // The Argon2 parallel cost.
+    p_cost: u32,
+    // The Argon2 memory cost.
+    m_cost: u32,
 }
 
 impl StegaV3 {
@@ -51,6 +57,9 @@ impl StegaV3 {
             output_files: true,
             logger: Logger::new(false),
             position_rng: Xoshiro512PlusPlus::from_os_rng(),
+            t_cost: T_COST,
+            p_cost: P_COST,
+            m_cost: M_COST,
         }
     }
 
@@ -185,9 +194,9 @@ impl StegaV3 {
         let mut key_bytes_full = hashers::argon2_string(
             &composite_key,
             salt_bytes,
-            M_COST,
-            P_COST,
-            T_COST,
+            self.m_cost,
+            self.p_cost,
+            self.t_cost,
             ARGON_VER,
         )?;
 
@@ -627,9 +636,18 @@ impl Codec for StegaV3 {
             Config::OutputFiles => {
                 self.output_files = state;
             }
-            Config::Locker => {}
-            Config::ReadOnce => {}
-            Config::SkipVersionChecks => {}
+            Config::Locker => {
+                self.logger
+                    .log("locker file usage is not supported for this codec.");
+            }
+            Config::ReadOnce => {
+                self.logger
+                    .log("read-once functionality is not supported for this codec.");
+            }
+            Config::SkipVersionChecks => {
+                self.logger
+                    .log("skipping version checks is not supported for this codec.");
+            }
             Config::TCost(_) => todo!(),
             Config::PCost(_) => todo!(),
             Config::MCost(_) => todo!(),
@@ -681,6 +699,9 @@ mod tests_encode_decode {
             output_files: true,
             logger: Logger::new(false),
             position_rng: Xoshiro512PlusPlus::from_os_rng(),
+            t_cost: super::T_COST,
+            p_cost: super::P_COST,
+            m_cost: super::M_COST,
         }
     }
 
@@ -812,9 +833,34 @@ mod tests_encode_decode {
         // Sneakily manipulate the encoded file to ensure that the decode will fail.
         let mut img =
             StegaV3::load_image(&enc_path, false).expect("failed to load the encoded image");
-        img.get_subcells_from_index_mut(0, 2)[0] ^= 1; // Flip a bit in the first channel of the first cell.
+
+        // Flip a bit in the first channel of the first cell.
+        img.get_subcells_from_index_mut(0, 2)[0] ^= 1;
         img.save(&enc_path)
             .expect("failed to save the manipulated image");
+
+        // Attempt to decode the string.
+        let result = stega.decode(&ref_path, KEY.to_string(), &enc_path);
+
+        assert!(result.is_err(), "successfully to decoded the data");
+    }
+
+    #[test]
+    fn test_roundtrip_fail_different_argon_params() {
+        let mut tu = TestUtils::new(&BASE);
+
+        let ref_path = tu.get_in_file("reference-valid.png");
+        let enc_path = tu.get_out_file("png", true);
+
+        // Attempt to encode the file.
+        let mut stega = create_instance();
+
+        stega
+            .encode(&ref_path, KEY.to_string(), TEXT, &enc_path)
+            .expect("failed to encode the data");
+
+        // Modify the Argon2 parameters to ensure that the decode will fail.
+        stega.t_cost += 1;
 
         // Attempt to decode the string.
         let result = stega.decode(&ref_path, KEY.to_string(), &enc_path);
