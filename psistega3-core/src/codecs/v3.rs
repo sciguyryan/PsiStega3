@@ -647,9 +647,15 @@ impl Codec for StegaV3 {
                 self.logger
                     .log("skipping version checks is not supported for this codec.");
             }
-            Config::TCost(_) => todo!(),
-            Config::PCost(_) => todo!(),
-            Config::MCost(_) => todo!(),
+            Config::TCost(t) => {
+                self.t_cost = t;
+            },
+            Config::PCost(p) => {
+                self.p_cost = p;
+            },
+            Config::MCost(m) => {
+                self.m_cost = m;
+            },
         }
     }
 }
