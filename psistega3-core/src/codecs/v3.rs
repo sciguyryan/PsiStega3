@@ -9,7 +9,6 @@ use crate::{
 
 use aes_gcm::{aead::Aead, Aes256Gcm, Key, KeyInit, Nonce};
 use rand::prelude::*;
-use rand_core::SeedableRng;
 use rand_xoshiro::Xoshiro512PlusPlus;
 use std::convert::TryInto;
 use zeroize::Zeroize;
@@ -62,7 +61,7 @@ pub struct StegaV3 {
     /// The logger instance for this codec.
     logger: Logger,
     // The RNG for the cell value adjustments.
-    position_rng: Xoshiro512PlusPlus,
+    offset_bit_rng: Xoshiro512PlusPlus,
     // The Argon2 time cost.
     t_cost: u32,
     // The Argon2 parallel cost.
@@ -78,7 +77,7 @@ impl StegaV3 {
             noise_layer: true,
             output_files: true,
             logger: Logger::new(false),
-            position_rng: misc_utils::secure_seeded_xoroshiro512(),
+            offset_bit_rng: misc_utils::secure_seeded_xoroshiro512(),
             t_cost: T_COST,
             p_cost: P_COST,
             m_cost: M_COST,
@@ -92,26 +91,35 @@ impl StegaV3 {
     /// * `key` - The key bytes that should be used to seed the random number generator.
     /// * `img` - A reference to the [`ImageWrapper`] that holds the image.
     fn build_data_to_cell_index_map(&mut self, img: &ImageWrapper, key: &[u8]) {
+        // It doesn't matter if we call this on reference or encoded
+        //   as they will have the same value at this point.
+        let total_cells = StegaV3::get_total_cells(img);
+
         /*
           When we can't use the Argon2 hash for the positional RNG
             as we will need the salt, which will not be available when
             initially reading the data from the file.
         */
         let mut bytes = hashers::sha3_512_bytes(key);
-        let seed = misc_utils::u8_slice_to_u64(&bytes);
-        let mut rng = Xoshiro512PlusPlus::seed_from_u64(seed);
-        bytes.zeroize();
 
-        // It doesn't matter if we call this on reference or encoded
-        //   as they will have the same value at this point.
-        let total_cells = StegaV3::get_total_cells(img);
+        // We DO NOT realistically need a cryptographically secure RNG here,
+        //   so we can use a faster RNG for shuffling the cells.
+        // The seed is generated from the key bytes, and we
+        //   make use of mixing to ensure that all bytes influence the final seed.
+        let seed: u64 = key.chunks_exact(8).fold(0, |acc, chunk| {
+            acc ^ u64::from_le_bytes(chunk.try_into().unwrap())
+        });
+        fastrand::seed(seed);
+
+        // Clear the key bytes from memory.
+        bytes.zeroize();
 
         // Pre-allocate vector and map for performance.
         self.data_cell_vec = Vec::with_capacity(total_cells);
         self.data_cell_vec.extend(0..total_cells);
 
-        // Randomize the order of the cell IDs.
-        self.data_cell_vec.shuffle(&mut rng);
+        // Randomise the order of the cell IDs.
+        fastrand::shuffle(&mut self.data_cell_vec);
     }
 
     #[inline(always)]
@@ -314,8 +322,14 @@ impl StegaV3 {
             return Err(Error::ImageInsufficientSpace);
         }
 
+        let capacity = if self.noise_layer {
+            total_cells
+        } else {
+            total_cells_needed
+        };
+
         // This will hold all of the data to be encoded.
-        let mut data = Vec::with_capacity(total_cells);
+        let mut data = Vec::with_capacity(capacity);
         data.extend_from_slice(&(total_ciphertext_cells as u32).to_le_bytes());
         data.extend_from_slice(&salt_bytes);
         data.extend_from_slice(&nonce_bytes);
@@ -359,7 +373,7 @@ impl StegaV3 {
     /// In practice this should never occur.
     #[inline]
     fn get_data_cell_index(&self, data_index: &usize) -> usize {
-        self.data_cell_vec[*data_index]
+        self.data_cell_vec[*data_index] * 2
     }
 
     /// Calculate the total number of cells available in a given image.
@@ -407,22 +421,11 @@ impl StegaV3 {
     /// Generate junk padding data.
     #[inline]
     pub fn generate_junk_bytes(needed: usize) -> Vec<u8> {
-        let mut rng = misc_utils::secure_seeded_xoroshiro512();
-        let mut vec = Vec::with_capacity(needed);
+        let mut vec: Vec<u8> = Vec::with_capacity(needed);
 
-        const ARRAY_SIZE: usize = 128;
-        let iterations = needed / ARRAY_SIZE;
-        let remainder = needed - (iterations * ARRAY_SIZE);
-
-        for _ in 0..iterations {
-            let mut bytes: [u8; ARRAY_SIZE] = [0; ARRAY_SIZE];
-            rng.fill(&mut bytes);
-            vec.extend_from_slice(&bytes);
-        }
-
-        let mut tail = [0u8; ARRAY_SIZE];
-        rng.fill(&mut tail[..remainder]);
-        vec.extend_from_slice(&tail[..remainder]);
+        // We do not need to worry about being cryptographically secure here.
+        // This is just junk data to fill the empty cells.
+        fastrand::fill(&mut vec[..]);
 
         vec
     }
@@ -463,11 +466,20 @@ impl StegaV3 {
         let rb = ref_img.get_subcells_from_index(cell_start, 2);
         let eb = enc_img.get_subcells_from_index(cell_start, 2);
 
-        // Load 8 bytes and compute XOR mask.
-        (0..8).fold(0u8, |acc, i| acc | (((rb[i] != eb[i]) as u8) << i))
-    }
+        // Load 8 bytes and rebuild our u8 value.
+        let mut out = 0u8;
 
-    // TODO -Would having a "read vec of length x" be useful?
+        out |= (((rb[0] ^ eb[0]) != 0) as u8) << 0;
+        out |= (((rb[1] ^ eb[1]) != 0) as u8) << 1;
+        out |= (((rb[2] ^ eb[2]) != 0) as u8) << 2;
+        out |= (((rb[3] ^ eb[3]) != 0) as u8) << 3;
+        out |= (((rb[4] ^ eb[4]) != 0) as u8) << 4;
+        out |= (((rb[5] ^ eb[5]) != 0) as u8) << 5;
+        out |= (((rb[6] ^ eb[6]) != 0) as u8) << 6;
+        out |= (((rb[7] ^ eb[7]) != 0) as u8) << 7;
+
+        out
+    }
 
     /// Read a byte of encoded data for a specified data index.
     ///
@@ -487,7 +499,7 @@ impl StegaV3 {
     ) -> u8 {
         // We need to look up the cell to which this byte of data
         //   will be encoded within the image.
-        let start_index = self.get_data_cell_index(&data_index) * 2;
+        let start_index = self.get_data_cell_index(&data_index);
 
         // Finally we can decode and read a byte of data from the cell.
         self.read_u8(ref_img, enc_img, start_index)
@@ -524,14 +536,14 @@ impl StegaV3 {
     fn write_u8(&mut self, img: &mut ImageWrapper, data: &u8, cell_start: usize) {
         let bytes = img.get_subcells_from_index_mut(cell_start, 2);
 
-        let mut rand_bits: u64 = self.position_rng.random();
+        let mut rand_bits: u64 = self.offset_bit_rng.random();
 
-        for i in 0..8 {
+        let bytes = &mut bytes[..8];
+        for (i, b) in bytes.iter_mut().enumerate() {
             if (data >> i) & 1 == 0 {
                 continue;
             }
 
-            let b = &mut bytes[i];
             let v = *b;
 
             // One random bit from our random bit pool.
@@ -568,7 +580,7 @@ impl StegaV3 {
     ///
     #[inline]
     fn write_u8_by_data_index(&mut self, img: &mut ImageWrapper, data: &u8, data_index: usize) {
-        let start_index = self.get_data_cell_index(&data_index) * 2;
+        let start_index = self.get_data_cell_index(&data_index);
         self.write_u8(img, data, start_index);
     }
 }
@@ -712,7 +724,7 @@ mod tests_encode_decode {
             noise_layer: false, // We do not need this here.
             output_files: true,
             logger: Logger::new(false),
-            position_rng: misc_utils::secure_seeded_xoroshiro512(),
+            offset_bit_rng: misc_utils::secure_seeded_xoroshiro512(),
             t_cost: super::T_COST,
             p_cost: super::P_COST,
             m_cost: super::M_COST,

@@ -1,4 +1,4 @@
-use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
+use criterion::{criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion};
 use psistega3_core::codecs::{
     codec::Codec,
     {v2::StegaV2, v3::StegaV3},
@@ -6,43 +6,24 @@ use psistega3_core::codecs::{
 use std::{env, hint::black_box, time::Duration};
 
 fn benchmark_v2_encoding(c: &mut Criterion) {
-    let mut group = c.benchmark_group("encoding");
+    let mut group = c.benchmark_group("decoding_v2");
 
-    // Get absolute paths to reference images
-    let manifest_dir = env!("CARGO_MANIFEST_DIR");
     let test_configs = [
-        (
-            "tiny",
-            format!("{manifest_dir}/benches/reference_images/ref_tiny.png"),
-        ),
-        (
-            "small",
-            format!("{manifest_dir}/benches/reference_images/ref_small.png"),
-        ),
-        (
-            "medium",
-            format!("{manifest_dir}/benches/reference_images/ref_medium.png"),
-        ),
-        (
-            "large",
-            format!("{manifest_dir}/benches/reference_images/ref_large.png"),
-        ),
-        (
-            "checkerboard",
-            format!("{manifest_dir}/benches/reference_images/ref_checkerboard.png"),
-        ),
-        (
-            "noise",
-            format!("{manifest_dir}/benches/reference_images/ref_noise.png"),
-        ),
+        ("tiny", get_sample_file_path("ref_tiny.png")),
+        ("small", get_sample_file_path("ref_small.png")),
+        ("medium", get_sample_file_path("ref_medium.png")),
+        ("large", get_sample_file_path("ref_large.png")),
+        ("checkerboard", get_sample_file_path("ref_checkerboard.png")),
+        ("noise", get_sample_file_path("ref_noise.png")),
     ];
 
-    // More meaningful timings for slow cryptographic operations.
-    group.sample_size(10); // Fewer samples for long-running operations.
-    group.measurement_time(Duration::from_secs(60)); // 1 minute per benchmark.
-    group.warm_up_time(Duration::from_secs(10)); // 10 second warmup
+    group.sample_size(10);
+    group.measurement_time(Duration::from_secs(60));
+    group.warm_up_time(Duration::from_secs(10));
 
+    let key = "we're benchmarking!!!".to_string();
     let mut stega = StegaV2::new("benchmark");
+
     for (name, img_path) in test_configs.iter() {
         group.bench_with_input(
             BenchmarkId::from_parameter(name),
@@ -52,7 +33,7 @@ fn benchmark_v2_encoding(c: &mut Criterion) {
                 b.iter(|| {
                     stega.encode(
                         black_box(img_path),
-                        black_box("we're benchmarking!!!".to_string()),
+                        black_box(key.clone()),
                         black_box("It's a fez. I wear a fez now, fezzes are cool."),
                         black_box(&output_path),
                     )
@@ -63,47 +44,83 @@ fn benchmark_v2_encoding(c: &mut Criterion) {
             },
         );
     }
+    group.finish();
+}
+
+fn benchmark_v2_decoding(c: &mut Criterion) {
+    let mut group = c.benchmark_group("decoding_v2");
+
+    let test_configs = [
+        ("tiny", get_sample_file_path("ref_tiny.png")),
+        ("small", get_sample_file_path("ref_small.png")),
+        ("medium", get_sample_file_path("ref_medium.png")),
+        ("large", get_sample_file_path("ref_large.png")),
+    ];
+
+    group.sample_size(10);
+    group.measurement_time(Duration::from_secs(60));
+    group.warm_up_time(Duration::from_secs(10));
+
+    let key = "we're benchmarking!!!".to_string();
+
+    for (name, img_path) in test_configs.iter() {
+        group.bench_with_input(
+            BenchmarkId::from_parameter(name),
+            img_path,
+            |b, img_path| {
+                b.iter_batched(
+                    // Setup, not measured.
+                    || {
+                        let output_path = get_temp_output_path();
+
+                        let mut stega = StegaV2::new("benchmark");
+                        stega
+                            .encode(
+                                img_path,
+                                key.clone(),
+                                "It's a fez. I wear a fez now, fezzes are cool.",
+                                &output_path,
+                            )
+                            .expect("encode failed");
+
+                        (output_path, stega)
+                    },
+                    // Measured.
+                    |(output_path, mut stega)| {
+                        stega.decode(
+                            black_box(&img_path),
+                            black_box(key.clone()),
+                            black_box(&output_path),
+                        )
+                    },
+                    BatchSize::SmallInput,
+                )
+            },
+        );
+    }
+
     group.finish();
 }
 
 fn benchmark_v3_encoding(c: &mut Criterion) {
-    let mut group = c.benchmark_group("encoding");
+    let mut group = c.benchmark_group("encoding_v3");
 
-    // Get absolute paths to reference images
-    let manifest_dir = env!("CARGO_MANIFEST_DIR");
     let test_configs = [
-        (
-            "tiny",
-            format!("{manifest_dir}/benches/reference_images/ref_tiny.png"),
-        ),
-        (
-            "small",
-            format!("{manifest_dir}/benches/reference_images/ref_small.png"),
-        ),
-        (
-            "medium",
-            format!("{manifest_dir}/benches/reference_images/ref_medium.png"),
-        ),
-        (
-            "large",
-            format!("{manifest_dir}/benches/reference_images/ref_large.png"),
-        ),
-        (
-            "checkerboard",
-            format!("{manifest_dir}/benches/reference_images/ref_checkerboard.png"),
-        ),
-        (
-            "noise",
-            format!("{manifest_dir}/benches/reference_images/ref_noise.png"),
-        ),
+        ("tiny", get_sample_file_path("ref_tiny.png")),
+        ("small", get_sample_file_path("ref_small.png")),
+        ("medium", get_sample_file_path("ref_medium.png")),
+        ("large", get_sample_file_path("ref_large.png")),
+        ("checkerboard", get_sample_file_path("ref_checkerboard.png")),
+        ("noise", get_sample_file_path("ref_noise.png")),
     ];
 
-    // More meaningful timings for slow cryptographic operations.
-    group.sample_size(10); // Fewer samples for long-running operations.
-    group.measurement_time(Duration::from_secs(60)); // 1 minute per benchmark.
-    group.warm_up_time(Duration::from_secs(10)); // 10 second warmup
+    group.sample_size(10);
+    group.measurement_time(Duration::from_secs(60));
+    group.warm_up_time(Duration::from_secs(10));
 
+    let key = "we're benchmarking!!!".to_string();
     let mut stega = StegaV3::new();
+
     for (name, img_path) in test_configs.iter() {
         group.bench_with_input(
             BenchmarkId::from_parameter(name),
@@ -113,7 +130,7 @@ fn benchmark_v3_encoding(c: &mut Criterion) {
                 b.iter(|| {
                     stega.encode(
                         black_box(img_path),
-                        black_box("we're benchmarking!!!".to_string()),
+                        black_box(key.clone()),
                         black_box("It's a fez. I wear a fez now, fezzes are cool."),
                         black_box(&output_path),
                     )
@@ -127,65 +144,77 @@ fn benchmark_v3_encoding(c: &mut Criterion) {
     group.finish();
 }
 
-/*fn benchmark_v2_decoding(c: &mut Criterion) {
-    let mut group = c.benchmark_group("decoding");
+fn benchmark_v3_decoding(c: &mut Criterion) {
+    let mut group = c.benchmark_group("decoding_v3");
 
-    // Similar structure for decoding...
-    for size in [1_024, 10_240, 102_400].iter() {
-        group.throughput(Throughput::Bytes(*size as u64));
+    let test_configs = [
+        ("tiny", get_sample_file_path("ref_tiny.png")),
+        ("small", get_sample_file_path("ref_small.png")),
+        ("medium", get_sample_file_path("ref_medium.png")),
+        ("large", get_sample_file_path("ref_large.png")),
+    ];
 
+    group.sample_size(10);
+    group.measurement_time(Duration::from_secs(60));
+    group.warm_up_time(Duration::from_secs(10));
+
+    let key = "we're benchmarking!!!".to_string();
+
+    for (name, img_path) in test_configs.iter() {
         group.bench_with_input(
-            BenchmarkId::from_parameter(format!("{}KB", size / 1024)),
-            size,
-            |b, &size| {
-                let (ref_img, enc_img) = setup_encoded_images(size);
-                let mut stega = StegaV2::new("password");
+            BenchmarkId::from_parameter(name),
+            img_path,
+            |b, img_path| {
+                b.iter_batched(
+                    // Setup, not measured.
+                    || {
+                        let output_path = get_temp_output_path();
 
-                b.iter(|| {
-                    stega.decode(
-                        black_box(&ref_img),
-                        black_box(&enc_img)
-                    )
-                });
-            }
+                        let mut stega = StegaV2::new("benchmark");
+                        stega
+                            .encode(
+                                img_path,
+                                key.clone(),
+                                "It's a fez. I wear a fez now, fezzes are cool.",
+                                &output_path,
+                            )
+                            .expect("encode failed");
+
+                        (output_path, stega)
+                    },
+                    // Measured.
+                    |(output_path, mut stega)| {
+                        stega.decode(
+                            black_box(&img_path),
+                            black_box(key.clone()),
+                            black_box(&output_path),
+                        )
+                    },
+                    BatchSize::SmallInput,
+                )
+            },
         );
     }
+
     group.finish();
 }
 
-fn benchmark_v2_read_u8(c: &mut Criterion) {
-    // Micro-benchmark for the specific optimization
-    let ref_img = setup_reference_image();
-    let enc_img = setup_encoded_image();
-    let stega = StegaV2::new("password");
+fn benchmark_v3_generate_junk_bytes(c: &mut Criterion) {
+    let mut group = c.benchmark_group("junk_bytes_v3");
 
-    c.bench_function("read_u8", |b| {
-        b.iter(|| {
-            for i in 0..1000 {
-                black_box(stega.read_u8(
-                    black_box(&ref_img),
-                    black_box(&enc_img),
-                    black_box(i * 8)
-                ));
-            }
+    for size in [1_000usize, 10_000, 100_000, 1_000_000] {
+        group.bench_with_input(BenchmarkId::from_parameter(size), &size, |b, &size| {
+            b.iter(|| black_box(StegaV3::generate_junk_bytes(size)));
         });
-    });
-}
-
-fn benchmark_v2_scramble(c: &mut Criterion) {
-    let mut group = c.benchmark_group("scramble");
-    group.measurement_time(Duration::from_secs(10)); // Longer for accuracy
-
-    c.bench_function("scramble_1920x1080", |b| {
-        b.iter_batched(
-            || setup_1920x1080_image(),
-            |mut img| img.scramble(),    // Benchmark this
-            criterion::BatchSize::SmallInput
-        );
-    });
+    }
 
     group.finish();
-}*/
+}
+
+fn get_sample_file_path(name: &str) -> String {
+    let manifest_dir = env!("CARGO_MANIFEST_DIR");
+    format!("{manifest_dir}/benches/reference_images/{name}")
+}
 
 fn get_temp_output_path() -> String {
     // Use /dev/shm (RAM disk) on Linux if available.
@@ -206,10 +235,10 @@ fn get_temp_output_path() -> String {
 
 criterion_group!(
     benches,
-    //benchmark_v2_encoding,
+    benchmark_v2_encoding,
+    benchmark_v2_decoding,
     benchmark_v3_encoding,
-    //benchmark_v2_decoding,
-    //benchmark_v2_read_u8,
-    //benchmark_v2_scramble
+    benchmark_v3_decoding,
+    benchmark_v3_generate_junk_bytes,
 );
 criterion_main!(benches);
