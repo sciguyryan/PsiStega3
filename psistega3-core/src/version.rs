@@ -10,11 +10,13 @@ pub enum Version {
     V0x01,
     /// Version 2 (0x02)
     V0x02,
+    /// Version 3 (0x03)
+    V0x03,
 }
 
 impl Default for Version {
     fn default() -> Self {
-        Self::V0x02
+        Self::V0x03
     }
 }
 
@@ -25,6 +27,7 @@ impl TryFrom<u8> for Version {
         match version {
             0x01 => Ok(Version::V0x01),
             0x02 => Ok(Version::V0x02),
+            0x03 => Ok(Version::V0x03),
             _ => Err(Error::VersionInvalid),
         }
     }

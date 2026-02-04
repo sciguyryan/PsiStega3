@@ -20,6 +20,8 @@ pub enum Error {
     NoVersionGuessing,
     /// Version guessing failed to find a valid version.
     VersionGuessingFailed,
+    /// The supplied version is no longer supported for encoding or decoding.
+    NoLongerSupportedVersion,
 }
 
 impl fmt::Display for Error {
@@ -36,6 +38,9 @@ impl fmt::Display for Error {
             }
             Error::NoVersionGuessing => "Version guessing is not supported for encoding files.",
             Error::VersionGuessingFailed => "Version guessing failed to find a valid version.",
+            Error::NoLongerSupportedVersion => {
+                "The supplied version is no longer supported for encoding or decoding."
+            }
         })
     }
 }

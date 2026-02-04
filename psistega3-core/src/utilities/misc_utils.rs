@@ -1,39 +1,9 @@
-use crate::error::{Error, Result};
-
-use base64::Engine;
 use core::fmt::Write;
-use rand::TryRngCore;
-use rand_core::OsRng;
+use rand::{rngs::OsRng, SeedableRng, TryRngCore};
+use rand_xoshiro::Xoshiro512PlusPlus;
 
 /// Precomputed u8 bit masks.
 pub const BIT_MASKS: [u8; 8] = [0x1, 0x2, 0x4, 0x8, 0x10, 0x20, 0x40, 0x80];
-
-/// Decode a base64 string and convert it to raw vector of bytes.
-///
-/// * `string` - The base64 string to be decoded.
-///
-#[inline]
-pub(crate) fn decode_base64_str_to_vec(b64_str: &str) -> Result<Vec<u8>> {
-    // A base64 string is roughly 1.37 times large than the original string.
-    // Since the capacity must be a usize, allocating the size
-    //   of the encoded string will provide more than enough room within the
-    //   vector for the output, thereby avoiding reallocation.
-    base64::engine::general_purpose::STANDARD
-        .decode(b64_str)
-        .map_or_else(|_| Err(Error::Base64Decoding), Ok)
-}
-
-/// Encode a u8 slice as a base64 string.
-///
-/// * `bytes` - The slice of u8 values to be encoded.
-///
-#[inline]
-pub(crate) fn encode_u8_slice_to_base64_str(bytes: &[u8]) -> String {
-    // A base64 string is roughly 1.37 times large than the original string.
-    // Since the capacity must be a usize, allocate double the capacity of the
-    //   slice will avoid reallocation.
-    base64::engine::general_purpose::STANDARD.encode(bytes)
-}
 
 /// Calculate the Shannon entropy of a byte vector.
 ///
@@ -181,6 +151,12 @@ pub fn secure_random_bytes<const N: usize>() -> [u8; N] {
     OsRng
         .try_fill_bytes(&mut arr)
         .expect("failed to generate random bytes");
-    //OsRng.fill_bytes(&mut arr);
     arr
+}
+
+/// Create a securely seeded Xoshiro512PlusPlus PRNG.
+#[inline]
+pub fn secure_seeded_xoroshiro512() -> Xoshiro512PlusPlus {
+    let buff: [u8; 8] = secure_random_bytes();
+    Xoshiro512PlusPlus::seed_from_u64(u64::from_le_bytes(buff))
 }

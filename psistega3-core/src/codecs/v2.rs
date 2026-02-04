@@ -1,5 +1,8 @@
 use crate::{
-    codecs::codec::Codec,
+    codecs::{
+        codec::Codec,
+        data_encoder_decoder_v2::{DataDecoderV2, DataEncoderV2},
+    },
     error::{Error, Result},
     hashers,
     image_wrapper::ImageWrapper,
@@ -10,16 +13,14 @@ use crate::{
 
 use aes_gcm::{aead::Aead, Aes256Gcm, Key, KeyInit, Nonce};
 use rand::prelude::*;
+use rand_core::SeedableRng;
 use rand_xoshiro::Xoshiro512PlusPlus;
 use std::convert::TryInto;
 use zeroize::Zeroize;
 
 use self::misc_utils::BIT_MASKS;
 
-use super::{
-    codec::Config,
-    data_encoder_decoder::{DataDecoder, DataEncoder},
-};
+use super::codec::Config;
 
 /// The time cost (iterations) for use with the Argon2 hashing algorithm.
 const T_COST: u32 = 8;
@@ -76,7 +77,7 @@ impl StegaV2 {
             flags: 0,
             locker,
             logger: Logger::new(false),
-            position_rng: Xoshiro512PlusPlus::from_os_rng(),
+            position_rng: misc_utils::secure_seeded_xoroshiro512(),
         }
     }
 
@@ -105,7 +106,7 @@ impl StegaV2 {
         let mut cell_list: Vec<usize> = Vec::with_capacity(total_cells);
         cell_list.extend(0..total_cells);
 
-        // Randomize the order of the cell IDs.
+        // Randomise the order of the cell IDs.
         cell_list.shuffle(&mut rng);
 
         // Pre-allocate map for performance.
@@ -179,7 +180,7 @@ impl StegaV2 {
         self.build_data_to_cell_index_map(&enc_image, &composite_key);
 
         // This will hold all of the decoded data.
-        let mut data = DataDecoder::new(8);
+        let mut data = DataDecoderV2::new(8);
 
         // Read the first 4 XOR encoded bytes from the image.
         // This is done manually to avoid decoding the entire image.
@@ -222,7 +223,7 @@ impl StegaV2 {
         }
 
         // Read all of the XOR-encoded bytes that are relevant for our decode.
-        let mut data = DataDecoder::new(total_cells_needed);
+        let mut data = DataDecoderV2::new(total_cells_needed);
         for i in 0..total_cells_needed {
             let val = self.read_u8_by_index(&ref_image, &enc_image, i);
             data.push_u8(val);
@@ -393,7 +394,7 @@ impl StegaV2 {
         }
 
         // This will hold all of the data to be encoded.
-        let mut data = DataEncoder::new(total_cells);
+        let mut data = DataEncoderV2::new(total_cells);
 
         // Add the total number of cipher-text cells needed.
         data.push_u32(total_ct_cells as u32);
@@ -894,14 +895,11 @@ impl Drop for StegaV2 {
 
 #[cfg(test)]
 mod tests_encode_decode {
-    use rand::SeedableRng;
-    use rand_xoshiro::Xoshiro512PlusPlus;
-
     use crate::{
         codecs::codec::{Codec, Config},
         hashers,
         utilities::{
-            file_utils,
+            file_utils, misc_utils,
             png_utils::{self, PngChunkType},
             test_utils::*,
         },
@@ -941,7 +939,7 @@ mod tests_encode_decode {
             flags: 0,
             locker,
             logger: Logger::new(false),
-            position_rng: Xoshiro512PlusPlus::from_os_rng(),
+            position_rng: misc_utils::secure_seeded_xoroshiro512(),
         }
     }
 
@@ -1032,6 +1030,28 @@ mod tests_encode_decode {
 
         // Did we successfully encode the file?
         assert_eq!(r, Ok(()), "failed to encode data into image file");
+    }
+
+    #[test]
+    fn test_roundtrip() {
+        let mut tu = TestUtils::new(&BASE);
+
+        let ref_path = tu.get_in_file("reference-valid.png");
+        let enc_path = tu.get_out_file("png", true);
+
+        // Attempt to encode the file.
+        let mut stega = create_instance();
+
+        stega
+            .encode(&ref_path, KEY.to_string(), TEXT, &enc_path)
+            .expect("failed to encode the data");
+
+        // Attempt to decode the string.
+        let result = stega
+            .decode(&ref_path, KEY.to_string(), &enc_path)
+            .expect("failed to decode the data");
+
+        assert_eq!(result, TEXT, "failed to decode the data");
     }
 
     #[test]

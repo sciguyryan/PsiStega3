@@ -6,8 +6,8 @@ use crate::error::{Error, Result};
 use psistega3_core::{
     codecs::{
         codec::{Codec, Config},
-        v1::StegaV1,
         v2::StegaV2,
+        v3::StegaV3,
     },
     utilities::png_utils::{self, PngChunkType},
     version::*,
@@ -19,7 +19,7 @@ use std::{convert::TryFrom, env, io::stdin};
 /// The prompt for confirming a yes/no option.
 const CONFIRM_PROMPT: &str = "Are you sure you wish to enable this feature?";
 /// The current highest codec version.
-const CURRENT_MAX_VERSION: u8 = 0x2;
+const CURRENT_MAX_VERSION: u8 = Version::V0x03 as u8;
 
 //ooneporlygs
 
@@ -123,13 +123,19 @@ fn main() {
             return;
         }
 
-        // The unwrap is safe as we have verified the codec version is valid.
-        codec = get_codec_by_version(codec_version.unwrap());
+        // This will trigger for any old versions that are no longer supported.
+        let result = get_codec_by_version(codec_version.unwrap());
+        if let Err(e) = result {
+            show_abort_message(e);
+            return;
+        }
+
+        codec = result.unwrap();
 
         // Apply any settings that might have been specified.
         apply_codec_settings(&mut codec, &args[4..], action_type, unattended);
     } else {
-        codec = Box::<StegaV2>::default();
+        codec = Box::<StegaV3>::default();
     }
 
     // When using the version guessing system, the checks are skipped.
@@ -255,10 +261,13 @@ fn apply_codec_settings(
 ///
 /// * `version` - The [`Codec`] [`Version`].
 ///
-fn get_codec_by_version(version: Version) -> Box<dyn Codec> {
+fn get_codec_by_version(version: Version) -> Result<Box<dyn Codec>> {
     match version {
-        Version::V0x01 => Box::new(StegaV1::new("")),
-        Version::V0x02 => Box::new(StegaV2::new("")),
+        Version::V0x01 => {
+            return Err(Error::NoLongerSupportedVersion);
+        }
+        Version::V0x02 => Ok(Box::new(StegaV2::new(""))),
+        Version::V0x03 => Ok(Box::new(StegaV3::new())),
     }
 }
 
@@ -545,7 +554,7 @@ fn show_examples() {
     println!("This command will attempt to encode a string into the reference image.");
     println!("You will be prompted twice for a password after executing this command.");
     println!("{split}");
-    println!("psistega3 -d -v 1 \"C:\\reference.png\" \"C:\\encoded.png\"");
+    println!("psistega3 -d -v 3 \"C:\\reference.png\" \"C:\\encoded.png\"");
     println!();
     println!("You will be prompted for a password after executing this command.");
     println!("If any data was successfully decoded then it will be displayed on screen.");
@@ -557,14 +566,14 @@ fn show_examples() {
     println!("If any data was successfully decoded then it will be displayed on screen.");
     println!("{split}");
     println!(
-        "psistega3 -ef -v 1 \"C:\\reference.png\" \"C:\\encoded.png\" \"C:\\input_file_path.foo\""
+        "psistega3 -ef -v 3 \"C:\\reference.png\" \"C:\\encoded.png\" \"C:\\input_file_path.foo\""
     );
     println!();
     println!("This command will attempt to encode a file into the reference image.");
     println!("You will be prompted twice for a password after executing this command.");
     println!("{split}");
     println!(
-        "psistega3 -df -v 1 \"C:\\reference.png\" \"C:\\encoded.png\" \"C:\\output_file_path.foo\""
+        "psistega3 -df -v 3 \"C:\\reference.png\" \"C:\\encoded.png\" \"C:\\output_file_path.foo\""
     );
     println!();
     println!("You will be prompted for a password after executing this command.");
