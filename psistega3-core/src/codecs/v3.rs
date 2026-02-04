@@ -16,13 +16,13 @@ use zeroize::Zeroize;
 use super::codec::Config;
 
 /// The time cost (iterations) for use with the Argon2 hashing algorithm.
-const T_COST: u32 = 8;
+const DEFAULT_T_COST: u32 = 8;
 /// The parallel cost (threads) for use with the Argon2 hashing algorithm.
-const P_COST: u32 = 8;
+const DEFAULT_P_COST: u32 = 8;
 /// The memory cost (kilobytes) for use with the Argon2 hashing algorithm.
-const M_COST: u32 = 65_536;
+const DEFAULT_M_COST: u32 = 65_536;
 /// The version of the Argon2 hashing algorithm to use.
-const ARGON_VER: argon2::Version = argon2::Version::V0x13;
+const ARGON_VERSION: argon2::Version = argon2::Version::V0x13;
 /// The version of this codec.
 const CODED_VERSION: u8 = 0x3;
 /// The salt for the file component of the composite key.
@@ -78,9 +78,9 @@ impl StegaV3 {
             output_files: true,
             logger: Logger::new(false),
             offset_bit_rng: misc_utils::secure_seeded_xoroshiro512(),
-            t_cost: T_COST,
-            p_cost: P_COST,
-            m_cost: M_COST,
+            t_cost: DEFAULT_T_COST,
+            p_cost: DEFAULT_P_COST,
+            m_cost: DEFAULT_M_COST,
         }
     }
 
@@ -223,7 +223,7 @@ impl StegaV3 {
             self.m_cost,
             self.p_cost,
             self.t_cost,
-            ARGON_VER,
+            ARGON_VERSION,
         )?;
 
         // The AES-256 key is 256-bits (32 bytes) in length.
@@ -284,10 +284,10 @@ impl StegaV3 {
         let mut key_bytes_full = hashers::argon2_string(
             &composite_key,
             salt_bytes,
-            M_COST,
-            P_COST,
-            T_COST,
-            ARGON_VER,
+            DEFAULT_M_COST,
+            DEFAULT_P_COST,
+            DEFAULT_T_COST,
+            ARGON_VERSION,
         )?;
 
         // The AES-256 key is 256-bits (32 bytes) in length.
@@ -725,9 +725,9 @@ mod tests_encode_decode {
             output_files: true,
             logger: Logger::new(false),
             offset_bit_rng: misc_utils::secure_seeded_xoroshiro512(),
-            t_cost: super::T_COST,
-            p_cost: super::P_COST,
-            m_cost: super::M_COST,
+            t_cost: super::DEFAULT_T_COST,
+            p_cost: super::DEFAULT_P_COST,
+            m_cost: super::DEFAULT_M_COST,
         }
     }
 

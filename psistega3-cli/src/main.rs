@@ -1,404 +1,591 @@
 #![crate_name = "psistega3_cli"]
 mod error;
-
 use crate::error::{Error, Result};
-
-use psistega3_core::{
-    codecs::{
-        codec::{Codec, Config},
-        v2::StegaV2,
-        v3::StegaV3,
-    },
-    utilities::png_utils::{self, PngChunkType},
-    version::*,
+use clap::{Parser, Subcommand, ValueEnum};
+use psistega3_core::codecs::{
+    codec::{Codec, Config},
+    v2::StegaV2,
+    v3::StegaV3,
 };
-
 use simple_logger::SimpleLogger;
-use std::{convert::TryFrom, env, io::stdin};
+use std::io::stdin;
 
 /// The prompt for confirming a yes/no option.
 const CONFIRM_PROMPT: &str = "Are you sure you wish to enable this feature?";
-/// The current highest codec version.
-const CURRENT_MAX_VERSION: u8 = Version::V0x03 as u8;
 
-//ooneporlygs
+/// Supported codec versions for encoding
+#[derive(Clone, ValueEnum)]
+enum Version {
+    /// Version 2 codec
+    V2,
+    /// Version 3 codec (default, recommended)
+    V3,
+}
 
-#[derive(PartialEq)]
-enum ActionType {
-    Decode,
-    Encode,
-    None,
+/// A steganography tool written in Rust
+#[derive(Parser)]
+#[command(name = "psistega3")]
+#[command(about = "A steganography tool written in Rust", long_about = None)]
+struct Cli {
+    #[command(subcommand)]
+    command: Commands,
+    /// Enable unattended mode (no user prompts).
+    #[arg(long, global = true)]
+    unattended: bool,
+    /// Enable verbose output.
+    #[arg(long, global = true)]
+    verbose: bool,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    /// Encode a string into a target image.
+    #[command(visible_alias = "e")]
+    Encode {
+        /// Reference image path.
+        #[arg(value_name = "REF_IMAGE")]
+        ref_image: String,
+        /// Output image path.
+        #[arg(value_name = "OUTPUT_IMAGE")]
+        output_image: String,
+        /// Text to encode.
+        #[arg(value_name = "TEXT")]
+        text: String,
+        /// Password (if not provided, you will be prompted)
+        /// Providing passwords this way is not advised.
+        #[arg(short, long)]
+        password: Option<String>,
+        /// Codec version to use (v2 or v3, default: v3).
+        #[arg(short = 'v', long, value_enum, default_value = "v3")]
+        version: Version,
+        /// Enable file locker (locks after 5 failed attempts) [v2 only].
+        #[arg(short = 'l', long)]
+        locker: bool,
+        /// Disable noise layer (better performance, lower security).
+        #[arg(long)]
+        no_noise: bool,
+        /// Disable creation of output files.
+        #[arg(long)]
+        no_files: bool,
+        /// Lock file after one successful read [v2 only].
+        #[arg(long)]
+        read_once: bool,
+        /// Argon2 time cost parameter (iterations) [v3 only].
+        #[arg(long)]
+        t_cost: Option<u32>,
+        /// Argon2 parallelism cost parameter (threads) [v3 only].
+        #[arg(long)]
+        p_cost: Option<u32>,
+        /// Argon2 memory cost parameter (KiB) [v3 only].
+        #[arg(long)]
+        m_cost: Option<u32>,
+    },
+    /// Decode a string from a target image.
+    #[command(visible_alias = "d")]
+    Decode {
+        /// Reference image path.
+        #[arg(value_name = "REF_IMAGE")]
+        ref_image: String,
+        /// Encoded image path.
+        #[arg(value_name = "ENCODED_IMAGE")]
+        encoded_image: String,
+        /// Password (if not provided, you will be prompted).
+        /// Providing passwords this way is not advised.
+        #[arg(short, long)]
+        password: Option<String>,
+        /// Disable creation of output files.
+        #[arg(long)]
+        no_files: bool,
+        /// Argon2 time cost parameter (must match encoding) [v3 only].
+        #[arg(long)]
+        t_cost: Option<u32>,
+        /// Argon2 parallelism cost parameter (must match encoding) [v3 only].
+        #[arg(long)]
+        p_cost: Option<u32>,
+        /// Argon2 memory cost parameter (must match encoding) [v3 only].
+        #[arg(long)]
+        m_cost: Option<u32>,
+    },
+    /// Encode a file into a target image.
+    #[command(visible_alias = "ef")]
+    EncodeFile {
+        /// Reference image path.
+        #[arg(value_name = "REF_IMAGE")]
+        ref_image: String,
+        /// Output image path.
+        #[arg(value_name = "OUTPUT_IMAGE")]
+        output_image: String,
+        /// Input file path to encode.
+        #[arg(value_name = "INPUT_FILE")]
+        input_file: String,
+        /// Password (if not provided, you will be prompted).
+        /// Providing passwords this way is not advised.
+        #[arg(short, long)]
+        password: Option<String>,
+        /// Codec version to use (v2 or v3, default: v3).
+        #[arg(short = 'v', long, value_enum, default_value = "v3")]
+        version: Version,
+        /// Enable file locker (locks after 5 failed attempts) [v2 only].
+        #[arg(short = 'l', long)]
+        locker: bool,
+        /// Disable noise layer (better performance, lower security).
+        #[arg(long)]
+        no_noise: bool,
+        /// Disable creation of output files.
+        #[arg(long)]
+        no_files: bool,
+        /// Lock file after one successful read [v2 only].
+        #[arg(long)]
+        read_once: bool,
+        /// Argon2 time cost parameter (iterations) [v3 only].
+        #[arg(long)]
+        t_cost: Option<u32>,
+        /// Argon2 parallelism cost parameter (threads) [v3 only].
+        #[arg(long)]
+        p_cost: Option<u32>,
+        /// Argon2 memory cost parameter (KiB) [v3 only].
+        #[arg(long)]
+        m_cost: Option<u32>,
+    },
+    /// Decode a file from a target image.
+    #[command(visible_alias = "df")]
+    DecodeFile {
+        /// Reference image path.
+        #[arg(value_name = "REF_IMAGE")]
+        ref_image: String,
+        /// Encoded image path.
+        #[arg(value_name = "ENCODED_IMAGE")]
+        encoded_image: String,
+        /// Output file path for decoded data.
+        #[arg(value_name = "OUTPUT_FILE")]
+        output_file: String,
+        /// Password (if not provided, you will be prompted).
+        /// Providing passwords this way is not advised.
+        #[arg(short, long)]
+        password: Option<String>,
+        /// Disable creation of output files.
+        #[arg(long)]
+        no_files: bool,
+        /// Argon2 time cost parameter (must match encoding) [v3 only].
+        #[arg(long)]
+        t_cost: Option<u32>,
+        /// Argon2 parallelism cost parameter (must match encoding) [v3 only].
+        #[arg(long)]
+        p_cost: Option<u32>,
+        /// Argon2 memory cost parameter (must match encoding) [v3 only].
+        #[arg(long)]
+        m_cost: Option<u32>,
+    },
+    /// Show example commands
+    Examples,
 }
 
 fn main() {
     SimpleLogger::new().init().unwrap();
+    let cli = Cli::parse();
+    let result = match cli.command {
+        Commands::Encode {
+            ref_image,
+            output_image,
+            text,
+            password,
+            version,
+            locker,
+            no_noise,
+            no_files,
+            read_once,
+            t_cost,
+            p_cost,
+            m_cost,
+        } => {
+            let mut codec = create_codec(&version);
 
-    let mut args: Vec<String> = env::args().collect();
-    if args.len() == 1 {
-        show_help();
-        return;
-    }
+            // Warn if version-specific features are used with wrong version.
+            check_version_compatibility(&version, locker, read_once, t_cost, p_cost, m_cost);
 
-    // Automatically convert any command-type arguments to lowercase.
-    for arg in args.iter_mut() {
-        if arg.starts_with('-') {
-            *arg = arg.to_lowercase();
+            apply_encode_settings(
+                &mut codec,
+                &version,
+                locker,
+                no_noise,
+                no_files,
+                read_once,
+                t_cost,
+                p_cost,
+                m_cost,
+                cli.verbose,
+                cli.unattended,
+            );
+            let password = match get_password_with_verify(password, cli.unattended) {
+                Ok(p) => p,
+                Err(e) => return show_abort_message(e),
+            };
+            handle_encode(&ref_image, &output_image, &text, password, &mut codec)
         }
-    }
-
-    // Should we enable unattended mode?
-    let last = args.last();
-    let unattended = last.is_some() && args.last().unwrap() == "-unattended";
-
-    // The action argument.
-    let action = &args[1];
-    let mut action_type = ActionType::None;
-
-    let mut needs_codec = true;
-    match action.as_str() {
-        "-e" | "-encrypt" | "-ef" | "-encrypt-file" => {
-            // [-e] Version, version number, input image, output image, text.
-            // [-ef] Version, version number, input image, output image, input file path.
-            if args.len() < 7 {
-                show_abort_message(Error::InsufficientArguments);
-                return;
-            }
-            action_type = ActionType::Encode;
+        Commands::Decode {
+            ref_image,
+            encoded_image,
+            password,
+            no_files,
+            t_cost,
+            p_cost,
+            m_cost,
+        } => {
+            let password = match get_password_with_verify(password, cli.unattended) {
+                Ok(p) => p,
+                Err(e) => return show_abort_message(e),
+            };
+            handle_decode_with_fallback(
+                &ref_image,
+                &encoded_image,
+                password,
+                no_files,
+                cli.verbose,
+                t_cost,
+                p_cost,
+                m_cost,
+            )
         }
-        "-df" | "-decrypt-file" => {
-            // [-df] Version, version number, input image, output image, output file path.
-            if args.len() < 7 {
-                show_abort_message(Error::InsufficientArguments);
-                return;
-            }
-            action_type = ActionType::Decode;
+        Commands::EncodeFile {
+            ref_image,
+            output_image,
+            input_file,
+            password,
+            version,
+            locker,
+            no_noise,
+            no_files,
+            read_once,
+            t_cost,
+            p_cost,
+            m_cost,
+        } => {
+            let mut codec = create_codec(&version);
+
+            // Warn if version-specific features are used with wrong version
+            check_version_compatibility(&version, locker, read_once, t_cost, p_cost, m_cost);
+
+            apply_encode_settings(
+                &mut codec,
+                &version,
+                locker,
+                no_noise,
+                no_files,
+                read_once,
+                t_cost,
+                p_cost,
+                m_cost,
+                cli.verbose,
+                cli.unattended,
+            );
+            let password = match get_password_with_verify(password, cli.unattended) {
+                Ok(p) => p,
+                Err(e) => return show_abort_message(e),
+            };
+            handle_encode_file(&ref_image, &output_image, &input_file, password, &mut codec)
         }
-        "-d" | "-decrypt" => {
-            // [-d] Version, version number, original image, encoded image.
-            if args.len() < 6 {
-                show_abort_message(Error::InsufficientArguments);
-                return;
-            }
-            action_type = ActionType::Decode;
+        Commands::DecodeFile {
+            ref_image,
+            encoded_image,
+            output_file,
+            password,
+            no_files,
+            t_cost,
+            p_cost,
+            m_cost,
+        } => {
+            let password = match get_password_with_verify(password, cli.unattended) {
+                Ok(p) => p,
+                Err(e) => return show_abort_message(e),
+            };
+            handle_decode_file_with_fallback(
+                &ref_image,
+                &encoded_image,
+                &output_file,
+                password,
+                no_files,
+                cli.verbose,
+                t_cost,
+                p_cost,
+                m_cost,
+            )
         }
-        _ => {
-            needs_codec = false;
-        }
-    }
-
-    // Attempt to extract the codec version number.
-    // No default codec needs to be implemented here as the statement below
-    //   will always yield a valid codec.
-    let mut skip_version_checks = false;
-    let mut codec: Box<dyn Codec>;
-    if needs_codec {
-        let mut codec_version: Option<Version> = None;
-        if &args[2] == "-v" {
-            let mut version = args[3].clone();
-
-            // Have we been asked to guess the version, based on the file itself?
-            if version.to_uppercase() == "GUESS" {
-                if action_type == ActionType::Encode {
-                    show_abort_message(Error::NoVersionGuessing);
-                }
-
-                if let Some(v) = read_bkgd_chunk(&args[5]) {
-                    version = v;
-                } else {
-                    show_abort_message(Error::VersionGuessingFailed);
-                }
-
-                skip_version_checks = true;
-            }
-
-            if let Ok(v) = version.parse::<u8>() {
-                if let Ok(cv) = Version::try_from(v) {
-                    codec_version = Some(cv);
-                }
-            }
-        }
-
-        if codec_version.is_none() {
-            show_abort_message(Error::InvalidVersion);
-            return;
-        }
-
-        // This will trigger for any old versions that are no longer supported.
-        let result = get_codec_by_version(codec_version.unwrap());
-        if let Err(e) = result {
-            show_abort_message(e);
-            return;
-        }
-
-        codec = result.unwrap();
-
-        // Apply any settings that might have been specified.
-        apply_codec_settings(&mut codec, &args[4..], action_type, unattended);
-    } else {
-        codec = Box::<StegaV3>::default();
-    }
-
-    // When using the version guessing system, the checks are skipped.
-    codec.set_config_state(Config::SkipVersionChecks, skip_version_checks);
-
-    // Execute the requested action with the provided arguments.
-    let result = match action.as_str() {
-        "-e" | "-encrypt" => handle_encode(&args[4..], &mut codec),
-        "-d" | "-decrypt" => handle_decode(&args[4..], &mut codec),
-        "-ef" | "-encrypt-file" => handle_encode_file(&args[4..], &mut codec),
-        "-df" | "-decrypt-file" => handle_decode_file(&args[4..], &mut codec),
-        "-examples" => {
+        Commands::Examples => {
             show_examples();
             Ok(())
         }
-        _ => {
-            show_help();
-            Ok(())
-        }
     };
-
-    // If we encountered an error then display that error to the console.
     if let Err(e) = result {
         show_abort_message(e);
         return;
     }
-
-    // Wait for user input before exiting, unless unattended mode is enabled.
-    if !unattended {
+    if !cli.unattended {
         read_from_stdin();
     }
 }
 
-fn read_bkgd_chunk(path: &str) -> Option<String> {
-    let chunk = png_utils::read_chunk_raw(path, PngChunkType::Bkgd)?;
-
-    // We have a bKGD chunk to process!
-    let data = png_utils::get_chunk_data(&chunk)?;
-    if data.len() < 6 {
-        return None;
+/// Create a codec instance based on the specified version.
+fn create_codec(version: &Version) -> Box<dyn Codec> {
+    match version {
+        Version::V2 => Box::new(StegaV2::new("PsiStega3")) as Box<dyn Codec>,
+        Version::V3 => Box::new(StegaV3::new()) as Box<dyn Codec>,
     }
-
-    // This could be a legacy file, so we can assume that it is a v1 file here.
-    // In a v1 file the specific segment could be anything, as it was
-    // randomly generated in early iterations of the codec.
-    if data[5] > CURRENT_MAX_VERSION {
-        return Some("1".to_string());
-    }
-
-    // Since the versions are zero-indexed, we need to add one here to get the correct version.
-    Some((data[5] + 1).to_string())
 }
 
-/// Apply any specified codec settings.
-///
-/// # Arguments
-///
-/// * `codec` - The instance of the [`Codec`] to be used for this command.
-/// * `args` - A list of arguments relevant for this command.
-/// * `action_type` - The type of codec action to be applied.
-/// * `unattended` - Is unattended mode enabled?
-///
-/// `Note:` Any codec settings that are not applicable to the codec action type will be ignored.
-///
-fn apply_codec_settings(
+/// Check for version-specific feature compatibility and warn the user.
+fn check_version_compatibility(
+    version: &Version,
+    locker: bool,
+    read_once: bool,
+    t_cost: Option<u32>,
+    p_cost: Option<u32>,
+    m_cost: Option<u32>,
+) {
+    match version {
+        Version::V2 => {
+            if t_cost.is_some() || p_cost.is_some() || m_cost.is_some() {
+                eprintln!("WARNING: --tcost, --pcost, and --mcost are only supported in v3. These flags will be ignored.");
+            }
+        }
+        Version::V3 => {
+            if locker || read_once {
+                eprintln!("WARNING: --locker and --read-once are only supported in v2. These flags will be ignored.");
+            }
+        }
+    }
+}
+
+/// Apply codec settings for encoding operations.
+fn apply_encode_settings(
     codec: &mut Box<dyn Codec>,
-    args: &[String],
-    action_type: ActionType,
+    version: &Version,
+    locker: bool,
+    no_noise: bool,
+    no_files: bool,
+    read_once: bool,
+    t_cost: Option<u32>,
+    p_cost: Option<u32>,
+    m_cost: Option<u32>,
+    verbose: bool,
     unattended: bool,
 ) {
-    let is_encode = action_type == ActionType::Encode;
-
-    // Only applicable to encoding.
-    if is_encode && args.contains(&String::from("--l")) || args.contains(&String::from("--locker"))
-    {
-        // We want to warn the user that enabling this option
-        // render the data unrecoverable.
-        let mut enabled = true;
-        if !unattended {
-            print!("WARNING: the file locker will render the encoded data unrecoverable if 5 or more attempts to decode the data are unsuccessful. ");
-            enabled = read_confirm_from_stdin(CONFIRM_PROMPT);
+    // locker and read_once may only be specified with v2.
+    if matches!(version, Version::V2) {
+        if locker {
+            let mut enabled = true;
+            if !unattended {
+                print!("WARNING: the file locker will render the encoded data unrecoverable if 5 or more attempts to decode the data are unsuccessful. ");
+                enabled = read_confirm_from_stdin(CONFIRM_PROMPT);
+            }
+            codec.set_config_state(Config::Locker, enabled);
         }
-
-        codec.set_config_state(Config::Locker, enabled);
+        if read_once {
+            let mut enabled = true;
+            if !unattended {
+                print!("WARNING: the file locker will render the encoded data unrecoverable after it has been successfully decoded once. ");
+                enabled = read_confirm_from_stdin(CONFIRM_PROMPT);
+            }
+            codec.set_config_state(Config::ReadOnce, enabled);
+        }
     }
 
-    // Only applicable to encoding.
-    if is_encode && args.contains(&String::from("--ro"))
-        || args.contains(&String::from("--read-once"))
-    {
-        // We want to warn the user that enabling this option
-        //   render the data unrecoverable.
-        let mut enabled = true;
-        if !unattended {
-            print!("WARNING: the file locker will render the encoded data unrecoverable after it has been successfully decoded once. ");
-            enabled = read_confirm_from_stdin(CONFIRM_PROMPT);
+    // Argon2 parameters may only be specified with v3.
+    if matches!(version, Version::V3) {
+        if let Some(t) = t_cost {
+            codec.set_config_state(Config::TCost(t), true);
         }
-
-        codec.set_config_state(Config::ReadOnce, enabled);
+        if let Some(p) = p_cost {
+            codec.set_config_state(Config::PCost(p), true);
+        }
+        if let Some(m) = m_cost {
+            codec.set_config_state(Config::MCost(m), true);
+        }
     }
 
-    // Only applicable to encoding.
-    if is_encode && args.contains(&String::from("--nn"))
-        || args.contains(&String::from("--no-noise"))
-    {
+    if no_noise {
         codec.set_config_state(Config::NoiseLayer, false);
     }
-
-    // Applicable to encoding and decoding.
-    if args.contains(&String::from("--nf")) || args.contains(&String::from("--no-files")) {
+    if no_files {
         codec.set_config_state(Config::OutputFiles, false);
     }
-
-    // Applicable to encoding and decoding.
-    if args.contains(&String::from("--verbose")) {
+    if verbose {
         codec.set_config_state(Config::Verbose, true);
     }
 }
 
-/// Get an instance of the [`Codec`] for a specified [`Version`].
-///
-/// # Arguments
-///
-/// * `version` - The [`Codec`] [`Version`].
-///
-fn get_codec_by_version(version: Version) -> Result<Box<dyn Codec>> {
-    match version {
-        Version::V0x01 => {
-            return Err(Error::NoLongerSupportedVersion);
+/// Apply codec settings for decoding operations.
+fn apply_decode_settings(
+    codec: &mut Box<dyn Codec>,
+    no_files: bool,
+    verbose: bool,
+    t_cost: Option<u32>,
+    p_cost: Option<u32>,
+    m_cost: Option<u32>,
+) {
+    if no_files {
+        codec.set_config_state(Config::OutputFiles, false);
+    }
+    if verbose {
+        codec.set_config_state(Config::Verbose, true);
+    }
+
+    // Apply Argon2 parameters if provided.
+    if let Some(t) = t_cost {
+        codec.set_config_state(Config::TCost(t), true);
+    }
+    if let Some(p) = p_cost {
+        codec.set_config_state(Config::PCost(p), true);
+    }
+    if let Some(m) = m_cost {
+        codec.set_config_state(Config::MCost(m), true);
+    }
+}
+
+/// Handle text decode with automatic version fallback.
+fn handle_decode_with_fallback(
+    ref_image: &str,
+    encoded_image: &str,
+    password: String,
+    no_files: bool,
+    verbose: bool,
+    tcost: Option<u32>,
+    pcost: Option<u32>,
+    mcost: Option<u32>,
+) -> Result<()> {
+    // Try v3 first.
+    let mut codec = Box::new(StegaV3::new()) as Box<dyn Codec>;
+    apply_decode_settings(&mut codec, no_files, verbose, tcost, pcost, mcost);
+    match codec.decode(ref_image, password.clone(), encoded_image) {
+        Ok(plaintext) => {
+            print_decoded_text(&plaintext);
+            return Ok(());
         }
-        Version::V0x02 => Ok(Box::new(StegaV2::new(""))),
-        Version::V0x03 => Ok(Box::new(StegaV3::new())),
+        Err(_) => {
+            // v3 failed, try v2.
+            let mut codec = Box::new(StegaV2::new("PsiStega3")) as Box<dyn Codec>;
+            apply_decode_settings(&mut codec, no_files, verbose, None, None, None);
+            match codec.decode(ref_image, password, encoded_image) {
+                Ok(plaintext) => {
+                    print_decoded_text(&plaintext);
+                    return Ok(());
+                }
+                Err(e) => {
+                    return Err(Error::Decoding(format!(
+                        "Failed to decode with v3 and v2 codecs: {e}"
+                    )));
+                }
+            }
+        }
+    }
+}
+
+/// Handle file decode with automatic version fallback.
+fn handle_decode_file_with_fallback(
+    ref_image: &str,
+    encoded_image: &str,
+    output_file: &str,
+    password: String,
+    no_files: bool,
+    verbose: bool,
+    t_cost: Option<u32>,
+    p_cost: Option<u32>,
+    m_cost: Option<u32>,
+) -> Result<()> {
+    // Try v3 first.
+    let mut codec = Box::new(StegaV3::new()) as Box<dyn Codec>;
+    apply_decode_settings(&mut codec, no_files, verbose, t_cost, p_cost, m_cost);
+    match codec.decode_file(ref_image, password.clone(), encoded_image, output_file) {
+        Ok(_) => {
+            println!("The file has been successfully decoded to the specified output path.");
+            return Ok(());
+        }
+        Err(_) => {
+            // v3 failed, try v2.
+            let mut codec = Box::new(StegaV2::new("PsiStega3")) as Box<dyn Codec>;
+            apply_decode_settings(&mut codec, no_files, verbose, None, None, None);
+            match codec.decode_file(ref_image, password, encoded_image, output_file) {
+                Ok(_) => {
+                    println!(
+                        "The file has been successfully decoded to the specified output path."
+                    );
+                    return Ok(());
+                }
+                Err(e) => {
+                    return Err(Error::Decoding(format!(
+                        "Failed to decode with v3 and v2 codecs: {e}"
+                    )));
+                }
+            }
+        }
+    }
+}
+
+/// Print decoded text with handling for binary data.
+fn print_decoded_text(plaintext: &str) {
+    println!("{}", "-".repeat(32));
+    if plaintext.contains('�') {
+        println!("One or more unprintable characters were detected in the decoded data. This could mean the data is binary data and cannot be printed here.");
+        println!("Please try decoding the data using the decode-file command instead.");
+    } else {
+        println!("{plaintext}");
+    }
+}
+
+/// Handle text encode command.
+fn handle_encode(
+    ref_image: &str,
+    output_image: &str,
+    text: &str,
+    password: String,
+    codec: &mut Box<dyn Codec>,
+) -> Result<()> {
+    match codec.encode(ref_image, password, text, output_image) {
+        Ok(_) => {
+            println!("The text has been successfully encoded.");
+            Ok(())
+        }
+        Err(e) => Err(Error::Encoding(e.to_string())),
+    }
+}
+
+/// Handle file encode command.
+fn handle_encode_file(
+    ref_image: &str,
+    output_image: &str,
+    input_file: &str,
+    password: String,
+    codec: &mut Box<dyn Codec>,
+) -> Result<()> {
+    match codec.encode_file(ref_image, password, input_file, output_image) {
+        Ok(_) => {
+            println!("The file has been successfully encoded.");
+            Ok(())
+        }
+        Err(e) => Err(Error::Encoding(e.to_string())),
+    }
+}
+
+/// Get password with verification (for encoding).
+fn get_password_with_verify(password_arg: Option<String>, unattended: bool) -> Result<String> {
+    if let Some(pwd) = password_arg {
+        return Ok(pwd);
+    }
+    if unattended {
+        return Ok(String::new());
+    }
+    let pwd_1 = get_password("Password: ");
+    let pwd_2 = get_password("Confirm password: ");
+    if pwd_1 == pwd_2 {
+        Ok(pwd_1.unwrap_or_default())
+    } else {
+        Err(Error::PasswordMismatch)
     }
 }
 
 /// Prompt the user to input a password.
-///
-/// # Arguments
-///
-/// * `prompt` - The password prompt string.
-///
 fn get_password(prompt: &str) -> Option<String> {
     println!("{prompt}");
     rpassword::read_password().ok()
-}
-
-/// Handle a text decode command.
-///
-/// # Arguments
-///
-/// * `args` - A list of arguments relevant for this command.
-/// * `codec` - The instance of the [`Codec`] to be used for this command.
-///
-fn handle_decode(args: &[String], codec: &mut Box<dyn Codec>) -> Result<()> {
-    // Reference image path, encoded image path.
-    if args.len() < 2 {
-        return Err(Error::InsufficientArguments);
-    }
-
-    let ref_image = &args[0];
-    let enc_image = &args[1];
-    let password = read_password(args)?;
-
-    // Attempt to decode the data.
-    let plaintext = match codec.decode(ref_image, password, enc_image) {
-        Ok(s) => Ok(s),
-        Err(e) => Err(Error::Decoding(e.to_string())),
-    }?;
-
-    println!("{}", "-".repeat(32));
-    if plaintext.contains('�') {
-        println!("One or more unprintable characters were detected in the decoded data. This could mean the data is binary data and cannot be printed here.");
-        println!("Please try decoding the data using the -df argument instead.");
-    } else {
-        // Output the decoded string to the console.
-        println!("{plaintext}");
-    }
-
-    Ok(())
-}
-
-/// Handle a file decode command.
-///
-/// # Arguments
-///
-/// * `args` - A list of arguments relevant for this command.
-/// * `codec` - The instance of the [`Codec`] to be used for this command.
-///
-fn handle_decode_file(args: &[String], codec: &mut Box<dyn Codec>) -> Result<()> {
-    // Reference image path, encoded image path, output file path.
-    if args.len() < 3 {
-        return Err(Error::InsufficientArguments);
-    }
-
-    let ref_image = &args[0];
-    let enc_image = &args[1];
-    let output_file_path = &args[2];
-    let password = read_password(args)?;
-
-    // Attempt to decode the data.
-    match codec.decode_file(ref_image, password, enc_image, output_file_path) {
-        Ok(_) => Ok(()),
-        Err(e) => Err(Error::Decoding(e.to_string())),
-    }?;
-
-    // Output the decoded string to the console.
-    println!("The file has been successfully decoded to the specified output path.");
-
-    Ok(())
-}
-
-/// Handle a text encode command.
-///
-/// # Arguments
-///
-/// * `args` - A list of arguments relevant for this command.
-/// * `codec` - The instance of the [`Codec`] to be used for this command.
-///
-fn handle_encode(args: &[String], codec: &mut Box<dyn Codec>) -> Result<()> {
-    // Reference image path, output image path, text.
-    if args.len() < 3 {
-        return Err(Error::InsufficientArguments);
-    }
-
-    let ref_image = &args[0];
-    let output_image = &args[1];
-    let text = &args[2];
-    let password = read_password_with_verify(args)?;
-
-    match codec.encode(ref_image, password, text, output_image) {
-        Ok(_) => Ok(()),
-        Err(e) => Err(Error::Encoding(e.to_string())),
-    }?;
-
-    println!("The text has been successfully encoded.");
-    Ok(())
-}
-
-/// Handle a file encode command.
-///
-/// # Arguments
-///
-/// * `args` - A list of arguments relevant for this command.
-/// * `codec` - The instance of the [`Codec`] to be used for this command.
-///
-fn handle_encode_file(args: &[String], codec: &mut Box<dyn Codec>) -> Result<()> {
-    // Reference image path, output image path, input file path.
-    if args.len() < 3 {
-        return Err(Error::InsufficientArguments);
-    }
-
-    let ref_image = &args[0];
-    let output_image = &args[1];
-    let input_file = &args[2];
-    let password = read_password_with_verify(args)?;
-
-    match codec.encode_file(ref_image, password, input_file, output_image) {
-        Ok(_) => Ok(()),
-        Err(e) => Err(Error::Encoding(e.to_string())),
-    }?;
-
-    println!("The file has been successfully encoded.");
-    Ok(())
 }
 
 /// Read a line of text from stdin.
@@ -410,175 +597,72 @@ fn read_from_stdin() -> String {
     input_string
 }
 
-/// Read a password.
-/// This function will check the argument list first, then if no password was supplied a prompt will be offered.
-///
-/// # Arguments
-///
-/// * `args` - A list of supplied arguments.
-///
-fn read_password(args: &[String]) -> Result<String> {
-    // First, attempt to read the password from the supplied arguments.
-    // If none was supplied, then we will offer a password input prompt.
-    let mut password = read_password_args(args);
-    if password.is_none() {
-        password = get_password("Password: ");
-    }
-
-    // If no password was supplied then an empty string
-    //   will be used as the password.
-    // It isn't a safe password, but it is technically valid.
-    if password.is_none() {
-        password = Some("".to_string());
-    }
-
-    Ok(password.unwrap())
-}
-
-/// Read a yes/no confirmation from a stdin prompt.
-///
-/// # Arguments
-///
-/// * `prompt` - The question prompt to be supplied to the user.
-///
+/// Read a yes/no confirmation from stdin.
 fn read_confirm_from_stdin(prompt: &str) -> bool {
     println!("{prompt}");
-    let mut input_string = String::new();
-    stdin()
-        .read_line(&mut input_string)
-        .expect("Failed to read a line.");
-
     let confirm = read_from_stdin().trim().to_lowercase();
-
     confirm == "y" || confirm == "yes"
 }
 
-/// Attempt to read a password argument from the argument list.
-///
-/// # Returns
-///
-/// If a password argument is specified, and if the password is not empty then a [`String`] [`Option`] will be returned,
-/// otherwise a [`None`] will be returned.
-///
-fn read_password_args(args: &[String]) -> Option<String> {
-    let password_arg = String::from("-p");
-    if !args.contains(&password_arg) {
-        return None;
-    }
-
-    let index = args.iter().position(|x| x == &password_arg).unwrap() + 1;
-
-    // A password argument was specified, but no password was supplied.
-    if args.len() <= index {
-        return None;
-    }
-
-    Some(args[index].to_string())
-}
-
-/// Read a password, with verification.
-/// This function will check the argument list first, then if no password was supplied a prompt will be offered.
-///
-/// # Arguments
-///
-/// * `args` - A list of supplied arguments.
-///
-fn read_password_with_verify(args: &[String]) -> Result<String> {
-    // First, attempt to read the password from the supplied arguments.
-    // If none was supplied, then we will offer a password input prompt.
-    let mut password = read_password_args(args);
-    if password.is_none() {
-        let pwd_1 = get_password("Password: ");
-        let pwd_2 = get_password("Confirm password: ");
-
-        if pwd_1 == pwd_2 {
-            password = pwd_1;
-        } else {
-            return Err(Error::PasswordMismatch);
-        }
-    }
-
-    // If no password was supplied then an empty string
-    //   will be used as the password.
-    // It isn't a safe password, but it is technically valid.
-    if password.is_none() {
-        password = Some("".to_string());
-    }
-
-    Ok(password.unwrap())
-}
-
-/// Write an [`Error`] message on screen and then abort the program.
-///
-/// # Arguments
-///
-/// * `error` - The [`Error`] to be displayed on screen.
-///
+/// Display an error message.
 pub fn show_abort_message(error: Error) {
-    println!("Error: {error}");
+    eprintln!("Error: {error}");
 }
 
-/// Write some basic help information on screen.
-fn show_help() {
-    println!("A steganography tool written in Rust.");
-    println!();
-    println!("USAGE:");
-    println!("\tpsistega3 ACTION VERSION PARAMS [OPTIONS]");
-    println!();
-    println!("ACTION:");
-    println!("\t-e, -E\t\t\tEncode a string into a target image.");
-    println!("\t-d, -D\t\t\tDecode a string from a target image.");
-    println!("\t-ef, -EF\t\tEncode a file into a target image.");
-    println!("\t-df, -DF\t\tDecode a file from a target image.");
-    println!();
-    println!("OPTIONS:");
-    println!("\t--l, --locker\t\tEnable file locker. This option will lock a file after 5 unsuccessful decryption attempts.");
-    println!("\t--nn, --no-noise\tDisable the noise layer when encoding (better performance, lower security).");
-    println!("\t--nf, --no-files\tDisable the creation of any output files.");
-    println!(
-        "\t--ro, --read-once\tPermanently locks the file after it has been successfully read."
-    );
-    //println!("\t--verbose\tEnable verbose mode.");
-    println!();
-    println!("Please use -examples to display some example commands.");
-}
-
-/// Write some example commands on screen.
+/// Show example commands.
 fn show_examples() {
-    let split = "-".repeat(32);
+    let split = "-".repeat(60);
+    println!("\n{split}");
+    println!("ENCODING EXAMPLES");
+    println!("{split}\n");
+    println!("Encode text into an image (v3 - default):");
+    println!("  psistega3 encode reference.png encoded.png \"A very important message.\"");
+    println!("  (You will be prompted for a password)\n");
+    println!("Encode text with password provided (not recommended for security reasons):");
+    println!("  psistega3 encode reference.png encoded.png \"Secret message\" -p mypassword\n");
+    println!("Encode using v2 codec:");
+    println!("  psistega3 encode reference.png encoded.png \"Secret\" --version v2\n");
+    println!("Encode a file:");
+    println!("  psistega3 encode-file reference.png encoded.png input.txt\n");
+    println!("Encode with file locker enabled (v2 only):");
+    println!("  psistega3 encode reference.png encoded.png \"Secret\" --version v2 --locker\n");
     println!("{split}");
+    println!("DECODING EXAMPLES");
+    println!("{split}\n");
+    println!("Decode text from an image:");
+    println!("  psistega3 decode reference.png encoded.png");
+    println!("  (Automatically tries v3, then v2 if v3 fails)\n");
+    println!("Decode with password provided (not recommended for security reasons):");
+    println!("  psistega3 decode reference.png encoded.png -p mypassword\n");
+    println!("Decode with custom Argon2 parameters (v3):");
+    println!("  psistega3 decode reference.png encoded.png -p pass --tcost 8 --mcost 65536\n");
+    println!("Decode a file:");
+    println!("  psistega3 decode-file reference.png encoded.png output.txt\n");
+    println!("{split}");
+    println!("ADVANCED OPTIONS");
+    println!("{split}\n");
+    println!("Disable noise layer (faster, less secure):");
+    println!("  psistega3 encode reference.png output.png \"Text\" --no-noise\n");
+    println!("Enable read-once protection (v2 only):");
+    println!("  psistega3 encode reference.png output.png \"Text\" --version v2 --read-once\n");
+    println!("Custom Argon2 parameters for stronger encryption (v3 only):");
+    println!("  psistega3 encode ref.png out.png \"Secret\" --tcost 8 --mcost 65536 --pcost 4\n");
+    println!("Unattended mode (no prompts):");
+    println!("  psistega3 --unattended encode ref.png out.png \"Text\" -p password\n");
+    println!("{split}");
+    println!("ARGON2 TUNING (v3 only)");
+    println!("{split}\n");
+    println!("The Argon2 parameters control the key derivation function:");
+    println!("  --tcost  : Time cost (iterations). Higher = slower but more secure.");
     println!(
-        "psistega3 -e -v 1 \"C:\\reference.png\" \"C:\\encoded.png\" \"A very important message.\""
+        "  --mcost  : Memory cost (KiB). Higher = more memory used, more resistant to attacks."
     );
-    println!();
-    println!("This command will attempt to encode a string into the reference image.");
-    println!("You will be prompted twice for a password after executing this command.");
-    println!("{split}");
-    println!("psistega3 -d -v 3 \"C:\\reference.png\" \"C:\\encoded.png\"");
-    println!();
-    println!("You will be prompted for a password after executing this command.");
-    println!("If any data was successfully decoded then it will be displayed on screen.");
-    println!("{split}");
-    println!("psistega3 -d -v GUESS \"C:\\reference.png\" \"C:\\encoded.png\"");
-    println!();
-    println!("This command will attempt to guess the version, based on the file contents. If this fails, it will default to v1 file for legacy reasons.");
-    println!("You will be prompted for a password after executing this command.");
-    println!("If any data was successfully decoded then it will be displayed on screen.");
-    println!("{split}");
-    println!(
-        "psistega3 -ef -v 3 \"C:\\reference.png\" \"C:\\encoded.png\" \"C:\\input_file_path.foo\""
-    );
-    println!();
-    println!("This command will attempt to encode a file into the reference image.");
-    println!("You will be prompted twice for a password after executing this command.");
-    println!("{split}");
-    println!(
-        "psistega3 -df -v 3 \"C:\\reference.png\" \"C:\\encoded.png\" \"C:\\output_file_path.foo\""
-    );
-    println!();
-    println!("You will be prompted for a password after executing this command.");
-    println!(
-        "If any data was successfully decoded then it will be written to the output file path."
-    );
-    println!("{split}");
+    println!("  --pcost  : Parallelism (threads). Number of parallel threads to use.\n");
+    println!("IMPORTANT: When decoding, you must provide the identical Argon2 parameters,");
+    println!("that were used during encoding, or decoding will fail.\n");
+    println!("Example encode with high security:");
+    println!("  psistega3 encode ref.png out.png \"Top Secret\" --tcost 10 --mcost 131072\n");
+    println!("Example decode with matching parameters:");
+    println!("  psistega3 decode ref.png out.png --tcost 10 --mcost 131072\n");
+    println!("{split}\n");
 }
