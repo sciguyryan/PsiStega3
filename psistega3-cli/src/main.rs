@@ -235,6 +235,7 @@ fn main() {
                 Ok(p) => p,
                 Err(e) => return show_abort_message(e),
             };
+
             handle_decode_with_fallback(
                 &ref_image,
                 &encoded_image,
@@ -448,13 +449,13 @@ fn handle_decode_with_fallback(
     password: String,
     no_files: bool,
     verbose: bool,
-    tcost: Option<u32>,
-    pcost: Option<u32>,
-    mcost: Option<u32>,
+    t_cost: Option<u32>,
+    p_cost: Option<u32>,
+    m_cost: Option<u32>,
 ) -> Result<()> {
     // Try v3 first.
     let mut codec = Box::new(StegaV3::new()) as Box<dyn Codec>;
-    apply_decode_settings(&mut codec, no_files, verbose, tcost, pcost, mcost);
+    apply_decode_settings(&mut codec, no_files, verbose, t_cost, p_cost, m_cost);
     match codec.decode(ref_image, password.clone(), encoded_image) {
         Ok(plaintext) => {
             print_decoded_text(&plaintext);

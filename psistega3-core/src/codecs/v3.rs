@@ -228,7 +228,6 @@ impl StegaV3 {
 
         // The AES-256 key is 256-bits (32 bytes) in length.
         let key_bytes = &key_bytes_full[..32];
-
         let key = Key::<Aes256Gcm>::from_slice(key_bytes);
         let cipher = Aes256Gcm::new(key);
         let nonce = Nonce::from_slice(&nonce_bytes);
@@ -284,15 +283,14 @@ impl StegaV3 {
         let mut key_bytes_full = hashers::argon2_string(
             &composite_key,
             salt_bytes,
-            DEFAULT_M_COST,
-            DEFAULT_P_COST,
-            DEFAULT_T_COST,
+            self.m_cost,
+            self.p_cost,
+            self.t_cost,
             ARGON_VERSION,
         )?;
 
         // The AES-256 key is 256-bits (32 bytes) in length.
         let key_bytes = &key_bytes_full[..32];
-
         let key = Key::<Aes256Gcm>::from_slice(key_bytes);
         let cipher = Aes256Gcm::new(key);
 
@@ -301,7 +299,6 @@ impl StegaV3 {
         let nonce = Nonce::from_slice(&nonce_bytes);
 
         // We will convert the input data byte vector into a base64 string.
-        //let plaintext = misc_utils::encode_u8_slice_to_base64_str(data);
         let Ok(ct_bytes) = cipher.encrypt(nonce, data) else {
             return Err(Error::EncryptionFailed);
         };

@@ -26,7 +26,7 @@ pub fn argon2_string(
     version: argon2::Version,
 ) -> Result<[u8; 128]> {
     // Return an error if any of supplied parameters are incorrect.
-    let Ok(params) = argon2::Params::new(m_cost, p_cost, t_cost, None) else {
+    let Ok(params) = argon2::Params::new(m_cost, t_cost, p_cost, None) else {
         return Err(Error::Argon2InvalidParams);
     };
 
