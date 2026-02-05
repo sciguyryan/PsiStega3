@@ -62,7 +62,7 @@ pub fn crc32_slice(slice: &[u8]) -> u32 {
 /// * `path` - The path to the file.
 ///
 #[inline]
-pub fn sha3_512_file(path: &str) -> Result<Vec<u8>> {
+pub fn sha3_512_file(path: &str) -> Result<[u8; 64]> {
     let Ok(file) = File::open(path) else {
         return Err(Error::FileHashingError);
     };
@@ -82,7 +82,7 @@ pub fn sha3_512_file(path: &str) -> Result<Vec<u8>> {
         hasher.update(c);
     }
 
-    Ok(hasher.finalize().to_vec())
+    Ok(hasher.finalize().into())
 }
 
 /// Get the SHA3-512 hash of a string slice.
@@ -93,10 +93,10 @@ pub fn sha3_512_file(path: &str) -> Result<Vec<u8>> {
 ///
 #[cfg(test)]
 #[inline]
-pub fn sha3_512_string(str: &str) -> Vec<u8> {
+pub fn sha3_512_string(str: &str) -> [u8; 64] {
     let mut hasher = Sha3_512::new();
     hasher.update(str);
-    hasher.finalize().to_vec()
+    hasher.finalize().into()
 }
 
 /// Get the SHA3-512 hash of a u8 slice.
@@ -106,8 +106,8 @@ pub fn sha3_512_string(str: &str) -> Vec<u8> {
 /// * `bytes` - The byte slice to be hashed.
 ///
 #[inline]
-pub fn sha3_512_bytes(bytes: &[u8]) -> Vec<u8> {
+pub fn sha3_512_bytes(bytes: &[u8]) -> [u8; 64] {
     let mut hasher = Sha3_512::new();
     hasher.update(bytes);
-    hasher.finalize().to_vec()
+    hasher.finalize().into()
 }

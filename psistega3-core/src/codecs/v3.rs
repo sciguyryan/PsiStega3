@@ -15,6 +15,8 @@ use zeroize::Zeroize;
 
 use super::codec::Config;
 
+/// The version of this codec.
+const CODED_VERSION: u8 = 0x3;
 /// The time cost (iterations) for use with the Argon2 hashing algorithm.
 const DEFAULT_T_COST: u32 = 8;
 /// The parallel cost (threads) for use with the Argon2 hashing algorithm.
@@ -23,8 +25,6 @@ const DEFAULT_P_COST: u32 = 8;
 const DEFAULT_M_COST: u32 = 65_536;
 /// The version of the Argon2 hashing algorithm to use.
 const ARGON_VERSION: argon2::Version = argon2::Version::V0x13;
-/// The version of this codec.
-const CODED_VERSION: u8 = 0x3;
 /// The salt for the file component of the composite key.
 /// `Note:` It should be changed with new versions of the algorithm.
 const FILE_SALT: [u8; 64] = [
@@ -49,6 +49,14 @@ const VERSION_SALT: [u8; 64] = [
     40, 53, 175, 199, 197, 9, 111, 186, 61, 94, 104, 150, 185, 120, 149, 52, 254, 82, 164, 69, 156,
     195,
 ];
+/// The size of the Argon2 salt, in bytes.
+const SALT_SIZE: usize = 12;
+/// The size of the AES nonce, in bytes.
+const NONCE_SIZE: usize = 12;
+/// The size of the ciphertext cell counter, in bytes.
+///
+/// By default, this is an unsigned 32-bit integer, and is hence 4 bytes in size.
+const CIPHERTEXT_CELL_COUNT_SIZE: usize = 4;
 
 /// The struct that holds the v2 steganography algorithm.
 pub struct StegaV3 {
@@ -91,16 +99,13 @@ impl StegaV3 {
     /// * `key` - The key bytes that should be used to seed the random number generator.
     /// * `img` - A reference to the [`ImageWrapper`] that holds the image.
     fn build_data_to_cell_index_map(&mut self, img: &ImageWrapper, key: &[u8]) {
+        // The caller should have run the data through a hashing algorithm that will output
+        // exactly 512 bits (64 bytes) of data.
+        assert_eq!(key.len(), 64);
+
         // It doesn't matter if we call this on reference or encoded
         //   as they will have the same value at this point.
         let total_cells = StegaV3::get_total_cells(img);
-
-        /*
-          When we can't use the Argon2 hash for the positional RNG
-            as we will need the salt, which will not be available when
-            initially reading the data from the file.
-        */
-        let mut bytes = hashers::sha3_512_bytes(key);
 
         // We DO NOT realistically need a cryptographically secure RNG here,
         //   so we can use a faster RNG for shuffling the cells.
@@ -110,9 +115,6 @@ impl StegaV3 {
             acc ^ u64::from_le_bytes(chunk.try_into().unwrap())
         });
         fastrand::seed(seed);
-
-        // Clear the key bytes from memory.
-        bytes.zeroize();
 
         // Pre-allocate vector and map for performance.
         self.data_cell_vec = Vec::with_capacity(total_cells);
@@ -125,21 +127,22 @@ impl StegaV3 {
     #[inline(always)]
     fn compute_cells_needed(total_ciphertext_cells: usize) -> usize {
         /*
-          4 cells for the total number of stored cipher-text cells,
-            the salt, the nonce and the cipher-text itself.
-
           This value must be held within a 64-bit value to prevent integer
-            overflow from occurring in the when running this on a
-            32-bit architecture.
+            overflow from occurring in the when running this on a 32-bit architecture.
 
-          Note: a cell represents the space in which a byte of data
-            can be encoded.
+          Note: a cell represents the space in which a byte of data can be encoded.
         */
 
-        4 /* number of cipher-text cells (u32) */
-            + 12 /* the length of the Argon2 salt (12 * u8) */
-            + 12 /* the length of the AES-256 nonce (12 * u8) */
-            + total_ciphertext_cells
+        let sum = CIPHERTEXT_CELL_COUNT_SIZE as u64
+            + SALT_SIZE as u64
+            + NONCE_SIZE as u64
+            + total_ciphertext_cells as u64;
+        assert!(
+            sum < u32::MAX as u64,
+            "the total number of cells can't exceed the bounds of a 32-bit value"
+        );
+
+        sum as usize
     }
 
     /// The internal implementation of the decoding algorithm.
@@ -208,13 +211,15 @@ impl StegaV3 {
         }
 
         // Next, we get the Argon2 salt bytes.
-        let salt_bytes: [u8; 12] = data[0..12].try_into().unwrap();
+        let salt_bytes: [u8; SALT_SIZE] = data[0..SALT_SIZE].try_into().unwrap();
 
         // Next, we get the AES nonce bytes.
-        let nonce_bytes: [u8; 12] = data[12..24].try_into().unwrap();
+        let nonce_bytes: [u8; NONCE_SIZE] = data[SALT_SIZE..(SALT_SIZE + NONCE_SIZE)]
+            .try_into()
+            .unwrap();
 
-        // Add the cipher-text bytes.
-        let ciphertext_bytes = &data[24..];
+        // Finally, we get the ciphertext bytes.
+        let ciphertext_bytes = &data[(SALT_SIZE + NONCE_SIZE)..];
 
         // Now we can compute the Argon2 hash.
         let mut key_bytes_full = hashers::argon2_string(
@@ -231,6 +236,9 @@ impl StegaV3 {
         let key = Key::<Aes256Gcm>::from_slice(key_bytes);
         let cipher = Aes256Gcm::new(key);
         let nonce = Nonce::from_slice(&nonce_bytes);
+
+        composite_key.zeroize();
+        key_bytes_full.zeroize();
 
         /*
           Attempt to decrypt the cipher-text bytes with
@@ -249,10 +257,6 @@ impl StegaV3 {
                 return Err(Error::DecryptionFailed);
             }
         };
-
-        // Zero out sensitive material.
-        composite_key.zeroize();
-        key_bytes_full.zeroize();
 
         Ok(plaintext_bytes)
     }
@@ -279,7 +283,7 @@ impl StegaV3 {
         let mut composite_key = StegaV3::generate_composite_key(original_img_path, key)?;
 
         // Generate a random salt for the Argon2 hashing function.
-        let salt_bytes: [u8; 12] = misc_utils::secure_random_bytes();
+        let salt_bytes: [u8; SALT_SIZE] = misc_utils::secure_random_bytes();
         let mut key_bytes_full = hashers::argon2_string(
             &composite_key,
             salt_bytes,
@@ -289,21 +293,28 @@ impl StegaV3 {
             ARGON_VERSION,
         )?;
 
+        // Build the data index to positional cell index map.
+        self.build_data_to_cell_index_map(&img, &composite_key);
+
         // The AES-256 key is 256-bits (32 bytes) in length.
         let key_bytes = &key_bytes_full[..32];
         let key = Key::<Aes256Gcm>::from_slice(key_bytes);
         let cipher = Aes256Gcm::new(key);
 
-        // Generate a unique random 96-bit (12 byte) nonce (IV).
-        let nonce_bytes: [u8; 12] = misc_utils::secure_random_bytes();
+        // Clear the data from memory, as early as possible.
+        composite_key.zeroize();
+        key_bytes_full.zeroize();
+
+        // Generate a random nonce.
+        let nonce_bytes: [u8; NONCE_SIZE] = misc_utils::secure_random_bytes();
         let nonce = Nonce::from_slice(&nonce_bytes);
 
-        // We will convert the input data byte vector into a base64 string.
-        let Ok(ct_bytes) = cipher.encrypt(nonce, data) else {
+        // Encrypt the data.
+        let Ok(ciphertext_bytes) = cipher.encrypt(nonce, data) else {
             return Err(Error::EncryptionFailed);
         };
 
-        let total_ciphertext_cells = ct_bytes.len();
+        let total_ciphertext_cells = ciphertext_bytes.len();
         let total_cells_needed = StegaV3::compute_cells_needed(total_ciphertext_cells);
 
         // In total we can never store more than 0xFFFFFFFF bytes of data to
@@ -325,26 +336,21 @@ impl StegaV3 {
             total_cells_needed
         };
 
-        // This will hold all of the data to be encoded.
-        let mut data = Vec::with_capacity(capacity);
-        data.extend_from_slice(&(total_ciphertext_cells as u32).to_le_bytes());
-        data.extend_from_slice(&salt_bytes);
-        data.extend_from_slice(&nonce_bytes);
-        data.extend_from_slice(&ct_bytes);
+        let mut to_encode = Vec::with_capacity(capacity);
+        to_encode.extend_from_slice(&(total_ciphertext_cells as u32).to_le_bytes());
+        to_encode.extend_from_slice(&salt_bytes);
+        to_encode.extend_from_slice(&nonce_bytes);
+        to_encode.extend_from_slice(&ciphertext_bytes);
 
-        // Fill all of the unused cells with junk random data, if needed.
+        // Fill the unused cells with junk random data, if needed.
         if self.noise_layer {
-            data.extend_from_slice(&StegaV3::generate_junk_bytes(data.capacity() - data.len()));
+            to_encode.extend_from_slice(&StegaV3::generate_junk_bytes(
+                to_encode.capacity() - to_encode.len(),
+            ));
         }
 
-        // Build the data index to positional cell index map.
-        self.build_data_to_cell_index_map(&img, &composite_key);
-
-        composite_key.zeroize();
-        key_bytes_full.zeroize();
-
         // Iterate over each byte of data to be encoded.
-        for (i, byte) in data.iter().enumerate() {
+        for (i, byte) in to_encode.iter().enumerate() {
             self.write_u8_by_data_index(&mut img, byte, i);
         }
 
@@ -392,8 +398,8 @@ impl StegaV3 {
     /// * `original_path` - The path to the original image file.
     /// * `key` - The plaintext key.
     #[inline]
-    pub fn generate_composite_key(original_path: &str, key: String) -> Result<Vec<u8>> {
-        let mut file_data = hashers::sha3_512_file(original_path)?;
+    pub fn generate_composite_key(original_path: &str, key: String) -> Result<[u8; 64]> {
+        let mut file_data = hashers::sha3_512_file(original_path)?.to_vec();
         file_data.extend_from_slice(&FILE_SALT);
         let file_hash = hashers::sha3_512_bytes(&file_data);
 
@@ -419,10 +425,13 @@ impl StegaV3 {
     #[inline]
     pub fn generate_junk_bytes(needed: usize) -> Vec<u8> {
         let mut vec: Vec<u8> = Vec::with_capacity(needed);
+        unsafe {
+            vec.set_len(needed);
+        }
 
         // We do not need to worry about being cryptographically secure here.
         // This is just junk data to fill the empty cells.
-        fastrand::fill(&mut vec[..]);
+        fastrand::fill(&mut vec);
 
         vec
     }
@@ -465,15 +474,9 @@ impl StegaV3 {
 
         // Load 8 bytes and rebuild our u8 value.
         let mut out = 0u8;
-
-        out |= (((rb[0] ^ eb[0]) != 0) as u8) << 0;
-        out |= (((rb[1] ^ eb[1]) != 0) as u8) << 1;
-        out |= (((rb[2] ^ eb[2]) != 0) as u8) << 2;
-        out |= (((rb[3] ^ eb[3]) != 0) as u8) << 3;
-        out |= (((rb[4] ^ eb[4]) != 0) as u8) << 4;
-        out |= (((rb[5] ^ eb[5]) != 0) as u8) << 5;
-        out |= (((rb[6] ^ eb[6]) != 0) as u8) << 6;
-        out |= (((rb[7] ^ eb[7]) != 0) as u8) << 7;
+        for i in 0..8 {
+            out |= (((rb[i] ^ eb[i]) != 0) as u8) << i;
+        }
 
         out
     }
@@ -533,37 +536,23 @@ impl StegaV3 {
     fn write_u8(&mut self, img: &mut ImageWrapper, data: &u8, cell_start: usize) {
         let bytes = img.get_subcells_from_index_mut(cell_start, 2);
 
-        let mut rand_bits: u64 = self.offset_bit_rng.random();
+        let mut random_bits: u8 = self.offset_bit_rng.random();
 
-        let bytes = &mut bytes[..8];
-        for (i, b) in bytes.iter_mut().enumerate() {
+        for (i, b) in bytes[..8].iter_mut().enumerate() {
             if (data >> i) & 1 == 0 {
                 continue;
             }
 
-            let v = *b;
-
             // One random bit from our random bit pool.
-            let r = (rand_bits & 1) as u8;
-            rand_bits >>= 1;
+            let r = (random_bits & 1) as u8;
+            random_bits >>= 1;
             let delta = r.wrapping_mul(2).wrapping_sub(1);
 
             // Apply the delta.
-            let mut out = v.wrapping_add(delta);
-
-            // Handle wrap cases.
-            // v == 0   && delta == 255 → out == 255 - force to 1.
-            // v == 255 && delta == 1   → out == 0   - force to 254.
-            let wrapped_down = (v == 0) as u8 & (delta == 255) as u8;
-            let wrapped_up = (v == 255) as u8 & (delta == 1) as u8;
-
-            out = out
-                .wrapping_add(wrapped_down) // 255 → 0
-                .wrapping_add(wrapped_down) // 0 → 1
-                .wrapping_sub(wrapped_up) // 0 → 255
-                .wrapping_sub(wrapped_up); // 255 → 254
-
-            *b = out;
+            *b = b
+                .wrapping_add(delta)
+                .wrapping_add((*b == 0 && delta == 255) as u8 * 2)
+                .wrapping_sub((*b == 255 && delta == 1) as u8 * 2);
         }
     }
 
@@ -736,7 +725,7 @@ mod tests_encode_decode {
         let key = StegaV3::generate_composite_key(&input_path, KEY.to_string())
             .expect("failed to generate a composite key");
 
-        let expected_key = vec![
+        let expected_key = [
             201, 193, 197, 83, 21, 48, 205, 192, 213, 80, 179, 253, 65, 255, 18, 148, 86, 20, 37,
             201, 243, 76, 36, 43, 208, 35, 46, 200, 81, 80, 120, 23, 88, 120, 237, 194, 17, 220,
             185, 94, 95, 89, 153, 55, 134, 6, 88, 108, 252, 126, 38, 19, 36, 44, 136, 184, 65, 61,
@@ -879,7 +868,7 @@ mod tests_encode_decode {
     }
 
     #[test]
-    fn test_decode_string() {
+    fn test_decode_fixed_string() {
         let tu = TestUtils::new(&BASE);
 
         let ref_path = tu.get_in_file("reference-valid.png");

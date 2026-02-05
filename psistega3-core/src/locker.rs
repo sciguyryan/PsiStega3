@@ -476,7 +476,7 @@ mod tests_locker {
 
     #[test]
     fn test_is_file_locked() {
-        let hash = hashers::sha3_512_string(HASH_STR);
+        let hash = hashers::sha3_512_string(HASH_STR).to_vec();
         let locker_pf = TestUtils::generate_ascii_string(16);
 
         let mut locker = create_locker_instance_or_assert(&locker_pf);
@@ -506,7 +506,7 @@ mod tests_locker {
 
     #[test]
     fn test_read_write_locker_file() {
-        let hash = hashers::sha3_512_string(HASH_STR);
+        let hash = hashers::sha3_512_string(HASH_STR).to_vec();
         let locker_pf = TestUtils::generate_ascii_string(16);
 
         // The locker instance should save the entries when goes out of scope.
@@ -546,7 +546,9 @@ mod tests_locker {
 
         let locker_pf = TestUtils::generate_ascii_string(16);
         let original_path = tu.get_in_file("dummy.png");
-        let hash = hashers::sha3_512_file(&original_path).expect("failed to create file hash");
+        let hash = hashers::sha3_512_file(&original_path)
+            .expect("failed to create file hash")
+            .to_vec();
 
         let mut locker = create_locker_instance_or_assert(&locker_pf);
 
@@ -594,7 +596,9 @@ mod tests_locker {
             .expect("failed to set the read-only state of the copied file");
 
         // Compute the hash of the original file.
-        let old_hash = hashers::sha3_512_file(&old_path).expect("failed to create file hash");
+        let old_hash = hashers::sha3_512_file(&old_path)
+            .expect("failed to create file hash")
+            .to_vec();
 
         let mut locker = create_locker_instance_or_assert(&locker_pf);
 
@@ -603,7 +607,9 @@ mod tests_locker {
         locker.increment_attempts(&copy_path, &old_hash);
 
         // The file hash should have changed.
-        let new_hash = hashers::sha3_512_file(&copy_path).expect("failed to create file hash");
+        let new_hash = hashers::sha3_512_file(&copy_path)
+            .expect("failed to create file hash")
+            .to_vec();
         assert_ne!(
             new_hash, old_hash,
             "the hash of the copy and original file are the same, no file locking took place"

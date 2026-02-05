@@ -124,7 +124,7 @@ impl ImageWrapper {
             ImageRgb8(_) => ColorType::Rgb8,
             ImageRgba8(_) => ColorType::Rgba8,
             ImageRgb16(_) => ColorType::Rgb16,
-            ImageRgba16(_) => ColorType::Rgb16,
+            ImageRgba16(_) => ColorType::Rgba16,
             ImageRgb32F(_) => ColorType::Rgb32F,
             ImageRgba32F(_) => ColorType::Rgba32F,
             _ => return Err(Error::ImageFormatNotRecognized),

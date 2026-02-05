@@ -147,10 +147,10 @@ impl StegaV2 {
 
         // If the file locker system is enabled then we will need to computer
         //   the SHA3-512 has of the file here.
-        let mut enc_hash = vec![];
+        let mut enc_hash: Vec<u8> = Vec::new();
         if self.is_file_locker_enabled() {
             if let Ok(v) = hashers::sha3_512_file(encoded_img_path) {
-                enc_hash = v;
+                enc_hash = v.to_vec();
             } else {
                 return Err(Error::FileHashingError);
             }
@@ -1192,7 +1192,7 @@ mod tests_encode_decode {
         );
 
         // No locker entry should exist for the file in this instance.
-        let locker_entry = stega.locker.get_entry_by_hash(&hash_original);
+        let locker_entry = stega.locker.get_entry_by_hash(&hash_original.to_vec());
         assert!(
             locker_entry.is_none(),
             "found a locker entry when none was expected"
@@ -1225,7 +1225,7 @@ mod tests_encode_decode {
         _ = stega.decode(&ref_path, KEY.to_string(), &enc_path);
 
         // A locker entry should exist for the file here.
-        let locker_entry = stega.locker.get_entry_by_hash(&hash_original);
+        let locker_entry = stega.locker.get_entry_by_hash(&hash_original.to_vec());
         assert!(
             locker_entry.is_some(),
             "no locker entry was found when one was expected"
@@ -1293,7 +1293,7 @@ mod tests_encode_decode {
     }
 
     #[test]
-    fn test_decode_string() {
+    fn test_decode_fixed_string() {
         let tu = TestUtils::new(&BASE);
 
         let ref_path = tu.get_in_file("reference-valid.png");
