@@ -894,7 +894,7 @@ impl Drop for StegaV2 {
 }
 
 #[cfg(test)]
-mod tests_encode_decode {
+mod tests_encode_decode_v2 {
     use crate::{
         codecs::codec::{Codec, Config},
         hashers,
@@ -917,7 +917,6 @@ mod tests_encode_decode {
     /// Create a StegaV2 instance.
     ///
     /// `Note:` we will attempt to clear the locker file upon exit by default.
-    ///
     fn create_instance() -> StegaV2 {
         use crate::{locker::Locker, logger::Logger};
 
@@ -945,6 +944,13 @@ mod tests_encode_decode {
 
     #[test]
     fn test_composite_string_generation() {
+        /*
+          This might seem like a pointless test, but while refactoring
+            I accidentally changed the way that they keys were generated,
+            which prevented the decoding of any files created prior to that change.
+          This will ensure backwards compatibility is maintained within a version.
+        */
+
         let tu = TestUtils::new(&BASE);
 
         let input_path = tu.get_in_file("text-file.txt");
@@ -966,18 +972,11 @@ mod tests_encode_decode {
 
     #[test]
     fn test_encode_string() {
-        /*
-          This might seem like a pointless test, but while refactoring
-            I accidentally changed the way that they keys were generated,
-            which prevented the decoding of any files created prior to that change.
-          This will ensure backwards compatibility is maintained within a version.
-        */
         let mut tu = TestUtils::new(&BASE);
 
         let ref_path = tu.get_in_file("reference-valid.png");
         let enc_path = tu.get_out_file("png", true);
 
-        // Attempt to encode the file.
         let mut stega = create_instance();
         let r = stega.encode(&ref_path, KEY.to_string(), TEXT, &enc_path);
 
@@ -986,7 +985,6 @@ mod tests_encode_decode {
             "file not written to disk."
         );
 
-        // Did we successfully encode the string?
         assert_eq!(r, Ok(()), "failed to encode data into image file");
     }
 
@@ -998,7 +996,6 @@ mod tests_encode_decode {
         let input_file_path = tu.get_in_file("text-file.txt");
         let enc_path = tu.get_out_file("png", true);
 
-        // Attempt to encode the file.
         let mut stega = create_instance();
         let r = stega.encode_file(&ref_path, KEY.to_string(), &input_file_path, &enc_path);
 
@@ -1007,7 +1004,6 @@ mod tests_encode_decode {
             "file not written to disk"
         );
 
-        // Did we successfully encode the file?
         assert_eq!(r, Ok(()), "failed to encode data into image file");
     }
 
@@ -1019,7 +1015,6 @@ mod tests_encode_decode {
         let input_file_path = tu.get_in_file("binary-file.bin");
         let enc_path = tu.get_out_file("png", true);
 
-        // Attempt to encode the file.
         let mut stega = create_instance();
         let r = stega.encode_file(&ref_path, KEY.to_string(), &input_file_path, &enc_path);
 
@@ -1028,7 +1023,6 @@ mod tests_encode_decode {
             "file not written to disk."
         );
 
-        // Did we successfully encode the file?
         assert_eq!(r, Ok(()), "failed to encode data into image file");
     }
 
@@ -1039,14 +1033,11 @@ mod tests_encode_decode {
         let ref_path = tu.get_in_file("reference-valid.png");
         let enc_path = tu.get_out_file("png", true);
 
-        // Attempt to encode the file.
         let mut stega = create_instance();
-
         stega
             .encode(&ref_path, KEY.to_string(), TEXT, &enc_path)
             .expect("failed to encode the data");
 
-        // Attempt to decode the string.
         let result = stega
             .decode(&ref_path, KEY.to_string(), &enc_path)
             .expect("failed to decode the data");
@@ -1061,25 +1052,18 @@ mod tests_encode_decode {
         let ref_path = tu.get_in_file("reference-valid.png");
         let enc_path = tu.get_out_file("png", true);
 
-        // Attempt to encode the file.
         let mut stega = create_instance();
-
-        // We want to enable the file locker system here.
         stega.set_config_state(Config::Locker, true);
-
         stega
             .encode(&ref_path, KEY.to_string(), TEXT, &enc_path)
             .expect("failed to encode the data");
 
         // Disable the file locker system again.
         stega.set_config_state(Config::Locker, false);
-
-        // Attempt to decode the string.
         stega
             .decode(&ref_path, KEY.to_string(), &enc_path)
             .expect("failed to decode the data");
 
-        // Was the file locker enabled upon decoding?
         assert!(
             stega.is_file_locker_enabled(),
             "file locker was not enabled after decoding the file"
@@ -1093,20 +1077,14 @@ mod tests_encode_decode {
         let ref_path = tu.get_in_file("reference-valid.png");
         let enc_path = tu.get_out_file("png", true);
 
-        // Attempt to encode the file.
         let mut stega = create_instance();
-
-        // We want to enable the read-once file locker system here.
         stega.set_config_state(Config::ReadOnce, true);
-
-        stega
+        _ = stega
             .encode(&ref_path, KEY.to_string(), TEXT, &enc_path)
             .expect("failed to encode the data");
 
         // Disable the read-once file locker system again.
         stega.set_config_state(Config::ReadOnce, false);
-
-        // Attempt to decode the string.
         stega
             .decode(&ref_path, KEY.to_string(), &enc_path)
             .expect("failed to decode the data");
@@ -1131,12 +1109,8 @@ mod tests_encode_decode {
         let ref_path = tu.get_in_file("reference-valid.png");
         let enc_path = tu.get_out_file("png", true);
 
-        // Attempt to encode the file.
         let mut stega = create_instance();
-
-        // We want to enable the read-once file locker system here.
         stega.set_config_state(Config::ReadOnce, true);
-
         stega
             .encode(&ref_path, KEY.to_string(), TEXT, &enc_path)
             .expect("failed to encode the data");
@@ -1144,12 +1118,10 @@ mod tests_encode_decode {
         // Hash the original file, this should change upon successful decryption.
         let hash_original = hashers::sha3_512_file(&enc_path);
 
-        // Attempt to decode the string.
         stega
             .decode(&ref_path, KEY.to_string(), &enc_path)
             .expect("failed to decode the data");
 
-        // Hash the file again.
         let hash_new = hashers::sha3_512_file(&enc_path);
 
         // Was the read-once file locked after successfully decoding the data?
@@ -1166,12 +1138,8 @@ mod tests_encode_decode {
         let ref_path = tu.get_in_file("reference-valid.png");
         let enc_path = tu.get_out_file("png", true);
 
-        // Attempt to encode the file.
         let mut stega = create_instance();
-
-        // We want to enable the read-once file locker system here.
         stega.set_config_state(Config::ReadOnce, true);
-
         stega
             .encode(&ref_path, "banana".to_string(), TEXT, &enc_path)
             .expect("failed to encode the data");
@@ -1179,10 +1147,8 @@ mod tests_encode_decode {
         // Hash the original file, this should not change upon unsuccessful decryption.
         let hash_original = hashers::sha3_512_file(&enc_path).expect("failed to create file hash");
 
-        // Attempt to decode the string. We do not care about the return result here.
         _ = stega.decode(&ref_path, KEY.to_string(), &enc_path);
 
-        // Hash the file again.
         let hash_new = hashers::sha3_512_file(&enc_path).expect("failed to create file hash");
 
         // Was the read-once file locked after failing to decoding the data?
@@ -1207,10 +1173,7 @@ mod tests_encode_decode {
         let enc_path = tu.get_out_file("png", true);
         let correct_key = "banana";
 
-        // Attempt to encode the file.
         let mut stega = create_instance();
-
-        // We want to enable the read-once file locker and normal file locker system here.
         stega.set_config_state(Config::Locker, true);
         stega.set_config_state(Config::ReadOnce, true);
 
@@ -1218,7 +1181,6 @@ mod tests_encode_decode {
             .encode(&ref_path, correct_key.to_string(), TEXT, &enc_path)
             .expect("failed to encode the data");
 
-        // Hash the original file.
         let hash_original = hashers::sha3_512_file(&enc_path).expect("failed to create file hash");
 
         // Attempt to decode the string. We do not care about the return result here.
@@ -1231,7 +1193,6 @@ mod tests_encode_decode {
             "no locker entry was found when one was expected"
         );
 
-        // Hash the file again.
         let hash_new = hashers::sha3_512_file(&enc_path).expect("failed to create file hash");
 
         // Was the file locked?
@@ -1246,7 +1207,6 @@ mod tests_encode_decode {
             .decode(&ref_path, correct_key.to_string(), &enc_path)
             .expect("failed to decrypt the data");
 
-        // Hash the file again.
         let hash_final = hashers::sha3_512_file(&enc_path).expect("failed to create file hash");
 
         // Was the file locked?
@@ -1264,7 +1224,6 @@ mod tests_encode_decode {
         let ref_path = tu.get_in_file("reference-valid.png");
         let enc_path = tu.get_out_file("png", true);
 
-        // Attempt to encode the file.
         let mut stega = create_instance();
         stega
             .encode(&ref_path, KEY.to_string(), TEXT, &enc_path)
@@ -1284,9 +1243,7 @@ mod tests_encode_decode {
         let ref_path = tu.get_in_file("reference-valid.png");
         let enc_path = tu.get_in_file("encoded-text.png");
 
-        // Attempt to decode the string.
         let mut stega = create_instance();
-
         let _ = stega
             .decode(&ref_path, KEY.to_string(), &enc_path)
             .expect("failed to decode string");
@@ -1299,14 +1256,11 @@ mod tests_encode_decode {
         let ref_path = tu.get_in_file("reference-valid.png");
         let enc_path = tu.get_in_file("encoded-text.png");
 
-        // Attempt to decode the string.
         let mut stega = create_instance();
-
         let r = stega
             .decode(&ref_path, KEY.to_string(), &enc_path)
             .expect("failed to decode string");
 
-        // Did we successfully decode the string?
         assert_eq!(r, TEXT, "decrypted information does not match input");
     }
 
@@ -1317,12 +1271,9 @@ mod tests_encode_decode {
         let ref_path = tu.get_in_file("reference-valid.png");
         let enc_path = tu.get_in_file("encoded-text.png");
 
-        // Attempt to decode the string.
         let mut stega = create_instance();
-
         let r = stega.decode(&ref_path, "A".to_string(), &enc_path);
 
-        // Did we successfully decode the string?
         assert!(
             r.is_err(),
             "successfully decrypted the information with an invalid key!"
@@ -1336,13 +1287,9 @@ mod tests_encode_decode {
         let ref_path = tu.get_in_file("reference-invalid.png");
         let enc_path = tu.get_in_file("encoded-text.png");
 
-        // Attempt to decode the string.
-        // The key is valid but the reference image is not.
         let mut stega = create_instance();
-
         let r = stega.decode(&ref_path, KEY.to_string(), &enc_path);
 
-        // Did we successfully decode the string?
         assert!(
             r.is_err(),
             "successfully decrypted the information with an invalid key!"
@@ -1358,14 +1305,11 @@ mod tests_encode_decode {
         let original_file_path = tu.get_in_file("text-file.txt");
         let output_file_path = tu.get_out_file("txt", true);
 
-        // Attempt to decode the file.
         let mut stega = create_instance();
-
         stega
             .decode_file(&ref_path, KEY.to_string(), &enc_path, &output_file_path)
             .expect("failed to decode string");
 
-        // Did we successfully decode a file?
         assert!(
             file_utils::path_exists(&output_file_path),
             "file not written to disk."
@@ -1390,12 +1334,9 @@ mod tests_encode_decode {
         let enc_path = tu.get_in_file("encoded-file-text.png");
         let output_file_path = tu.get_out_file("png", true);
 
-        // Attempt to decode the file.
         let mut stega = create_instance();
-
         let r = stega.decode_file(&ref_path, "A".to_string(), &enc_path, &output_file_path);
 
-        // Did we successfully decode the string?
         assert!(
             r.is_err(),
             "successfully decrypted the information with an invalid key!"
@@ -1410,12 +1351,9 @@ mod tests_encode_decode {
         let enc_path = tu.get_in_file("encoded-file-text.png");
         let output_file_path = tu.get_out_file("png", true);
 
-        // Attempt to decode the file.
         let mut stega = create_instance();
-
         let r = stega.decode_file(&ref_path, KEY.to_string(), &enc_path, &output_file_path);
 
-        // Did we successfully decode the string?
         assert!(
             r.is_err(),
             "successfully decrypted the information with an invalid key!"
@@ -1431,14 +1369,11 @@ mod tests_encode_decode {
         let original_file_path = tu.get_in_file("binary-file.bin");
         let output_file_path = tu.get_out_file("bin", true);
 
-        // Attempt to decode the file.
         let mut stega = create_instance();
-
         stega
             .decode_file(&ref_path, KEY.to_string(), &enc_path, &output_file_path)
             .expect("failed to decode string");
 
-        // Did we successfully decode a file?
         assert!(
             file_utils::path_exists(&output_file_path),
             "file not written to disk."
@@ -1462,9 +1397,7 @@ mod tests_encode_decode {
 
         let invalid_utf8 = unsafe { String::from_utf8_unchecked(vec![65, 159, 146, 150, 65]) };
 
-        // Attempt to encode the file.
         let mut stega = create_instance();
-
         let r = stega.encode(&ref_path, KEY.to_string(), &invalid_utf8, &enc_path);
 
         assert!(
@@ -1472,10 +1405,8 @@ mod tests_encode_decode {
             "file not written to disk"
         );
 
-        // Did we successfully encode the string?
         assert_eq!(r, Ok(()), "failed to encode data into image file");
 
-        // Now we will attempt to decode the string.
         let str = stega
             .decode(&ref_path, KEY.to_string(), &enc_path)
             .expect("failed to decode string");
@@ -1491,7 +1422,7 @@ mod tests_encode_decode {
 }
 
 #[cfg(test)]
-mod tests_encryption_decryption {
+mod tests_encryption_decryption_v2 {
     use crate::{
         error::{Error, Result},
         utilities::test_utils::TestUtils,
