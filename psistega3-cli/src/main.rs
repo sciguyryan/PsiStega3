@@ -345,7 +345,7 @@ fn check_version_compatibility(
     match version {
         Version::V2 => {
             if t_cost.is_some() || p_cost.is_some() || m_cost.is_some() {
-                eprintln!("WARNING: --tcost, --pcost, and --mcost are only supported in v3. These flags will be ignored.");
+                eprintln!("WARNING: --t-cost, --p-cost, and --m-cost are only supported in v3. These flags will be ignored.");
             }
         }
         Version::V3 => {
@@ -620,7 +620,7 @@ fn show_examples() {
     println!("  psistega3 encode reference.png encoded.png \"A very important message.\"");
     println!("  (You will be prompted for a password)\n");
     println!("Encode text with password provided (not recommended for security reasons):");
-    println!("  psistega3 encode reference.png encoded.png \"Secret message\" -p mypassword\n");
+    println!("  psistega3 encode reference.png encoded.png \"Secret message\" -p password\n");
     println!("Encode using v2 codec:");
     println!("  psistega3 encode reference.png encoded.png \"Secret\" --version v2\n");
     println!("Encode a file:");
@@ -634,9 +634,9 @@ fn show_examples() {
     println!("  psistega3 decode reference.png encoded.png");
     println!("  (Automatically tries v3, then v2 if v3 fails)\n");
     println!("Decode with password provided (not recommended for security reasons):");
-    println!("  psistega3 decode reference.png encoded.png -p mypassword\n");
+    println!("  psistega3 decode reference.png encoded.png -p password\n");
     println!("Decode with custom Argon2 parameters (v3):");
-    println!("  psistega3 decode reference.png encoded.png -p pass --tcost 8 --mcost 65536\n");
+    println!("  psistega3 decode reference.png encoded.png -p password --t-cost 8 --p-cost 8 --m-cost 65536\n");
     println!("Decode a file:");
     println!("  psistega3 decode-file reference.png encoded.png output.txt\n");
     println!("{split}");
@@ -647,23 +647,25 @@ fn show_examples() {
     println!("Enable read-once protection (v2 only):");
     println!("  psistega3 encode reference.png output.png \"Text\" --version v2 --read-once\n");
     println!("Custom Argon2 parameters for stronger encryption (v3 only):");
-    println!("  psistega3 encode ref.png out.png \"Secret\" --tcost 8 --mcost 65536 --pcost 4\n");
+    println!(
+        "  psistega3 encode ref.png out.png \"Secret\" --t-cost 4 --p-cost 4 --m-cost 65536\n"
+    );
     println!("Unattended mode (no prompts):");
     println!("  psistega3 --unattended encode ref.png out.png \"Text\" -p password\n");
     println!("{split}");
     println!("ARGON2 TUNING (v3 only)");
     println!("{split}\n");
     println!("The Argon2 parameters control the key derivation function:");
-    println!("  --tcost  : Time cost (iterations). Higher = slower but more secure.");
+    println!("  --t-cost  : Time cost (iterations). Higher = slower but more secure.");
     println!(
-        "  --mcost  : Memory cost (KiB). Higher = more memory used, more resistant to attacks."
+        "  --m-cost  : Memory cost (KiB). Higher = more memory used, more resistant to attacks."
     );
-    println!("  --pcost  : Parallelism (threads). Number of parallel threads to use.\n");
-    println!("IMPORTANT: When decoding, you must provide the identical Argon2 parameters,");
+    println!("  --p-cost  : Parallelism (threads). Number of parallel threads to use.\n");
+    println!("IMPORTANT: When decoding, you must provide the identical Argon2 parameters");
     println!("that were used during encoding, or decoding will fail.\n");
     println!("Example encode with high security:");
-    println!("  psistega3 encode ref.png out.png \"Top Secret\" --tcost 10 --mcost 131072\n");
+    println!("  psistega3 encode ref.png out.png \"Top Secret\" --t-cost 10 --p-cost 10 --m-cost 131072\n");
     println!("Example decode with matching parameters:");
-    println!("  psistega3 decode ref.png out.png --tcost 10 --mcost 131072\n");
+    println!("  psistega3 decode ref.png out.png --t-cost 10 --p-cost 10 --m-cost 131072\n");
     println!("{split}\n");
 }
