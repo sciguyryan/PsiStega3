@@ -13,7 +13,7 @@ use rand_xoshiro::Xoshiro512PlusPlus;
 use std::convert::TryInto;
 use zeroize::Zeroize;
 
-use super::codec::Config;
+use super::codec::{ConfigFlags, ConfigParams};
 
 /// The version of this codec.
 const CODED_VERSION: u8 = 0x3;
@@ -388,14 +388,17 @@ impl StegaV3 {
         let mut file_data = hashers::sha3_512_file(original_path)?.to_vec();
         file_data.extend_from_slice(&FILE_DOMAIN_SEPARATOR);
         let file_hash = hashers::sha3_512_bytes(&file_data);
+        file_data.zeroize();
 
         let mut key_bytes = key.into_bytes();
         key_bytes.extend_from_slice(&KEY_DOMAIN_SEPARATOR);
         let key_hash = hashers::sha3_512_bytes(&key_bytes);
+        key_bytes.zeroize();
 
         let mut version_data = vec![CODED_VERSION];
         version_data.extend_from_slice(&VERSION_DOMAIN_SEPARATOR);
         let version_hash = hashers::sha3_512_bytes(&version_data);
+        version_data.zeroize();
 
         // Combine the component hashes and hash the final composite key.
         let mut combined = [0u8; 64 * 3]; // 3 x SHA3-512 hashes.
@@ -580,10 +583,7 @@ impl Codec for StegaV3 {
             return Err(Error::PathInvalid);
         }
 
-        // Convert the file into a byte vector.
         let bytes = file_utils::read_file_to_u8_vec(input_file_path)?;
-
-        // Encode the information into the target image.
         self.encode_internal(original_img_path, key, &bytes, encoded_img_path)
     }
 
@@ -593,12 +593,12 @@ impl Codec for StegaV3 {
         key: String,
         encoded_img_path: &str,
     ) -> Result<String> {
-        // Decode the data to yield a base64 string.
         let bytes = self.decode_internal(original_img_path, key, encoded_img_path)?;
-
-        // Convert the raw bytes back into a string. This is done lossy
-        //   to ensure that any invalid sequences are handled.
-        Ok(String::from_utf8_lossy(&bytes).to_string())
+        if let Ok(s) = String::from_utf8(bytes) {
+            Ok(s)
+        } else {
+            Err(Error::DecodeStringInvalid)
+        }
     }
 
     fn decode_file(
@@ -621,40 +621,45 @@ impl Codec for StegaV3 {
 
     fn set_application_name(&mut self, _name: String) {}
 
-    fn set_config_state(&mut self, config: Config, state: bool) {
+    fn set_flag_state(&mut self, config: ConfigFlags, state: bool) {
         match config {
-            Config::NoiseLayer => {
+            ConfigFlags::NoiseLayer => {
                 self.noise_layer = state;
             }
-            Config::Verbose => {
+            ConfigFlags::Verbose => {
                 if state {
                     self.logger.enable_verbose_mode();
                 } else {
                     self.logger.disable_verbose_mode();
                 }
             }
-            Config::OutputFiles => {
+            ConfigFlags::OutputFiles => {
                 self.output_files = state;
             }
-            Config::Locker => {
+            ConfigFlags::Locker => {
                 self.logger
                     .log("locker file usage is not supported for this codec.");
             }
-            Config::ReadOnce => {
+            ConfigFlags::ReadOnce => {
                 self.logger
                     .log("read-once functionality is not supported for this codec.");
             }
-            Config::SkipVersionChecks => {
+            ConfigFlags::SkipVersionChecks => {
                 self.logger
                     .log("skipping version checks is not supported for this codec.");
             }
-            Config::TCost(t) => {
+        }
+    }
+
+    fn set_parameter(&mut self, param: ConfigParams) {
+        match param {
+            ConfigParams::TCost(t) => {
                 self.t_cost = t;
             }
-            Config::PCost(p) => {
+            ConfigParams::PCost(p) => {
                 self.p_cost = p;
             }
-            Config::MCost(m) => {
+            ConfigParams::MCost(m) => {
                 self.m_cost = m;
             }
         }
@@ -670,7 +675,8 @@ impl Default for StegaV3 {
 #[cfg(test)]
 mod tests_encode_decode_v3 {
     use crate::{
-        codecs::codec::{Codec, Config},
+        codecs::codec::{Codec, ConfigParams},
+        error::Error,
         hashers,
         utilities::{file_utils, misc_utils, test_utils::*},
     };
@@ -814,9 +820,9 @@ mod tests_encode_decode_v3 {
 
         let mut stega = create_instance();
 
-        stega.set_config_state(Config::TCost(10), true);
-        stega.set_config_state(Config::PCost(10), true);
-        stega.set_config_state(Config::MCost(80_000), true);
+        stega.set_parameter(ConfigParams::TCost(10));
+        stega.set_parameter(ConfigParams::PCost(10));
+        stega.set_parameter(ConfigParams::MCost(80_000));
 
         stega
             .encode(&ref_path, KEY.to_string(), TEXT, &enc_path)
@@ -1020,20 +1026,10 @@ mod tests_encode_decode_v3 {
             file_utils::path_exists(&enc_path),
             "file not written to disk"
         );
-
         assert_eq!(r, Ok(()), "failed to encode data into image file");
 
-        let str = stega
-            .decode(&ref_path, KEY.to_string(), &enc_path)
-            .expect("failed to decode string");
-
-        // Did we successfully decode the string?
-        // Any invalid UTF-8 sequences should have been removed
-        // during the decode cycle.
-        assert_eq!(
-            str, "A���A",
-            "invalid sequences not removed during encode-decode cycle"
-        );
+        let result = stega.decode(&ref_path, KEY.to_string(), &enc_path);
+        assert_eq!(result, Err(Error::DecodeStringInvalid));
     }
 }
 

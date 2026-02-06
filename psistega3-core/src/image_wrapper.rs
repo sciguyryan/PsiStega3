@@ -29,7 +29,7 @@ impl ImageWrapper {
     /// * `start_index` - The starting index of the subcell to be returned.
     /// * `count` - The number of subcells of data to be returned.
     ///
-    /// `Note:` A subcell is space required to store a nibble of data.
+    /// `Note:` A subcell is the space required to store a nibble of data.
     ///
     #[inline]
     pub fn get_subcells_from_index(&self, start_index: usize, count: u16) -> &[u8] {
@@ -45,7 +45,7 @@ impl ImageWrapper {
     /// * `start_index` - The starting index of the subcell to be returned.
     /// * `count` - The number of subcells of data to be returned.
     ///
-    /// `Note:` A subcell is space required to store a nibble of data.
+    /// `Note:` A subcell is the space required to store a nibble of data.
     ///
     #[inline]
     pub fn get_subcells_from_index_mut(&mut self, start_index: usize, count: u16) -> &mut [u8] {

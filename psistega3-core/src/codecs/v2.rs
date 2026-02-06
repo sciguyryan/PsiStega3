@@ -20,7 +20,7 @@ use zeroize::Zeroize;
 
 use self::misc_utils::BIT_MASKS;
 
-use super::codec::Config;
+use super::codec::{ConfigFlags, ConfigParams};
 
 /// The time cost (iterations) for use with the Argon2 hashing algorithm.
 const T_COST: u32 = 8;
@@ -801,10 +801,7 @@ impl Codec for StegaV2 {
             return Err(Error::PathInvalid);
         }
 
-        // Convert the file into a byte vector.
         let bytes = file_utils::read_file_to_u8_vec(input_file_path)?;
-
-        // Encode the information into the target image.
         self.encode_internal(original_img_path, key, &bytes, encoded_img_path)
     }
 
@@ -814,12 +811,12 @@ impl Codec for StegaV2 {
         key: String,
         encoded_img_path: &str,
     ) -> Result<String> {
-        // Decode the data to yield a base64 string.
         let bytes = self.decode_internal(original_img_path, key, encoded_img_path)?;
-
-        // Convert the raw bytes back into a string. This is done lossy
-        //   to ensure that any invalid sequences are handled.
-        Ok(String::from_utf8_lossy(&bytes).to_string())
+        if let Ok(s) = String::from_utf8(bytes) {
+            Ok(s)
+        } else {
+            Err(Error::DecodeStringInvalid)
+        }
     }
 
     fn decode_file(
@@ -844,41 +841,46 @@ impl Codec for StegaV2 {
         self.application_name = name;
     }
 
-    fn set_config_state(&mut self, config: Config, state: bool) {
+    fn set_flag_state(&mut self, config: ConfigFlags, state: bool) {
         match config {
-            Config::NoiseLayer => {
+            ConfigFlags::NoiseLayer => {
                 self.noise_layer = state;
             }
-            Config::Verbose => {
+            ConfigFlags::Verbose => {
                 if state {
                     self.logger.enable_verbose_mode();
                 } else {
                     self.logger.disable_verbose_mode();
                 }
             }
-            Config::OutputFiles => {
+            ConfigFlags::OutputFiles => {
                 self.output_files = state;
             }
-            Config::Locker => {
+            ConfigFlags::Locker => {
                 self.set_feature_flag_state(0, state);
             }
-            Config::ReadOnce => {
+            ConfigFlags::ReadOnce => {
                 self.set_feature_flag_state(1, state);
             }
-            Config::SkipVersionChecks => {
+            ConfigFlags::SkipVersionChecks => {
                 self.skip_version_checks = state;
             }
-            Config::TCost(_) => {
+        }
+    }
+
+    fn set_parameter(&mut self, param: ConfigParams) {
+        match param {
+            ConfigParams::TCost(_) => {
                 self.logger.log(
                     "the time cost (TCost) parameter is fixed and cannot be modified for this codec.",
                 );
             }
-            Config::PCost(_) => {
+            ConfigParams::PCost(_) => {
                 self.logger.log(
                     "the parallelism cost (PCost) parameter is fixed and cannot be modified for this codec.",
                 );
             }
-            Config::MCost(_) => {
+            ConfigParams::MCost(_) => {
                 self.logger.log(
                     "the memory cost (MCost) parameter is fixed and cannot be modified for this codec.",
                 );
@@ -900,7 +902,8 @@ impl Drop for StegaV2 {
 #[cfg(test)]
 mod tests_encode_decode_v2 {
     use crate::{
-        codecs::codec::{Codec, Config},
+        codecs::codec::{Codec, ConfigFlags},
+        error::Error,
         hashers,
         utilities::{
             file_utils, misc_utils,
@@ -1057,13 +1060,13 @@ mod tests_encode_decode_v2 {
         let enc_path = tu.get_out_file("png", true);
 
         let mut stega = create_instance();
-        stega.set_config_state(Config::Locker, true);
+        stega.set_flag_state(ConfigFlags::Locker, true);
         stega
             .encode(&ref_path, KEY.to_string(), TEXT, &enc_path)
             .expect("failed to encode the data");
 
         // Disable the file locker system again.
-        stega.set_config_state(Config::Locker, false);
+        stega.set_flag_state(ConfigFlags::Locker, false);
         stega
             .decode(&ref_path, KEY.to_string(), &enc_path)
             .expect("failed to decode the data");
@@ -1082,13 +1085,13 @@ mod tests_encode_decode_v2 {
         let enc_path = tu.get_out_file("png", true);
 
         let mut stega = create_instance();
-        stega.set_config_state(Config::ReadOnce, true);
+        stega.set_flag_state(ConfigFlags::ReadOnce, true);
         _ = stega
             .encode(&ref_path, KEY.to_string(), TEXT, &enc_path)
             .expect("failed to encode the data");
 
         // Disable the read-once file locker system again.
-        stega.set_config_state(Config::ReadOnce, false);
+        stega.set_flag_state(ConfigFlags::ReadOnce, false);
         stega
             .decode(&ref_path, KEY.to_string(), &enc_path)
             .expect("failed to decode the data");
@@ -1114,7 +1117,7 @@ mod tests_encode_decode_v2 {
         let enc_path = tu.get_out_file("png", true);
 
         let mut stega = create_instance();
-        stega.set_config_state(Config::ReadOnce, true);
+        stega.set_flag_state(ConfigFlags::ReadOnce, true);
         stega
             .encode(&ref_path, KEY.to_string(), TEXT, &enc_path)
             .expect("failed to encode the data");
@@ -1143,7 +1146,7 @@ mod tests_encode_decode_v2 {
         let enc_path = tu.get_out_file("png", true);
 
         let mut stega = create_instance();
-        stega.set_config_state(Config::ReadOnce, true);
+        stega.set_flag_state(ConfigFlags::ReadOnce, true);
         stega
             .encode(&ref_path, "banana".to_string(), TEXT, &enc_path)
             .expect("failed to encode the data");
@@ -1178,8 +1181,8 @@ mod tests_encode_decode_v2 {
         let correct_key = "banana";
 
         let mut stega = create_instance();
-        stega.set_config_state(Config::Locker, true);
-        stega.set_config_state(Config::ReadOnce, true);
+        stega.set_flag_state(ConfigFlags::Locker, true);
+        stega.set_flag_state(ConfigFlags::ReadOnce, true);
 
         stega
             .encode(&ref_path, correct_key.to_string(), TEXT, &enc_path)
@@ -1408,20 +1411,10 @@ mod tests_encode_decode_v2 {
             file_utils::path_exists(&enc_path),
             "file not written to disk"
         );
-
         assert_eq!(r, Ok(()), "failed to encode data into image file");
 
-        let str = stega
-            .decode(&ref_path, KEY.to_string(), &enc_path)
-            .expect("failed to decode string");
-
-        // Did we successfully decode the string?
-        // Any invalid UTF-8 sequences should have been removed
-        // during the decode cycle.
-        assert_eq!(
-            str, "A���A",
-            "invalid sequences not removed during encode-decode cycle"
-        );
+        let result = stega.decode(&ref_path, KEY.to_string(), &enc_path);
+        assert_eq!(result, Err(Error::DecodeStringInvalid));
     }
 }
 

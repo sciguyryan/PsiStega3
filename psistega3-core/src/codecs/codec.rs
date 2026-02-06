@@ -75,18 +75,26 @@ pub trait Codec {
     ///
     fn set_application_name(&mut self, name: String);
 
-    /// Enable or disable a specific configuration.
+    /// Enable or disable a specific configuration flags.
     ///
     /// # Arguments
     ///
-    /// * `config` - The [`Config`] option to be configured.
+    /// * `config` - The [`ConfigFlags`] option to be configured.
     /// * `state` - A boolean indicating whether the config option should be enabled or disabled.
     ///
-    fn set_config_state(&mut self, config: Config, state: bool);
+    fn set_flag_state(&mut self, config: ConfigFlags, state: bool);
+
+    /// Enable or disable a specific configuration parameters.
+    ///
+    /// # Arguments
+    ///
+    /// * `param` - The [`ConfigParams`] option to be configured.
+    ///
+    fn set_parameter(&mut self, param: ConfigParams);
 }
 
-/// A list of configuration options that are applicable to a [`Codec`].
-pub enum Config {
+/// A list of configuration flags that are applicable to a [`Codec`].
+pub enum ConfigFlags {
     /// Enable or disable the noise map.
     ///
     /// Applicable to: v1+.
@@ -112,6 +120,10 @@ pub enum Config {
     /// Applicable to: v2.
     /// This is not applicable to v1 and v2 as checks are never performed.
     SkipVersionChecks,
+}
+
+/// A list of configuration parameters that are applicable to a [`Codec`].
+pub enum ConfigParams {
     /// The time cost (iterations) for use with the Argon2 hashing algorithm.
     ///
     /// Applicable to: v3.

@@ -3,7 +3,7 @@ mod error;
 use crate::error::{Error, Result};
 use clap::{Parser, Subcommand, ValueEnum};
 use psistega3_core::codecs::{
-    codec::{Codec, Config},
+    codec::{Codec, ConfigFlags, ConfigParams},
     v2::StegaV2,
     v3::StegaV3,
 };
@@ -378,7 +378,7 @@ fn apply_encode_settings(
                 print!("WARNING: the file locker will render the encoded data unrecoverable if 5 or more attempts to decode the data are unsuccessful. ");
                 enabled = read_confirm_from_stdin(CONFIRM_PROMPT);
             }
-            codec.set_config_state(Config::Locker, enabled);
+            codec.set_flag_state(ConfigFlags::Locker, enabled);
         }
         if read_once {
             let mut enabled = true;
@@ -386,31 +386,31 @@ fn apply_encode_settings(
                 print!("WARNING: the file locker will render the encoded data unrecoverable after it has been successfully decoded once. ");
                 enabled = read_confirm_from_stdin(CONFIRM_PROMPT);
             }
-            codec.set_config_state(Config::ReadOnce, enabled);
+            codec.set_flag_state(ConfigFlags::ReadOnce, enabled);
         }
     }
 
     // Argon2 parameters may only be specified with v3.
     if matches!(version, Version::V3) {
         if let Some(t) = t_cost {
-            codec.set_config_state(Config::TCost(t), true);
+            codec.set_parameter(ConfigParams::TCost(t));
         }
         if let Some(p) = p_cost {
-            codec.set_config_state(Config::PCost(p), true);
+            codec.set_parameter(ConfigParams::PCost(p));
         }
         if let Some(m) = m_cost {
-            codec.set_config_state(Config::MCost(m), true);
+            codec.set_parameter(ConfigParams::MCost(m));
         }
     }
 
     if no_noise {
-        codec.set_config_state(Config::NoiseLayer, false);
+        codec.set_flag_state(ConfigFlags::NoiseLayer, false);
     }
     if no_files {
-        codec.set_config_state(Config::OutputFiles, false);
+        codec.set_flag_state(ConfigFlags::OutputFiles, false);
     }
     if verbose {
-        codec.set_config_state(Config::Verbose, true);
+        codec.set_flag_state(ConfigFlags::Verbose, true);
     }
 }
 
@@ -424,21 +424,21 @@ fn apply_decode_settings(
     m_cost: Option<u32>,
 ) {
     if no_files {
-        codec.set_config_state(Config::OutputFiles, false);
+        codec.set_flag_state(ConfigFlags::OutputFiles, false);
     }
     if verbose {
-        codec.set_config_state(Config::Verbose, true);
+        codec.set_flag_state(ConfigFlags::Verbose, true);
     }
 
     // Apply Argon2 parameters if provided.
     if let Some(t) = t_cost {
-        codec.set_config_state(Config::TCost(t), true);
+        codec.set_parameter(ConfigParams::TCost(t));
     }
     if let Some(p) = p_cost {
-        codec.set_config_state(Config::PCost(p), true);
+        codec.set_parameter(ConfigParams::PCost(p));
     }
     if let Some(m) = m_cost {
-        codec.set_config_state(Config::MCost(m), true);
+        codec.set_parameter(ConfigParams::MCost(m));
     }
 }
 
@@ -610,62 +610,106 @@ pub fn show_abort_message(error: Error) {
     eprintln!("Error: {error}");
 }
 
-/// Show example commands.
 fn show_examples() {
     let split = "-".repeat(60);
+    let bold = "\x1b[1m";
+    let reset = "\x1b[0m";
+
     println!("\n{split}");
-    println!("ENCODING EXAMPLES");
-    println!("{split}\n");
-    println!("Encode text into an image (v3 - default):");
+    println!("{}ENCODING EXAMPLES{}", bold, reset);
+    println!("{split}");
+
+    println!("{}Encode text into an image (v3 - default):{}", bold, reset);
     println!("  psistega3 encode reference.png encoded.png \"A very important message.\"");
     println!("  (You will be prompted for a password)\n");
-    println!("Encode text with password provided (not recommended for security reasons):");
+
+    println!(
+        "{}Encode text with password provided (not recommended):{}",
+        bold, reset
+    );
     println!("  psistega3 encode reference.png encoded.png \"Secret message\" -p password\n");
-    println!("Encode using v2 codec:");
+
+    println!("{}Encode using v2 codec:{}", bold, reset);
     println!("  psistega3 encode reference.png encoded.png \"Secret\" --version v2\n");
-    println!("Encode a file:");
+
+    println!("{}Encode a file:{}", bold, reset);
     println!("  psistega3 encode-file reference.png encoded.png input.txt\n");
-    println!("Encode with file locker enabled (v2 only):");
+
+    println!(
+        "{}Encode with file locker enabled (v2 only):{}",
+        bold, reset
+    );
     println!("  psistega3 encode reference.png encoded.png \"Secret\" --version v2 --locker\n");
+
     println!("{split}");
-    println!("DECODING EXAMPLES");
-    println!("{split}\n");
-    println!("Decode text from an image:");
+    println!("{}DECODING EXAMPLES{}", bold, reset);
+    println!("{split}");
+
+    println!("{}Decode text from an image:{}", bold, reset);
     println!("  psistega3 decode reference.png encoded.png");
     println!("  (Automatically tries v3, then v2 if v3 fails)\n");
-    println!("Decode with password provided (not recommended for security reasons):");
+
+    println!(
+        "{}Decode with password provided (not recommended):{}",
+        bold, reset
+    );
     println!("  psistega3 decode reference.png encoded.png -p password\n");
-    println!("Decode with custom Argon2 parameters (v3):");
+
+    println!(
+        "{}Decode with custom Argon2 parameters (v3):{}",
+        bold, reset
+    );
     println!("  psistega3 decode reference.png encoded.png -p password --t-cost 8 --p-cost 8 --m-cost 65536\n");
-    println!("Decode a file:");
+
+    println!("{}Decode a file:{}", bold, reset);
     println!("  psistega3 decode-file reference.png encoded.png output.txt\n");
+
     println!("{split}");
-    println!("ADVANCED OPTIONS");
-    println!("{split}\n");
-    println!("Disable noise layer (faster, less secure):");
+    println!("{}ADVANCED OPTIONS{}", bold, reset);
+    println!("{split}");
+
+    println!(
+        "{}Disable noise layer (faster, less secure):{}",
+        bold, reset
+    );
     println!("  psistega3 encode reference.png output.png \"Text\" --no-noise\n");
-    println!("Enable read-once protection (v2 only):");
+
+    println!("{}Enable read-once protection (v2 only):{}", bold, reset);
     println!("  psistega3 encode reference.png output.png \"Text\" --version v2 --read-once\n");
-    println!("Custom Argon2 parameters for stronger encryption (v3 only):");
+
+    println!(
+        "{}Custom Argon2 parameters for stronger encryption (v3 only):{}",
+        bold, reset
+    );
     println!(
         "  psistega3 encode ref.png out.png \"Secret\" --t-cost 4 --p-cost 4 --m-cost 65536\n"
     );
-    println!("Unattended mode (no prompts):");
+
+    println!("{}Unattended mode (no prompts):{}", bold, reset);
     println!("  psistega3 --unattended encode ref.png out.png \"Text\" -p password\n");
+
     println!("{split}");
-    println!("ARGON2 TUNING (v3 only)");
-    println!("{split}\n");
+    println!("{}ARGON2 TUNING (v3 only){}", bold, reset);
+    println!("{split}");
+
     println!("The Argon2 parameters control the key derivation function:");
     println!("  --t-cost  : Time cost (iterations). Higher = slower but more secure.");
     println!(
         "  --m-cost  : Memory cost (KiB). Higher = more memory used, more resistant to attacks."
     );
-    println!("  --p-cost  : Parallelism (threads). Number of parallel threads to use.\n");
-    println!("IMPORTANT: When decoding, you must provide the identical Argon2 parameters");
-    println!("that were used during encoding, or decoding will fail.\n");
+    println!("  --p-cost  : Parallelism (threads). Number of threads to use.");
+    println!("IMPORTANT: When decoding, you must provide the identical Argon2 parameters used during encoding.\n");
+
     println!("Example encode with high security:");
     println!("  psistega3 encode ref.png out.png \"Top Secret\" --t-cost 10 --p-cost 10 --m-cost 131072\n");
+
     println!("Example decode with matching parameters:");
     println!("  psistega3 decode ref.png out.png --t-cost 10 --p-cost 10 --m-cost 131072\n");
-    println!("{split}\n");
+
+    println!("{split}");
+    println!("{}NOTES{}", bold, reset);
+    println!("{split}");
+
+    println!("When decoding, if the data isn't valid Unicode, an error will be returned.\n");
+    println!("This {}usually{} means the decoded data is binary rather than text. Using a file output (e.g., via `decode-file`) is recommended.", bold, reset);
 }
