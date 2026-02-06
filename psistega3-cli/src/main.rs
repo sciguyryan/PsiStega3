@@ -2,16 +2,24 @@
 mod error;
 use crate::error::{Error, Result};
 use clap::{Parser, Subcommand, ValueEnum};
+use crossterm::terminal::size;
 use psistega3_core::codecs::{
     codec::{Codec, ConfigFlags, ConfigParams},
     v2::StegaV2,
     v3::StegaV3,
 };
+use sha3::{Digest, Sha3_512};
 use simple_logger::SimpleLogger;
 use std::io::stdin;
 
 /// The prompt for confirming a yes/no option.
 const CONFIRM_PROMPT: &str = "Are you sure you wish to enable this feature?";
+
+/// It's an easter egg... didn't you read the name?
+const EASTER_EGG_ENCODED: [u8; 27] = [
+    236, 167, 178, 205, 108, 248, 194, 77, 10, 6, 135, 238, 116, 103, 39, 232, 230, 171, 109, 120,
+    76, 196, 215, 28, 61, 205, 80,
+];
 
 /// Supported codec versions for encoding
 #[derive(Clone, ValueEnum)]
@@ -178,6 +186,11 @@ enum Commands {
     },
     /// Show example commands
     Examples,
+    /// Do you know the secret?
+    Secret {
+        #[arg(value_name = "SECRET")]
+        the_secret: String,
+    },
 }
 
 fn main() {
@@ -313,6 +326,10 @@ fn main() {
         }
         Commands::Examples => {
             show_examples();
+            Ok(())
+        }
+        Commands::Secret { the_secret } => {
+            check_easter_egg(&the_secret);
             Ok(())
         }
     };
@@ -608,6 +625,83 @@ fn read_confirm_from_stdin(prompt: &str) -> bool {
 /// Display an error message.
 pub fn show_abort_message(error: Error) {
     eprintln!("Error: {error}");
+}
+
+/// Check for the easter egg passphrase.
+fn check_easter_egg(text: &str) {
+    let mut hasher = Sha3_512::new();
+    hasher.update(text.to_lowercase().as_bytes());
+    let hash_bytes = hasher.finalize();
+    let decoded = decode(&EASTER_EGG_ENCODED, &hash_bytes);
+    if let Ok(s) = String::from_utf8(decoded) {
+        rainbow_centered(&s);
+    } else {
+        eprintln!("That was not the correct secret, sorry... 😢");
+    }
+}
+
+#[allow(dead_code)]
+fn encode(msg: &[u8], hash_bytes: &[u8]) -> Vec<u8> {
+    let mut seed: u8 = 0xAD;
+
+    msg.iter()
+        .enumerate()
+        .map(|(i, &b)| {
+            let h = hash_bytes[(i + seed as usize * 3) % hash_bytes.len()];
+            let t = b ^ h.rotate_left((seed & 3) as u32) ^ (i as u8).wrapping_mul(31);
+
+            seed = seed.wrapping_add(t ^ h).rotate_left(2);
+            t
+        })
+        .collect()
+}
+
+fn decode(encoded: &[u8], hash_bytes: &[u8]) -> Vec<u8> {
+    let mut seed: u8 = 0xAD;
+
+    encoded
+        .iter()
+        .enumerate()
+        .map(|(i, &t)| {
+            let h = hash_bytes[(i + seed as usize * 3) % hash_bytes.len()];
+            let b = t ^ h.rotate_left((seed & 3) as u32) ^ (i as u8).wrapping_mul(31);
+
+            seed = seed.wrapping_add(t ^ h).rotate_left(2);
+            b
+        })
+        .collect()
+}
+
+/// Print a string in a smooth rainbow gradient centered in the terminal.
+fn rainbow_centered(text: &str) {
+    let (width, _) = size().unwrap_or((80, 0));
+    let text_len = text.chars().count() as u16;
+    let padding = if width > text_len {
+        (width - text_len) / 2
+    } else {
+        0
+    };
+
+    print!("{}", " ".repeat(padding as usize));
+
+    for (i, c) in text.chars().enumerate() {
+        let rgb = rainbow_color(i as f32 / text_len as f32);
+        print!("\x1b[38;2;{};{};{}m{}", rgb.0, rgb.1, rgb.2, c);
+    }
+
+    println!("\x1b[0m");
+}
+
+/// Generate a smooth rainbow color from 0.0 to 1.0
+fn rainbow_color(pos: f32) -> (u8, u8, u8) {
+    let pi = std::f32::consts::PI;
+    let two_pi = 2.0 * pi;
+
+    let r = (pos * two_pi).sin() * 0.5 + 0.5;
+    let g = (pos * two_pi + 2.0 * pi / 3.0).sin() * 0.5 + 0.5;
+    let b = (pos * two_pi + 4.0 * pi / 3.0).sin() * 0.5 + 0.5;
+
+    ((r * 255.0) as u8, (g * 255.0) as u8, (b * 255.0) as u8)
 }
 
 fn show_examples() {

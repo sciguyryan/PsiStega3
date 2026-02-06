@@ -199,7 +199,7 @@ fn benchmark_v3_decoding(c: &mut Criterion) {
     group.finish();
 }
 
-fn benchmark_v3_generate_junk_bytes(c: &mut Criterion) {
+/*fn benchmark_v3_generate_junk_bytes(c: &mut Criterion) {
     let mut group = c.benchmark_group("junk_bytes_v3");
 
     for size in [1_000usize, 10_000, 100_000, 1_000_000] {
@@ -209,7 +209,7 @@ fn benchmark_v3_generate_junk_bytes(c: &mut Criterion) {
     }
 
     group.finish();
-}
+}*/
 
 fn get_sample_file_path(name: &str) -> String {
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
@@ -239,6 +239,6 @@ criterion_group!(
     benchmark_v2_decoding,
     benchmark_v3_encoding,
     benchmark_v3_decoding,
-    benchmark_v3_generate_junk_bytes,
+    //benchmark_v3_generate_junk_bytes,
 );
 criterion_main!(benches);

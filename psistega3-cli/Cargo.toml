@@ -15,8 +15,10 @@ publish = false
 
 [dependencies]
 clap = { version = "4.5.57", features = ["derive"] }
+crossterm = "0.29.0"
 log = "0.4.29"
 psistega3-core = { path = "../psistega3-core" }
+sha3 = "0.10.8"
 rand = "0.9.2"
 rand_core = "0.10.0"
 rand_chacha = "0.9.0"
@@ -25,3 +27,7 @@ simple_logger = "5.1.0"
 
 [target.'cfg(windows)'.build-dependencies]
 winres = "0.1.12"
+
+[[bin]]
+name = "psistega3-cli"
+path = "src/main.rs"
