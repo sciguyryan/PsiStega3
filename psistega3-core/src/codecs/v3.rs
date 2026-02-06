@@ -533,11 +533,11 @@ impl StegaV3 {
             random_bits >>= 1;
             let delta = r.wrapping_mul(2).wrapping_sub(1);
 
-            // Apply the delta.
-            *b = b
-                .wrapping_add(delta)
-                .wrapping_add((*b == 0 && delta == 255) as u8 * 2)
-                .wrapping_sub((*b == 255 && delta == 1) as u8 * 2);
+            *b = match (*b, delta) {
+                (0, 255) => 1,   // Would underflow, go up instead.
+                (255, 1) => 254, // Would overflow, go down instead.
+                _ => b.wrapping_add(delta),
+            };
         }
     }
 
