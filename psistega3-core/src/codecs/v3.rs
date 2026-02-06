@@ -25,32 +25,32 @@ const DEFAULT_P_COST: u32 = 8;
 const DEFAULT_M_COST: u32 = 131_072;
 /// The version of the Argon2 hashing algorithm to use.
 const ARGON_VERSION: argon2::Version = argon2::Version::V0x13;
-/// The salt for the file component of the composite key.
+/// The domain separator for the file component of the composite key.
 /// `Note:` It should be changed with new versions of the algorithm.
-const FILE_SALT: [u8; 64] = [
+const FILE_DOMAIN_SEPARATOR: [u8; 64] = [
     2, 231, 192, 211, 210, 144, 152, 191, 241, 102, 139, 0, 159, 75, 168, 103, 219, 177, 8, 106,
     136, 252, 52, 247, 129, 228, 66, 53, 193, 108, 126, 11, 232, 34, 41, 150, 24, 42, 165, 221,
     240, 234, 17, 190, 107, 198, 157, 188, 74, 207, 105, 151, 176, 194, 222, 145, 14, 16, 125, 27,
     95, 100, 67, 62,
 ];
-/// The salt for the user-provided key component of the composite key.
+/// The domain separator for the user-provided key component of the composite key.
 /// `Note:` It should be changed with new versions of the algorithm.
-const KEY_SALT: [u8; 64] = [
+const KEY_DOMAIN_SEPARATOR: [u8; 64] = [
     228, 243, 149, 35, 126, 159, 77, 192, 204, 207, 132, 83, 103, 218, 75, 248, 139, 76, 28, 221,
     179, 247, 189, 196, 198, 18, 118, 122, 157, 86, 231, 20, 96, 53, 136, 153, 140, 238, 52, 93,
     137, 91, 32, 239, 133, 17, 227, 129, 219, 121, 94, 116, 188, 255, 214, 48, 110, 104, 25, 70,
     85, 33, 73, 176,
 ];
-/// The salt for the version key component of the composite key.
+/// The domain separator for the version key component of the composite key.
 /// `Note:` It should be changed with new versions of the algorithm.
-const VERSION_SALT: [u8; 64] = [
+const VERSION_DOMAIN_SEPARATOR: [u8; 64] = [
     247, 63, 225, 218, 95, 4, 179, 80, 23, 173, 189, 157, 201, 109, 217, 83, 71, 129, 87, 37, 118,
     26, 206, 234, 113, 17, 5, 223, 10, 119, 31, 34, 208, 41, 160, 74, 16, 27, 214, 180, 75, 182,
     40, 53, 175, 199, 197, 9, 111, 186, 61, 94, 104, 150, 185, 120, 149, 52, 254, 82, 164, 69, 156,
     195,
 ];
 /// The size of the Argon2 salt, in bytes.
-const SALT_SIZE: usize = 12;
+const SALT_SIZE: usize = 32;
 /// The size of the AES nonce, in bytes.
 const NONCE_SIZE: usize = 12;
 /// The size of the ciphertext cell counter, in bytes.
@@ -114,14 +114,14 @@ impl StegaV3 {
         let seed: u64 = key.chunks_exact(8).fold(0, |acc, chunk| {
             acc ^ u64::from_le_bytes(chunk.try_into().unwrap())
         });
-        fastrand::seed(seed);
+        let mut rng = fastrand::Rng::with_seed(seed);
 
         // Pre-allocate vector and map for performance.
         self.data_cell_vec = Vec::with_capacity(total_cells);
         self.data_cell_vec.extend(0..total_cells);
 
         // Randomise the order of the cell IDs.
-        fastrand::shuffle(&mut self.data_cell_vec);
+        rng.shuffle(&mut self.data_cell_vec);
     }
 
     #[inline(always)]
@@ -222,7 +222,7 @@ impl StegaV3 {
         let ciphertext_bytes = &data[(SALT_SIZE + NONCE_SIZE)..];
 
         // Now we can compute the Argon2 hash.
-        let mut key_bytes_full = hashers::argon2_string(
+        let mut key_bytes_full = hashers::argon2_string_v3(
             &composite_key,
             salt_bytes,
             self.m_cost,
@@ -284,7 +284,7 @@ impl StegaV3 {
 
         // Generate a random salt for the Argon2 hashing function.
         let salt_bytes: [u8; SALT_SIZE] = misc_utils::secure_random_bytes();
-        let mut key_bytes_full = hashers::argon2_string(
+        let mut key_bytes_full = hashers::argon2_string_v3(
             &composite_key,
             salt_bytes,
             self.m_cost,
@@ -387,15 +387,15 @@ impl StegaV3 {
     #[inline]
     pub fn generate_composite_key(original_path: &str, key: String) -> Result<[u8; 64]> {
         let mut file_data = hashers::sha3_512_file(original_path)?.to_vec();
-        file_data.extend_from_slice(&FILE_SALT);
+        file_data.extend_from_slice(&FILE_DOMAIN_SEPARATOR);
         let file_hash = hashers::sha3_512_bytes(&file_data);
 
         let mut key_bytes = key.into_bytes();
-        key_bytes.extend_from_slice(&KEY_SALT);
+        key_bytes.extend_from_slice(&KEY_DOMAIN_SEPARATOR);
         let key_hash = hashers::sha3_512_bytes(&key_bytes);
 
         let mut version_data = vec![CODED_VERSION];
-        version_data.extend_from_slice(&VERSION_SALT);
+        version_data.extend_from_slice(&VERSION_DOMAIN_SEPARATOR);
         let version_hash = hashers::sha3_512_bytes(&version_data);
 
         // Combine the component hashes and hash the final composite key.
