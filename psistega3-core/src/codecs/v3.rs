@@ -484,8 +484,8 @@ impl StegaV3 {
         enc_img: &ImageWrapper,
         data_index: usize,
     ) -> u8 {
-        // 8 bits is split over 2 bytes to prevent a single change
-        // being more than 1 bit per channel.
+        // There are four channels per pixel, so this corresponds to two pixels
+        // worth of data.
         let start_index = self.data_cell_vec[data_index] * 2;
         self.read_u8(ref_img, enc_img, start_index)
     }
@@ -551,8 +551,8 @@ impl StegaV3 {
     ///
     #[inline]
     fn write_u8_by_data_index(&mut self, img: &mut ImageWrapper, data: &u8, data_index: usize) {
-        // 8 bits is split over 2 bytes to prevent a single change
-        // being more than 1 bit per channel.
+        // There are four channels per pixel, so this corresponds to two pixels
+        // worth of data.
         let start_index = self.data_cell_vec[data_index] * 2;
         self.write_u8(img, data, start_index);
     }
