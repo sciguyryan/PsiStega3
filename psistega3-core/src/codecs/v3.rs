@@ -58,7 +58,7 @@ const NONCE_SIZE: usize = 12;
 /// By default, this is an unsigned 32-bit integer, and is hence 4 bytes in size.
 const CIPHERTEXT_CELL_COUNT_SIZE: usize = 4;
 
-/// The struct that holds the v2 steganography algorithm.
+/// The struct that holds the v3 steganography algorithm.
 pub struct StegaV3 {
     /// The data index to cell ID map.
     data_cell_vec: Vec<usize>,
@@ -205,10 +205,9 @@ impl StegaV3 {
         // We could make a smaller array here, but we can save ourselves the
         // extra operations, at the cost of a few more bytes of reserved memory... which is fine.
         // But remember... all of these offsets are four less than the original due to the skipping.
-        let mut data = Vec::with_capacity(total_cells_needed);
-        for i in 4..total_cells_needed {
-            data.push(self.read_u8_by_index(&ref_image, &enc_image, i));
-        }
+        let data: Vec<u8> = (4..total_cells_needed)
+            .map(|i| self.read_u8_by_index(&ref_image, &enc_image, i))
+            .collect();
 
         // Next, we get the Argon2 salt bytes.
         let salt_bytes: [u8; SALT_SIZE] = data[0..SALT_SIZE].try_into().unwrap();
@@ -385,7 +384,7 @@ impl StegaV3 {
     /// * `original_path` - The path to the original image file.
     /// * `key` - The plaintext key.
     #[inline]
-    pub fn generate_composite_key(original_path: &str, key: String) -> Result<[u8; 64]> {
+    pub(crate) fn generate_composite_key(original_path: &str, key: String) -> Result<[u8; 64]> {
         let mut file_data = hashers::sha3_512_file(original_path)?.to_vec();
         file_data.extend_from_slice(&FILE_DOMAIN_SEPARATOR);
         let file_hash = hashers::sha3_512_bytes(&file_data);
@@ -399,22 +398,18 @@ impl StegaV3 {
         let version_hash = hashers::sha3_512_bytes(&version_data);
 
         // Combine the component hashes and hash the final composite key.
-        let mut combined =
-            Vec::with_capacity(file_hash.len() + key_hash.len() + version_hash.len());
-        combined.extend_from_slice(&file_hash);
-        combined.extend_from_slice(&key_hash);
-        combined.extend_from_slice(&version_hash);
+        let mut combined = [0u8; 64 * 3]; // 3 x SHA3-512 hashes.
+        combined[..64].copy_from_slice(&file_hash);
+        combined[64..128].copy_from_slice(&key_hash);
+        combined[128..].copy_from_slice(&version_hash);
 
         Ok(hashers::sha3_512_bytes(&combined))
     }
 
     /// Generate junk padding data.
     #[inline]
-    pub fn generate_junk_bytes(needed: usize) -> Vec<u8> {
-        let mut vec: Vec<u8> = Vec::with_capacity(needed);
-        unsafe {
-            vec.set_len(needed);
-        }
+    pub(crate) fn generate_junk_bytes(needed: usize) -> Vec<u8> {
+        let mut vec = vec![0u8; needed];
 
         // We do not need to worry about being cryptographically secure here.
         // This is just junk data to fill the empty cells.
