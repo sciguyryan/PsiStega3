@@ -366,19 +366,6 @@ impl StegaV3 {
         }
     }
 
-    /// Gets the cell index that will hold the specified data index.
-    ///
-    /// # Arguments
-    ///
-    /// * `data_index` - The data index to be checked.
-    ///
-    /// `Note:` this method will panic if the data cell is not present in the map.
-    /// In practice this should never occur.
-    #[inline]
-    fn get_data_cell_index(&self, data_index: &usize) -> usize {
-        self.data_cell_vec[*data_index] * 2
-    }
-
     /// Calculate the total number of cells available in a given image.
     ///
     /// # Arguments
@@ -497,11 +484,9 @@ impl StegaV3 {
         enc_img: &ImageWrapper,
         data_index: usize,
     ) -> u8 {
-        // We need to look up the cell to which this byte of data
-        //   will be encoded within the image.
-        let start_index = self.get_data_cell_index(&data_index);
-
-        // Finally we can decode and read a byte of data from the cell.
+        // 8 bits is split over 2 bytes to prevent a single change
+        // being more than 1 bit per channel.
+        let start_index = self.data_cell_vec[data_index] * 2;
         self.read_u8(ref_img, enc_img, start_index)
     }
 
@@ -566,7 +551,9 @@ impl StegaV3 {
     ///
     #[inline]
     fn write_u8_by_data_index(&mut self, img: &mut ImageWrapper, data: &u8, data_index: usize) {
-        let start_index = self.get_data_cell_index(&data_index);
+        // 8 bits is split over 2 bytes to prevent a single change
+        // being more than 1 bit per channel.
+        let start_index = self.data_cell_vec[data_index] * 2;
         self.write_u8(img, data, start_index);
     }
 }
