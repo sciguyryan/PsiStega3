@@ -22,7 +22,7 @@ const DEFAULT_T_COST: u32 = 8;
 /// The parallel cost (threads) for use with the Argon2 hashing algorithm.
 const DEFAULT_P_COST: u32 = 8;
 /// The memory cost (kilobytes) for use with the Argon2 hashing algorithm.
-const DEFAULT_M_COST: u32 = 65_536;
+const DEFAULT_M_COST: u32 = 131_072;
 /// The version of the Argon2 hashing algorithm to use.
 const ARGON_VERSION: argon2::Version = argon2::Version::V0x13;
 /// The salt for the file component of the composite key.
