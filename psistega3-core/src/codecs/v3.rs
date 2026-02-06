@@ -632,7 +632,11 @@ impl Codec for StegaV3 {
                 self.noise_layer = state;
             }
             Config::Verbose => {
-                self.logger.enable_verbose_mode();
+                if state {
+                    self.logger.enable_verbose_mode();
+                } else {
+                    self.logger.disable_verbose_mode();
+                }
             }
             Config::OutputFiles => {
                 self.output_files = state;
