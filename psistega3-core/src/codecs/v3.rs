@@ -11,7 +11,7 @@ use aes_gcm::{aead::Aead, Aes256Gcm, Key, KeyInit, Nonce};
 use rand::prelude::*;
 use rand_xoshiro::Xoshiro512PlusPlus;
 use std::convert::TryInto;
-use zeroize::Zeroize;
+use zeroize::Zeroizing;
 
 use super::codec::{ConfigFlags, ConfigParams};
 
@@ -132,7 +132,6 @@ impl StegaV3 {
 
           Note: a cell represents the space in which a byte of data can be encoded.
         */
-
         let sum = CIPHERTEXT_CELL_COUNT_SIZE as u64
             + SALT_SIZE as u64
             + NONCE_SIZE as u64
@@ -165,10 +164,11 @@ impl StegaV3 {
         }
 
         // Generate the composite key from the hash of the original file and the key.
-        let mut composite_key = StegaV3::generate_composite_key(original_img_path, key)?;
+        let composite_key =
+            Zeroizing::new(StegaV3::generate_composite_key(original_img_path, key)?);
 
         // Build the data index to positional cell index map.
-        self.build_data_to_cell_index_map(&enc_image, &composite_key);
+        self.build_data_to_cell_index_map(&enc_image, &composite_key[..]);
 
         // Read the first 4 encoded bytes from the image.
         // This is done manually to avoid decoding the entire image.
@@ -209,35 +209,30 @@ impl StegaV3 {
             .map(|i| self.read_u8_by_index(&ref_image, &enc_image, i))
             .collect();
 
-        // Next, we get the Argon2 salt bytes.
+        // Extract the salt and nonce.
         let salt_bytes: [u8; SALT_SIZE] = data[0..SALT_SIZE].try_into().unwrap();
-
-        // Next, we get the AES nonce bytes.
         let nonce_bytes: [u8; NONCE_SIZE] = data[SALT_SIZE..(SALT_SIZE + NONCE_SIZE)]
             .try_into()
             .unwrap();
 
-        // Finally, we get the ciphertext bytes.
+        // Finally, extract the ciphertext bytes.
         let ciphertext_bytes = &data[(SALT_SIZE + NONCE_SIZE)..];
 
         // Now we can compute the Argon2 hash.
-        let mut key_bytes_full = hashers::argon2_string_v3(
-            &composite_key,
+        let key_bytes_full = Zeroizing::new(hashers::argon2_string_v3(
+            &composite_key[..],
             salt_bytes,
             self.m_cost,
             self.p_cost,
             self.t_cost,
             ARGON_VERSION,
-        )?;
+        )?);
 
         // The AES-256 key is 256-bits (32 bytes) in length.
         let key_bytes = &key_bytes_full[..32];
         let key = Key::<Aes256Gcm>::from_slice(key_bytes);
         let cipher = Aes256Gcm::new(key);
         let nonce = Nonce::from_slice(&nonce_bytes);
-
-        composite_key.zeroize();
-        key_bytes_full.zeroize();
 
         /*
           Attempt to decrypt the cipher-text bytes with
@@ -279,30 +274,27 @@ impl StegaV3 {
         let mut img = StegaV3::load_image(original_img_path, false)?;
 
         // Generate the composite key from the hash of the original file and the key.
-        let mut composite_key = StegaV3::generate_composite_key(original_img_path, key)?;
+        let composite_key =
+            Zeroizing::new(StegaV3::generate_composite_key(original_img_path, key)?);
 
         // Generate a random salt for the Argon2 hashing function.
         let salt_bytes: [u8; SALT_SIZE] = misc_utils::secure_random_bytes();
-        let mut key_bytes_full = hashers::argon2_string_v3(
-            &composite_key,
+        let key_bytes_full = Zeroizing::new(hashers::argon2_string_v3(
+            &composite_key[..],
             salt_bytes,
             self.m_cost,
             self.p_cost,
             self.t_cost,
             ARGON_VERSION,
-        )?;
+        )?);
 
         // Build the data index to positional cell index map.
-        self.build_data_to_cell_index_map(&img, &composite_key);
+        self.build_data_to_cell_index_map(&img, &composite_key[..]);
 
         // The AES-256 key is 256-bits (32 bytes) in length.
         let key_bytes = &key_bytes_full[..32];
         let key = Key::<Aes256Gcm>::from_slice(key_bytes);
         let cipher = Aes256Gcm::new(key);
-
-        // Clear the data from memory, as early as possible.
-        composite_key.zeroize();
-        key_bytes_full.zeroize();
 
         // Generate a random nonce.
         let nonce_bytes: [u8; NONCE_SIZE] = misc_utils::secure_random_bytes();
@@ -385,20 +377,17 @@ impl StegaV3 {
     /// * `key` - The plaintext key.
     #[inline]
     pub(crate) fn generate_composite_key(original_path: &str, key: String) -> Result<[u8; 64]> {
-        let mut file_data = hashers::sha3_512_file(original_path)?.to_vec();
+        let mut file_data = Zeroizing::new(hashers::sha3_512_file(original_path)?.to_vec());
         file_data.extend_from_slice(&FILE_DOMAIN_SEPARATOR);
         let file_hash = hashers::sha3_512_bytes(&file_data);
-        file_data.zeroize();
 
-        let mut key_bytes = key.into_bytes();
+        let mut key_bytes = Zeroizing::new(key.into_bytes());
         key_bytes.extend_from_slice(&KEY_DOMAIN_SEPARATOR);
         let key_hash = hashers::sha3_512_bytes(&key_bytes);
-        key_bytes.zeroize();
 
-        let mut version_data = vec![CODED_VERSION];
+        let mut version_data = Zeroizing::new(vec![CODED_VERSION]);
         version_data.extend_from_slice(&VERSION_DOMAIN_SEPARATOR);
         let version_hash = hashers::sha3_512_bytes(&version_data);
-        version_data.zeroize();
 
         // Combine the component hashes and hash the final composite key.
         let mut combined = [0u8; 64 * 3]; // 3 x SHA3-512 hashes.

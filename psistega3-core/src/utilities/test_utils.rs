@@ -1,5 +1,5 @@
 use path_absolutize::Absolutize;
-use rand::Rng;
+use rand::RngExt;
 use std::{fs, path::PathBuf};
 
 const FILE_CHARS: &str = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ123456789-_";

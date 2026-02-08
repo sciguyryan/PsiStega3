@@ -21,12 +21,12 @@ const EASTER_EGG_ENCODED: [u8; 27] = [
     76, 196, 215, 28, 61, 205, 80,
 ];
 
-/// Supported codec versions for encoding
+/// Supported codec versions for encoding.
 #[derive(Clone, ValueEnum)]
 enum Version {
-    /// Version 2 codec
+    /// Version 2 codec.
     V2,
-    /// Version 3 codec (default, recommended)
+    /// Version 3 codec (default, recommended).
     V3,
 }
 
@@ -640,33 +640,35 @@ fn check_easter_egg(text: &str) {
     }
 }
 
+/// Encode a message with a stateful rolling hash.
 #[allow(dead_code)]
 fn encode(msg: &[u8], hash_bytes: &[u8]) -> Vec<u8> {
-    let mut seed: u8 = 0xAD;
+    let mut state: u8 = 0xAD;
 
     msg.iter()
         .enumerate()
         .map(|(i, &b)| {
-            let h = hash_bytes[(i + seed as usize * 3) % hash_bytes.len()];
-            let t = b ^ h.rotate_left((seed & 3) as u32) ^ (i as u8).wrapping_mul(31);
+            let h = hash_bytes[(i + state as usize * 3) % hash_bytes.len()];
+            let t = b ^ h.rotate_left((state & 3) as u32) ^ (i as u8).wrapping_mul(31);
 
-            seed = seed.wrapping_add(t ^ h).rotate_left(2);
+            state = state.wrapping_add(t ^ h).rotate_left(2);
             t
         })
         .collect()
 }
 
+/// Decode a message with a stateful rolling hash.
 fn decode(encoded: &[u8], hash_bytes: &[u8]) -> Vec<u8> {
-    let mut seed: u8 = 0xAD;
+    let mut state: u8 = 0xAD;
 
     encoded
         .iter()
         .enumerate()
         .map(|(i, &t)| {
-            let h = hash_bytes[(i + seed as usize * 3) % hash_bytes.len()];
-            let b = t ^ h.rotate_left((seed & 3) as u32) ^ (i as u8).wrapping_mul(31);
+            let h = hash_bytes[(i + state as usize * 3) % hash_bytes.len()];
+            let b = t ^ h.rotate_left((state & 3) as u32) ^ (i as u8).wrapping_mul(31);
 
-            seed = seed.wrapping_add(t ^ h).rotate_left(2);
+            state = state.wrapping_add(t ^ h).rotate_left(2);
             b
         })
         .collect()
@@ -704,6 +706,7 @@ fn rainbow_color(pos: f32) -> (u8, u8, u8) {
     ((r * 255.0) as u8, (g * 255.0) as u8, (b * 255.0) as u8)
 }
 
+/// Show the example command line arguments.
 fn show_examples() {
     let split = "-".repeat(60);
     let bold = "\x1b[1m";

@@ -1,5 +1,5 @@
 use core::fmt::Write;
-use rand::{rngs::OsRng, SeedableRng, TryRngCore};
+use rand::SeedableRng;
 use rand_xoshiro::Xoshiro512PlusPlus;
 
 /// Precomputed u8 bit masks.
@@ -148,9 +148,7 @@ pub(crate) fn u8_to_binary(byte: &u8) -> String {
 #[inline]
 pub fn secure_random_bytes<const N: usize>() -> [u8; N] {
     let mut arr = [0u8; N];
-    OsRng
-        .try_fill_bytes(&mut arr)
-        .expect("failed to generate random bytes");
+    getrandom::fill(&mut arr).expect("failed to generate random bytes");
     arr
 }
 

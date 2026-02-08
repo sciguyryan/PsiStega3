@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 
-use rand::Rng;
+use rand::RngExt;
 use rand_xoshiro::Xoshiro512PlusPlus;
 
 use crate::utilities::misc_utils;

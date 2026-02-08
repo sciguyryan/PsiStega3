@@ -1,6 +1,7 @@
 use crate::error::{Error, Result};
 
 use image::{ColorType, ImageFormat};
+use rand::RngExt;
 
 #[derive(Clone)]
 pub struct ImageWrapper {
@@ -31,8 +32,8 @@ impl ImageWrapper {
     ///
     /// `Note:` A subcell is the space required to store a nibble of data.
     ///
-    #[inline]
-    pub fn get_subcells_from_index(&self, start_index: usize, count: u16) -> &[u8] {
+    #[inline(always)]
+    pub fn get_subcells_from_index(&self, start_index: usize, count: usize) -> &[u8] {
         let start = start_index * 4;
         let end = start + (count * 4) as usize;
         unsafe { self.image_bytes.get_unchecked(start..end) }
@@ -47,15 +48,15 @@ impl ImageWrapper {
     ///
     /// `Note:` A subcell is the space required to store a nibble of data.
     ///
-    #[inline]
-    pub fn get_subcells_from_index_mut(&mut self, start_index: usize, count: u16) -> &mut [u8] {
+    #[inline(always)]
+    pub fn get_subcells_from_index_mut(&mut self, start_index: usize, count: usize) -> &mut [u8] {
         let start = start_index * 4;
         let end = start + (count * 4) as usize;
         unsafe { self.image_bytes.get_unchecked_mut(start..end) }
     }
 
     /// Get the format of the image.
-    #[inline]
+    #[inline(always)]
     pub fn get_image_format(&self) -> ImageFormat {
         self.format
     }
@@ -69,7 +70,7 @@ impl ImageWrapper {
     /// `Note:` A subcell is space required to store a nibble of data.
     ///
     #[allow(dead_code)]
-    #[inline]
+    #[inline(always)]
     pub fn get_subcell(&self, start_index: usize) -> &[u8] {
         let start = start_index * 4;
         let end = start + 4;
@@ -85,7 +86,7 @@ impl ImageWrapper {
     /// `Note:` A subcell is space required to store a nibble of data.
     ///
     #[allow(dead_code)]
-    #[inline]
+    #[inline(always)]
     pub fn get_subcell_mut(&mut self, start_index: usize) -> &mut [u8] {
         let start = start_index * 4;
         let end = start + 4;
@@ -93,6 +94,7 @@ impl ImageWrapper {
     }
 
     /// Calculate the total number of channels available in the image.
+    #[inline(always)]
     pub fn get_total_channels(&self) -> u64 {
         self.image_bytes.len() as u64
     }
@@ -167,8 +169,6 @@ impl ImageWrapper {
     /// Scramble the data within the image file.
     ///
     pub fn scramble(&mut self) {
-        use rand::Rng;
-
         // Iterate over each of the image bytes and modify them randomly.
         // The file will be visually the same, but will be modified such that
         // any encoded data is rendered invalid.
