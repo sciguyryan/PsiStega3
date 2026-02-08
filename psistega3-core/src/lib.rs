@@ -8,5 +8,5 @@ mod macros;
 mod image_wrapper;
 mod locker;
 mod logger;
-pub mod utilities;
+mod utilities;
 pub mod version;
