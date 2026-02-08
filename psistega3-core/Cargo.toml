@@ -44,5 +44,5 @@ required-features = ["bench"]
 
 [[bin]]
 name = "generate_reference_images"
-path = "benches/generate_reference_images.rs"
+path = "benches-utils/generate_reference_images.rs"
 required-features = ["bench"]

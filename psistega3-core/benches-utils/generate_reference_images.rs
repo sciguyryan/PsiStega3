@@ -31,18 +31,16 @@ fn main() {
 
     for (filename, width, height, pattern) in configs.iter() {
         let path = output_dir.join(filename);
-        print!("  Generating {} ({}x{})... ", filename, width, height);
+        print!("  Generating {filename} ({width}x{height})... ");
 
         let img = generate_image(*width, *height, pattern);
-
-        // Save using image crate's save method.
         img.save(&path)
-            .expect(&format!("Failed to save {}", filename));
+            .expect(&format!("Failed to save {filename}"));
 
         // Get file size.
         let metadata = fs::metadata(&path).unwrap();
         let size_mb = metadata.len() as f64 / (1024.0 * 1024.0);
-        println!("({:.2} MB)", size_mb);
+        println!("({size_mb:.2} MB)");
     }
 
     println!("\nAll reference images generated successfully!");

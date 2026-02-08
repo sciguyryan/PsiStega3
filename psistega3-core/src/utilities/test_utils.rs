@@ -4,7 +4,7 @@ use std::{fs, path::PathBuf};
 
 const FILE_CHARS: &str = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ123456789-_";
 
-pub(crate) struct TestUtils {
+pub struct TestUtils {
     /// The base folder path for the test files.
     test_base_path: PathBuf,
     /// A vector of files that will be automatically cleared when the instance is dropped.

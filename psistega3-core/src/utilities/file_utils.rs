@@ -13,7 +13,7 @@ use std::{
 ///
 /// * `path` - The path to the file.
 ///
-pub(crate) fn get_file_last_modified(path: &str) -> Result<FileTime> {
+pub fn get_file_last_modified(path: &str) -> Result<FileTime> {
     let meta = get_file_metadata(path)?;
 
     Ok(FileTime::from_last_modification_time(&meta))
@@ -25,7 +25,7 @@ pub(crate) fn get_file_last_modified(path: &str) -> Result<FileTime> {
 ///
 /// * `path` - The path to the file.
 ///
-pub(crate) fn get_file_metadata(path: &str) -> Result<Metadata> {
+pub fn get_file_metadata(path: &str) -> Result<Metadata> {
     let p = Path::new(&path);
 
     if !p.exists() || !p.is_file() {
@@ -41,7 +41,7 @@ pub(crate) fn get_file_metadata(path: &str) -> Result<Metadata> {
 ///
 /// * `path` - The path to the file.
 ///
-pub(crate) fn get_file_read_only_state(path: &str) -> Result<bool> {
+pub fn get_file_read_only_state(path: &str) -> Result<bool> {
     // If the file doesn't exist then it can't be read-only.
     if !path_exists(path) {
         return Ok(false);
@@ -58,7 +58,7 @@ pub(crate) fn get_file_read_only_state(path: &str) -> Result<bool> {
 /// * `path` - The path to be checked.
 ///
 #[inline]
-pub(crate) fn path_exists(path: &str) -> bool {
+pub fn path_exists(path: &str) -> bool {
     Path::new(path).exists()
 }
 
@@ -68,7 +68,7 @@ pub(crate) fn path_exists(path: &str) -> bool {
 ///
 /// * `path` - The path to the file.
 ///
-pub(crate) fn read_file_to_u8_vec(path: &str) -> Result<Vec<u8>> {
+pub fn read_file_to_u8_vec(path: &str) -> Result<Vec<u8>> {
     if !path_exists(path) {
         return Err(Error::PathInvalid);
     }
@@ -146,7 +146,7 @@ pub fn remove_file_segment(path: &str, remove_start: u64, remove_length: u64) ->
 /// * `path` - The path to the file.
 /// * `timestamp` - The [`FileTime`] timestamp to set as the last modified date of the file.
 ///
-pub(crate) fn set_file_last_modified(path: &str, timestamp: FileTime) -> Result<()> {
+pub fn set_file_last_modified(path: &str, timestamp: FileTime) -> Result<()> {
     if filetime::set_file_mtime(path, timestamp).is_ok() {
         Ok(())
     } else {
@@ -162,7 +162,7 @@ pub(crate) fn set_file_last_modified(path: &str, timestamp: FileTime) -> Result<
 /// * `splice_at` - The point at which the data should be spliced into the file.
 /// * `data` - The data which should be spliced into the file.
 ///
-pub(crate) fn splice_data_into_file(path: &str, splice_at: u64, data: &[u8]) -> Result<()> {
+pub fn splice_data_into_file(path: &str, splice_at: u64, data: &[u8]) -> Result<()> {
     let Ok(mut file) = File::options().read(true).write(true).open(path) else {
         return Err(Error::FileOpen);
     };
@@ -203,7 +203,7 @@ pub(crate) fn splice_data_into_file(path: &str, splice_at: u64, data: &[u8]) -> 
 ///
 /// * `path` - The path to the file.
 ///
-pub(crate) fn toggle_file_read_only_state(path: &str) -> Result<()> {
+pub fn toggle_file_read_only_state(path: &str) -> Result<()> {
     // Get the metadata for the file.
     let metadata = get_file_metadata(path)?;
 
@@ -220,7 +220,7 @@ pub(crate) fn toggle_file_read_only_state(path: &str) -> Result<()> {
 /// * `path` - The path to the file.
 /// * `bytes` - The slice of u8 values to be written to the file.
 ///
-pub(crate) fn write_u8_slice_to_file(path: &str, bytes: &[u8]) -> Result<()> {
+pub fn write_u8_slice_to_file(path: &str, bytes: &[u8]) -> Result<()> {
     let Ok(mut file) = File::create(path) else {
         return Err(Error::FileCreate);
     };
