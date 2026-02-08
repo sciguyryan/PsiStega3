@@ -11,6 +11,7 @@ Cargo.lock
 
 # We don't want to include these images in the repo for size reasons.
 /test-images/
+/psistega3-core/benches/reference_images/
 
 # PGO stuff to be ignored in the repo.
 /build/merged.profdata
