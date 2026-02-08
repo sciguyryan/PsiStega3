@@ -1,9 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# ------------------------------
 # Path setup.
-# ------------------------------
 # Script-relative paths.
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 TMP_PROFDIR="$SCRIPT_DIR/pgo-data"
@@ -30,24 +28,18 @@ else
     exit 1
 fi
 
-# ------------------------------
 # Workload config.
-# ------------------------------
 LOREM_TEXT="Lorem ipsum dolor sit amet, consectetur adipiscing elit. Nunc eu leo nec neque aliquet mollis at vel ligula. Etiam et enim orci. Fusce sit amet tincidunt libero. Curabitur pretium vestibulum risus et placerat. Vestibulum a pharetra mauris, eu efficitur tortor. Mauris suscipit metus sit amet purus laoreet, sed aliquet nibh vehicula. Proin ut purus nec magna fringilla tempus id eu magna. Ut hendrerit, dui eget euismod tristique, quam eros aliquet purus, vel pellentesque tellus urna quis mauris. Vivamus sed nibh consectetur, euismod ligula sed, molestie felis. Praesent ultrices felis vel nulla pulvinar, ut commodo eros volutpat. Maecenas tempor in eros nec bibendum."
 FIXED_PASSWORD="PGOSecretKey"
 REPEAT_COUNT=5
 
-# ------------------------------
 # Step 0 - Prepare directories.
-# ------------------------------
 echo "=== Preparing build directories ==="
 mkdir -p "$TMP_PROFDIR"
 rm -f "$MERGED_PROFILE"
 rm -f "$TMP_PROFDIR"/*.profraw || true
 
-# ------------------------------
 # Step 1 - Build instrumented binary.
-# ------------------------------
 echo "=== Building instrumented binary (PGO instrumentation) ==="
 export RUSTFLAGS="-C profile-generate=$TMP_PROFDIR"
 cargo clean -p "$BINARY_CRATE"
@@ -58,9 +50,7 @@ if [[ ! -f "$BINARY_PATH" ]]; then
     exit 1
 fi
 
-# ------------------------------
 # Step 2 - Run instrumented binary for profile generation.
-# ------------------------------
 echo "=== Running instrumented binary for profile generation ==="
 shopt -s nullglob
 IMAGE_FILES=("$IMAGE_DIR"/*)
@@ -88,9 +78,7 @@ for IMAGE_FILE in "${IMAGE_FILES[@]}"; do
     done
 done
 
-# ------------------------------
 # Step 3 - Merge profile data.
-# ------------------------------
 echo "=== Merging profile data ==="
 PROFRAW_FILES=("$TMP_PROFDIR"/*.profraw)
 if [[ ${#PROFRAW_FILES[@]} -eq 0 ]]; then
@@ -100,12 +88,13 @@ fi
 
 llvm-profdata merge -o "$MERGED_PROFILE" "${PROFRAW_FILES[@]}"
 
-# ------------------------------
 # Step 4 - Build PGO-optimized release.
-# ------------------------------
 echo "=== Building PGO-optimized release ==="
 mkdir -p "$PGO_BUILD_DIR"
 export RUSTFLAGS="-C profile-use=$MERGED_PROFILE"
 cargo build --release -p "$BINARY_CRATE" --target-dir "$PGO_BUILD_DIR"
+
+
+rm -f "$TMP_PROFDIR"
 
 echo "=== Done! PGO-optimized binary available at $PGO_BINARY_PATH ==="
