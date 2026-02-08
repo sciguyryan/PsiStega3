@@ -11,7 +11,7 @@ BINARY_CRATE="psistega3-cli"
 BINARY_PATH="$WORKSPACE_ROOT/target/release/$BINARY_CRATE"
 
 # Workload config.
-LOREM_TEXT="Lorem ipsum dolor sit amet, consectetur adipiscing elit. PGO test run."
+LOREM_TEXT="Lorem ipsum dolor sit amet, consectetur adipiscing elit. Nunc eu leo nec neque aliquet mollis at vel ligula. Etiam et enim orci. Fusce sit amet tincidunt libero. Curabitur pretium vestibulum risus et placerat. Vestibulum a pharetra mauris, eu efficitur tortor. Mauris suscipit metus sit amet purus laoreet, sed aliquet nibh vehicula. Proin ut purus nec magna fringilla tempus id eu magna. Ut hendrerit, dui eget euismod tristique, quam eros aliquet purus, vel pellentesque tellus urna quis mauris. Vivamus sed nibh consectetur, euismod ligula sed, molestie felis. Praesent ultrices felis vel nulla pulvinar, ut commodo eros volutpat. Maecenas tempor in eros nec bibendum."
 FIXED_PASSWORD="PGOSecretKey"
 REPEAT_COUNT=5
 

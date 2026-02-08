@@ -22,7 +22,7 @@ const EASTER_EGG_ENCODED: [u8; 27] = [
 ];
 
 /// Supported codec versions for encoding.
-#[derive(Clone, ValueEnum)]
+#[derive(Clone, Debug, ValueEnum)]
 enum Version {
     /// Version 2 codec.
     V2,
@@ -196,6 +196,7 @@ enum Commands {
 fn main() {
     SimpleLogger::new().init().unwrap();
     let cli = Cli::parse();
+
     let result = match cli.command {
         Commands::Encode {
             ref_image,
@@ -212,8 +213,6 @@ fn main() {
             m_cost,
         } => {
             let mut codec = create_codec(&version);
-
-            // Warn if version-specific features are used with wrong version.
             check_version_compatibility(&version, locker, read_once, t_cost, p_cost, m_cost);
 
             apply_encode_settings(
@@ -229,37 +228,14 @@ fn main() {
                 cli.verbose,
                 cli.unattended,
             );
+
             let password = match get_password_with_verify(password, cli.unattended) {
                 Ok(p) => p,
                 Err(e) => return show_abort_message(e),
             };
             handle_encode(&ref_image, &output_image, &text, password, &mut codec)
         }
-        Commands::Decode {
-            ref_image,
-            encoded_image,
-            password,
-            no_files,
-            t_cost,
-            p_cost,
-            m_cost,
-        } => {
-            let password = match get_password_with_verify(password, cli.unattended) {
-                Ok(p) => p,
-                Err(e) => return show_abort_message(e),
-            };
 
-            handle_decode_with_fallback(
-                &ref_image,
-                &encoded_image,
-                password,
-                no_files,
-                cli.verbose,
-                t_cost,
-                p_cost,
-                m_cost,
-            )
-        }
         Commands::EncodeFile {
             ref_image,
             output_image,
@@ -275,8 +251,6 @@ fn main() {
             m_cost,
         } => {
             let mut codec = create_codec(&version);
-
-            // Warn if version-specific features are used with wrong version
             check_version_compatibility(&version, locker, read_once, t_cost, p_cost, m_cost);
 
             apply_encode_settings(
@@ -292,12 +266,40 @@ fn main() {
                 cli.verbose,
                 cli.unattended,
             );
+
             let password = match get_password_with_verify(password, cli.unattended) {
                 Ok(p) => p,
                 Err(e) => return show_abort_message(e),
             };
             handle_encode_file(&ref_image, &output_image, &input_file, password, &mut codec)
         }
+
+        Commands::Decode {
+            ref_image,
+            encoded_image,
+            password,
+            no_files,
+            t_cost,
+            p_cost,
+            m_cost,
+        } => {
+            let password = match get_password_with_verify(password, cli.unattended) {
+                Ok(p) => p,
+                Err(e) => return show_abort_message(e),
+            };
+            handle_decode_with_optional_version(
+                &ref_image,
+                &encoded_image,
+                password,
+                no_files,
+                cli.verbose,
+                None,
+                t_cost,
+                p_cost,
+                m_cost,
+            )
+        }
+
         Commands::DecodeFile {
             ref_image,
             encoded_image,
@@ -312,33 +314,152 @@ fn main() {
                 Ok(p) => p,
                 Err(e) => return show_abort_message(e),
             };
-            handle_decode_file_with_fallback(
+            handle_decode_file_with_optional_version(
                 &ref_image,
                 &encoded_image,
                 &output_file,
                 password,
                 no_files,
                 cli.verbose,
+                None,
                 t_cost,
                 p_cost,
                 m_cost,
             )
         }
+
         Commands::Examples => {
             show_examples();
             Ok(())
         }
+
         Commands::Secret { the_secret } => {
             check_easter_egg(&the_secret);
             Ok(())
         }
     };
+
     if let Err(e) = result {
         show_abort_message(e);
         return;
     }
+
     if !cli.unattended {
         read_from_stdin();
+    }
+}
+
+/// Attempt to decode to a string, with optional versioning and fallback.
+fn handle_decode_with_optional_version(
+    ref_image: &str,
+    encoded_image: &str,
+    password: String,
+    no_files: bool,
+    verbose: bool,
+    version: Option<Version>,
+    t_cost: Option<u32>,
+    p_cost: Option<u32>,
+    m_cost: Option<u32>,
+) -> Result<()> {
+    match version {
+        Some(ver) => {
+            let mut codec = create_codec(&ver);
+            apply_decode_settings(&mut codec, no_files, verbose, t_cost, p_cost, m_cost);
+            let decoded = codec
+                .decode(ref_image, password, encoded_image)
+                .map_err(|e| Error::Decoding(format!("Failed to decode with {ver:?}: {e}")))?;
+            print_decoded_text(&decoded);
+            Ok(())
+        }
+        None => {
+            for ver in &[Version::V3, Version::V2] {
+                let mut codec = create_codec(ver);
+                apply_decode_settings(&mut codec, no_files, verbose, t_cost, p_cost, m_cost);
+                if let Ok(decoded) = codec.decode(ref_image, password.clone(), encoded_image) {
+                    print_decoded_text(&decoded);
+                    return Ok(());
+                }
+            }
+            Err(Error::Decoding(
+                "Failed to decode with all available versions.".to_string(),
+            ))
+        }
+    }
+}
+
+/// Attempt to decode to a file, with optional versioning and fallback.
+fn handle_decode_file_with_optional_version(
+    ref_image: &str,
+    encoded_image: &str,
+    output_file: &str,
+    password: String,
+    no_files: bool,
+    verbose: bool,
+    version: Option<Version>,
+    t_cost: Option<u32>,
+    p_cost: Option<u32>,
+    m_cost: Option<u32>,
+) -> Result<()> {
+    match version {
+        Some(ver) => {
+            let mut codec = create_codec(&ver);
+            apply_decode_settings(&mut codec, no_files, verbose, t_cost, p_cost, m_cost);
+            codec
+                .decode_file(ref_image, password, encoded_image, output_file)
+                .map_err(|e| Error::Decoding(format!("Failed to decode file with {ver:?}: {e}")))?;
+            println!("File successfully decoded to {output_file}");
+            Ok(())
+        }
+        None => {
+            for ver in &[Version::V3, Version::V2] {
+                let mut codec = create_codec(ver);
+                apply_decode_settings(&mut codec, no_files, verbose, t_cost, p_cost, m_cost);
+                if codec
+                    .decode_file(ref_image, password.clone(), encoded_image, output_file)
+                    .is_ok()
+                {
+                    println!("File successfully decoded to {output_file}");
+                    return Ok(());
+                }
+            }
+            Err(Error::Decoding(
+                "Failed to decode file with all available versions.".to_string(),
+            ))
+        }
+    }
+}
+
+/// Handle text encode command.
+fn handle_encode(
+    ref_image: &str,
+    output_image: &str,
+    text: &str,
+    password: String,
+    codec: &mut Box<dyn Codec>,
+) -> Result<()> {
+    match codec.encode(ref_image, password, text, output_image) {
+        Ok(_) => {
+            println!("The text has been successfully encoded.");
+            Ok(())
+        }
+        Err(e) => Err(Error::Encoding(e.to_string())),
+    }
+}
+
+/// Handle file encode command.
+fn handle_encode_file(
+    ref_image: &str,
+    output_image: &str,
+    input_file: &str,
+    password: String,
+    codec: &mut Box<dyn Codec>,
+) -> Result<()> {
+    match codec.encode_file(ref_image, password, input_file, output_image) {
+        Ok(_) => {
+            println!("The file has been successfully encoded.");
+            Ok(())
+        }
+        Err(e) => Err(Error::Encoding(e.to_string())),
     }
 }
 
@@ -459,85 +580,6 @@ fn apply_decode_settings(
     }
 }
 
-/// Handle text decode with automatic version fallback.
-fn handle_decode_with_fallback(
-    ref_image: &str,
-    encoded_image: &str,
-    password: String,
-    no_files: bool,
-    verbose: bool,
-    t_cost: Option<u32>,
-    p_cost: Option<u32>,
-    m_cost: Option<u32>,
-) -> Result<()> {
-    // Try v3 first.
-    let mut codec = Box::new(StegaV3::new()) as Box<dyn Codec>;
-    apply_decode_settings(&mut codec, no_files, verbose, t_cost, p_cost, m_cost);
-    match codec.decode(ref_image, password.clone(), encoded_image) {
-        Ok(plaintext) => {
-            print_decoded_text(&plaintext);
-            return Ok(());
-        }
-        Err(_) => {
-            // v3 failed, try v2.
-            let mut codec = Box::new(StegaV2::new("PsiStega3")) as Box<dyn Codec>;
-            apply_decode_settings(&mut codec, no_files, verbose, None, None, None);
-            match codec.decode(ref_image, password, encoded_image) {
-                Ok(plaintext) => {
-                    print_decoded_text(&plaintext);
-                    return Ok(());
-                }
-                Err(e) => {
-                    return Err(Error::Decoding(format!(
-                        "Failed to decode with v3 and v2 codecs: {e}"
-                    )));
-                }
-            }
-        }
-    }
-}
-
-/// Handle file decode with automatic version fallback.
-fn handle_decode_file_with_fallback(
-    ref_image: &str,
-    encoded_image: &str,
-    output_file: &str,
-    password: String,
-    no_files: bool,
-    verbose: bool,
-    t_cost: Option<u32>,
-    p_cost: Option<u32>,
-    m_cost: Option<u32>,
-) -> Result<()> {
-    // Try v3 first.
-    let mut codec = Box::new(StegaV3::new()) as Box<dyn Codec>;
-    apply_decode_settings(&mut codec, no_files, verbose, t_cost, p_cost, m_cost);
-    match codec.decode_file(ref_image, password.clone(), encoded_image, output_file) {
-        Ok(_) => {
-            println!("The file has been successfully decoded to the specified output path.");
-            return Ok(());
-        }
-        Err(_) => {
-            // v3 failed, try v2.
-            let mut codec = Box::new(StegaV2::new("PsiStega3")) as Box<dyn Codec>;
-            apply_decode_settings(&mut codec, no_files, verbose, None, None, None);
-            match codec.decode_file(ref_image, password, encoded_image, output_file) {
-                Ok(_) => {
-                    println!(
-                        "The file has been successfully decoded to the specified output path."
-                    );
-                    return Ok(());
-                }
-                Err(e) => {
-                    return Err(Error::Decoding(format!(
-                        "Failed to decode with v3 and v2 codecs: {e}"
-                    )));
-                }
-            }
-        }
-    }
-}
-
 /// Print decoded text with handling for binary data.
 fn print_decoded_text(plaintext: &str) {
     println!("{}", "-".repeat(32));
@@ -546,40 +588,6 @@ fn print_decoded_text(plaintext: &str) {
         println!("Please try decoding the data using the decode-file command instead.");
     } else {
         println!("{plaintext}");
-    }
-}
-
-/// Handle text encode command.
-fn handle_encode(
-    ref_image: &str,
-    output_image: &str,
-    text: &str,
-    password: String,
-    codec: &mut Box<dyn Codec>,
-) -> Result<()> {
-    match codec.encode(ref_image, password, text, output_image) {
-        Ok(_) => {
-            println!("The text has been successfully encoded.");
-            Ok(())
-        }
-        Err(e) => Err(Error::Encoding(e.to_string())),
-    }
-}
-
-/// Handle file encode command.
-fn handle_encode_file(
-    ref_image: &str,
-    output_image: &str,
-    input_file: &str,
-    password: String,
-    codec: &mut Box<dyn Codec>,
-) -> Result<()> {
-    match codec.encode_file(ref_image, password, input_file, output_image) {
-        Ok(_) => {
-            println!("The file has been successfully encoded.");
-            Ok(())
-        }
-        Err(e) => Err(Error::Encoding(e.to_string())),
     }
 }
 
