@@ -848,7 +848,7 @@ mod tests_encode_decode_v3 {
     #[test]
     #[should_panic]
     fn test_decode_fixed_string_wrong_version() {
-        let tu = TestUtils::new(&["encoding_decoding_v1"]);
+        let tu = TestUtils::new(&["encoding_decoding_v2"]);
 
         let ref_path = tu.get_in_file("reference-valid.png");
         let enc_path = tu.get_in_file("encoded-text.png");
