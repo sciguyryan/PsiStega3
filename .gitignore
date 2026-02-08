@@ -14,6 +14,9 @@ Cargo.lock
 /psistega3-core/benches/reference_images/
 
 # PGO stuff to be ignored in the repo.
-/build/merged.profdata
-/build/pgo_data/
-/build/pgo_image_files/
+/scripts/merged.profdata
+/scripts/pgo-data/
+/scripts/pgo_data/
+/scripts/pgo-image-files/
+/scripts/pgo_image_files/
+
