@@ -19,4 +19,5 @@ Cargo.lock
 /scripts/pgo_data/
 /scripts/pgo-image-files/
 /scripts/pgo_image_files/
-
+/scripts/pgo-text-files/
+/scripts/pgo_text_files/

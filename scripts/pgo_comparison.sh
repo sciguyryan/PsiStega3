@@ -7,7 +7,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 NORMAL_BINARY="$WORKSPACE_ROOT/target/release/psistega3-cli"
 PGO_BINARY="$WORKSPACE_ROOT/target/release-pgo/release/psistega3-cli"
 
-LOREM_TEXT="Lorem ipsum dolor sit amet, consectetur adipiscing elit. Nunc eu leo nec neque aliquet mollis at vel ligula. Etiam et enim orci. Fusce sit amet tincidunt libero. Curabitur pretium vestibulum risus et placerat. Vestibulum a pharetra mauris, eu efficitur tortor. Mauris suscipit metus sit amet purus laoreet, sed aliquet nibh vehicula. Proin ut purus nec magna fringilla tempus id eu magna. Ut hendrerit, dui eget euismod tristique, quam eros aliquet purus, vel pellentesque tellus urna quis mauris. Vivamus sed nibh consectetur, euismod ligula sed, molestie felis. Praesent ultrices felis vel nulla pulvinar, ut commodo eros volutpat. Maecenas tempor in eros nec bibendum."
+LOREM_TEXT="$(< "$SCRIPT_DIR/lorem.txt")"
 FIXED_PASSWORD="PGOSecretKey"
 REPEAT_COUNT=20
 

@@ -347,6 +347,8 @@ fn main() {
     if !cli.unattended {
         read_from_stdin();
     }
+
+    std::process::exit(0);
 }
 
 /// Attempt to decode to a string, with optional versioning and fallback.
@@ -633,6 +635,7 @@ fn read_confirm_from_stdin(prompt: &str) -> bool {
 /// Display an error message.
 pub fn show_abort_message(error: Error) {
     eprintln!("Error: {error}");
+    std::process::exit(1);
 }
 
 /// Check for the easter egg passphrase.
