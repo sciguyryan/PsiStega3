@@ -171,8 +171,7 @@ impl ImageWrapper {
     /// Scramble the data within the image file.
     ///
     pub fn scramble(&mut self) {
-        let buff: [u8; 8] = misc_utils::secure_random_bytes();
-        let mut rng = fastrand::Rng::with_seed(u64::from_le_bytes(buff));
+        let mut rng = fastrand::Rng::with_seed(misc_utils::secure_random_seed());
 
         // Iterate over each of the image bytes and modify them randomly.
         // The file will be visually the same, but will be modified such that

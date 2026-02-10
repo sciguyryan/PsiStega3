@@ -71,9 +71,14 @@ pub fn secure_random_bytes<const N: usize>() -> [u8; N] {
     arr
 }
 
+#[inline]
+pub fn secure_random_seed() -> u64 {
+    let buff: [u8; 8] = secure_random_bytes();
+    return u64::from_le_bytes(buff);
+}
+
 /// Create a securely seeded Xoshiro512PlusPlus PRNG.
 #[inline]
 pub fn secure_seeded_xoroshiro512() -> Xoshiro512PlusPlus {
-    let buff: [u8; 8] = secure_random_bytes();
-    Xoshiro512PlusPlus::seed_from_u64(u64::from_le_bytes(buff))
+    Xoshiro512PlusPlus::seed_from_u64(secure_random_seed())
 }
