@@ -1,7 +1,9 @@
-use crate::error::{Error, Result};
+use crate::{
+    error::{Error, Result},
+    utilities::misc_utils,
+};
 
 use image::{ColorType, ImageFormat};
-use rand::RngExt;
 
 #[derive(Clone)]
 pub struct ImageWrapper {
@@ -169,6 +171,9 @@ impl ImageWrapper {
     /// Scramble the data within the image file.
     ///
     pub fn scramble(&mut self) {
+        let buff: [u8; 8] = misc_utils::secure_random_bytes();
+        let mut rng = fastrand::Rng::with_seed(u64::from_le_bytes(buff));
+
         // Iterate over each of the image bytes and modify them randomly.
         // The file will be visually the same, but will be modified such that
         // any encoded data is rendered invalid.
@@ -176,12 +181,14 @@ impl ImageWrapper {
             // If the value is 0 then the new value will always be 1.
             // If the value is 255 then the new value will always be 254.
             // Otherwise the value will be assigned to be ±1.
+            if !rng.bool() {
+                continue;
+            }
+
             *b = match *b {
                 0 => 1,
                 1..=254 => {
-                    // We do not need to calculate this if the value is either
-                    // 0 or 255. This will slightly improve performance.
-                    if rand::rng().random_bool(0.5) {
+                    if rng.bool() {
                         *b + 1
                     } else {
                         *b - 1
