@@ -15,7 +15,6 @@ use std::fs::File;
 /// * `p_cost` - The parallel cost (in threads) to be applied to the Argon2 hashing function.
 /// * `t_cost` - The time cost (in iterations) to be applied to the Argon2 hashing function.
 /// * `version` - The version of the Argon2 hashing function to be used.
-///
 #[inline]
 pub fn argon2_string(
     key_bytes: &[u8],
@@ -52,7 +51,6 @@ pub fn argon2_string(
 /// * `p_cost` - The parallel cost (in threads) to be applied to the Argon2 hashing function.
 /// * `t_cost` - The time cost (in iterations) to be applied to the Argon2 hashing function.
 /// * `version` - The version of the Argon2 hashing function to be used.
-///
 #[inline]
 pub fn argon2_string_v3(
     key_bytes: &[u8],
@@ -84,7 +82,6 @@ pub fn argon2_string_v3(
 /// # Arguments
 ///
 /// * `slice` - The u8 slice to be hashed.
-///
 #[inline]
 pub fn crc32_slice(slice: &[u8]) -> u32 {
     let mut hasher = crc32fast::Hasher::new();
@@ -97,7 +94,6 @@ pub fn crc32_slice(slice: &[u8]) -> u32 {
 /// # Arguments
 ///
 /// * `path` - The path to the file.
-///
 #[inline]
 pub fn sha3_512_file(path: &str) -> Result<[u8; 64]> {
     let Ok(file) = File::open(path) else {
@@ -127,7 +123,6 @@ pub fn sha3_512_file(path: &str) -> Result<[u8; 64]> {
 /// # Arguments
 ///
 /// * `str` - The string slice to be hashed.
-///
 #[cfg(test)]
 #[inline]
 pub fn sha3_512_string(str: &str) -> [u8; 64] {
@@ -141,7 +136,6 @@ pub fn sha3_512_string(str: &str) -> [u8; 64] {
 /// # Arguments
 ///
 /// * `bytes` - The byte slice to be hashed.
-///
 #[inline]
 pub fn sha3_512_bytes(bytes: &[u8]) -> [u8; 64] {
     let mut hasher = Sha3_512::new();

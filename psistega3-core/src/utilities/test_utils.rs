@@ -24,7 +24,6 @@ impl TestUtils {
     /// # Arguments
     ///
     /// * `path` - The path to the file to be cleared.
-    ///
     fn add_auto_clear_file(&mut self, path: &str) {
         self.auto_clear_files.push(path.to_string());
     }
@@ -38,7 +37,6 @@ impl TestUtils {
     /// * `auto_clear` - Whether this file should be automatically cleared after the test has finished.
     ///
     /// `Note:` This path is normalized to avoid creating any issues with relative paths.
-    ///
     pub fn copy_in_file_to_random_out(
         &mut self,
         file: &str,
@@ -59,7 +57,6 @@ impl TestUtils {
     /// # Arguments
     ///
     /// * `len` - The length of the final string.
-    ///
     pub fn generate_ascii_string(len: usize) -> String {
         let mut str = String::new();
 
@@ -88,7 +85,6 @@ impl TestUtils {
     /// * `auto_clear` - Whether this file should be automatically cleared after the test has finished.
     ///
     /// `Note:` This path is normalized to avoid creating any issues with relative paths.
-    ///
     pub fn get_out_file(&mut self, ext: &str, auto_clear: bool) -> String {
         let random: u128 = rand::rng().random();
 
@@ -113,7 +109,6 @@ impl TestUtils {
     /// * `file` - The name of the test file, including the extension.
     ///
     /// `Note:` This path is normalized to avoid creating any issues with relative paths.
-    ///
     pub fn get_in_file(&self, file: &str) -> String {
         let mut path = self.test_base_path.clone();
         path.push(file);
@@ -131,7 +126,6 @@ impl TestUtils {
     /// * `file` - The name of the test file, including the extension.
     ///
     /// `Note:` This path is normalized to avoid creating any issues with relative paths.
-    ///
     pub fn get_in_file_no_verify(&self, file: &str) -> String {
         let mut path = self.test_base_path.clone();
         path.push(file);
@@ -145,7 +139,6 @@ impl TestUtils {
     /// # Arguments
     ///
     /// * `sub_paths` - A slice of string slices representing the path to the tests.
-    ///
     fn test_base_path(sub_paths: &[&str]) -> PathBuf {
         let mut path = TestUtils::get_current_dir();
 
