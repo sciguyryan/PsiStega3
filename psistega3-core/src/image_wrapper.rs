@@ -33,7 +33,6 @@ impl ImageWrapper {
     /// * `count` - The number of subcells of data to be returned.
     ///
     /// `Note:` A subcell is the space required to store a nibble of data.
-    ///
     #[inline(always)]
     pub fn get_subcells_from_index(&self, start_index: usize, count: usize) -> &[u8] {
         let start = start_index * 4;
@@ -49,7 +48,6 @@ impl ImageWrapper {
     /// * `count` - The number of subcells of data to be returned.
     ///
     /// `Note:` A subcell is the space required to store a nibble of data.
-    ///
     #[inline(always)]
     pub fn get_subcells_from_index_mut(&mut self, start_index: usize, count: usize) -> &mut [u8] {
         let start = start_index * 4;
@@ -63,38 +61,6 @@ impl ImageWrapper {
         self.format
     }
 
-    /// Get a reference slice for a specified subcell of data, starting from a given start index.
-    ///
-    /// # Arguments
-    ///
-    /// * `start_index` - The starting index of the subcell to be returned.
-    ///
-    /// `Note:` A subcell is space required to store a nibble of data.
-    ///
-    #[allow(dead_code)]
-    #[inline(always)]
-    pub fn get_subcell(&self, start_index: usize) -> &[u8] {
-        let start = start_index * 4;
-        let end = start + 4;
-        unsafe { self.image_bytes.get_unchecked(start..end) }
-    }
-
-    /// Get a mutable reference slice for a specified subcell of data, starting from a given start index.
-    ///
-    /// # Arguments
-    ///
-    /// * `start_index` - The starting index of the subcell to be returned.
-    ///
-    /// `Note:` A subcell is space required to store a nibble of data.
-    ///
-    #[allow(dead_code)]
-    #[inline(always)]
-    pub fn get_subcell_mut(&mut self, start_index: usize) -> &mut [u8] {
-        let start = start_index * 4;
-        let end = start + 4;
-        unsafe { self.image_bytes.get_unchecked_mut(start..end) }
-    }
-
     /// Calculate the total number of channels available in the image.
     #[inline(always)]
     pub fn get_total_channels(&self) -> u64 {
@@ -106,7 +72,6 @@ impl ImageWrapper {
     /// # Arguments
     ///
     /// * `path` - The path to the image file.
-    ///
     pub fn load_from_file(path: &str, read_only: bool) -> Result<ImageWrapper> {
         use crate::utilities::file_utils;
         use image::{DynamicImage::*, GenericImageView};
@@ -160,7 +125,6 @@ impl ImageWrapper {
     /// # Arguments
     ///
     /// * `path` - The path to which the file should be saved.
-    ///
     pub fn save(&self, path: &str) -> image::ImageResult<()> {
         assert!(!self.read_only, "attempted to write to a read-only file");
 
@@ -169,7 +133,6 @@ impl ImageWrapper {
     }
 
     /// Scramble the data within the image file.
-    ///
     pub fn scramble(&mut self) {
         let mut rng = fastrand::Rng::with_seed(misc_utils::secure_random_seed());
 
