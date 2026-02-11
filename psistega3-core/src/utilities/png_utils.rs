@@ -24,7 +24,7 @@ const IDAT: [u8; 4] = [0x49, 0x44, 0x41, 0x54];
 /// * `path` - The path to the file.
 /// * `chunk_type` - The type of chunk to find.
 ///
-pub(crate) fn find_chunk_start(path: &str, chunk_type: PngChunkType) -> Option<usize> {
+pub fn find_chunk_start(path: &str, chunk_type: PngChunkType) -> Option<usize> {
     let Ok(file) = File::open(path) else {
         return None;
     };
@@ -60,7 +60,7 @@ pub(crate) fn find_chunk_start(path: &str, chunk_type: PngChunkType) -> Option<u
 /// `Note:` as PsiStega3 only outputs images with a 32-bit colour depth,
 /// this function will assert if there are not exactly 6 bytes provided as data.
 ///
-pub(crate) fn generate_bkgd_chunk(data: &[u8]) -> Vec<u8> {
+pub fn generate_bkgd_chunk(data: &[u8]) -> Vec<u8> {
     assert_eq!(
         data.len(),
         6,
@@ -116,7 +116,7 @@ pub fn get_chunk_data(data: &[u8]) -> Option<&[u8]> {
 ///
 /// * `data` - The contents of the PNG chunk.
 ///
-pub(crate) fn get_chunk_length(data: &[u8]) -> Option<u32> {
+pub fn get_chunk_length(data: &[u8]) -> Option<u32> {
     if data.len() < 4 {
         return None;
     }
@@ -219,7 +219,7 @@ pub fn read_chunk_raw(path: &str, chunk_type: PngChunkType) -> Option<Vec<u8>> {
 ///
 /// * `path` - The path to the file.
 ///
-pub(crate) fn remove_bkgd_chunk(path: &str) -> bool {
+pub fn remove_bkgd_chunk(path: &str) -> bool {
     // Do we have a valid bKGD chunk to remove?
     let Some(chunk) = read_chunk_raw(path, PngChunkType::Bkgd) else {
         return true;

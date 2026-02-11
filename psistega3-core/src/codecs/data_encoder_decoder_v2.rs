@@ -23,13 +23,6 @@ impl DataDecoderV2 {
         }
     }
 
-    #[allow(dead_code)]
-    pub fn clear(&mut self) {
-        self.xor_bytes.clear();
-        self.bytes.clear();
-        self.read_idx = 0;
-    }
-
     /// Iterates through each XOR'ed byte and XOR pair, adds the value produced
     /// by applying the XOR operation on them to the internal list.
     pub fn decode(&mut self) {
@@ -108,7 +101,7 @@ impl DataDecoderV2 {
     }
 
     /// Add each byte from a slice of bytes into the XOR byte list.
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub fn push_u8_slice(&mut self, values: &[u8]) {
         for &v in values {
             self.push_u8(v);
