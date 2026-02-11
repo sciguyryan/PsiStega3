@@ -8,14 +8,14 @@ use image::{ColorType, ImageFormat};
 #[derive(Clone)]
 pub struct ImageWrapper {
     image_bytes: Vec<u8>,
-    /// A boolean indicating whether modifications to the image should be permitted.
-    read_only: bool,
     /// The format of the image.
     format: ImageFormat,
     /// The dimensions of the original image.
     dimensions: (u32, u32),
     /// The underlying pixel colour type of the image.
     colour_type: ColorType,
+    // A boolean indicating whether modifications to the image should be permitted.
+    read_only: bool,
 }
 
 impl ImageWrapper {
@@ -103,10 +103,10 @@ impl ImageWrapper {
 
         let mut w = ImageWrapper {
             image_bytes: image.into_bytes(),
-            read_only,
             format: ImageFormat::Png,
             dimensions,
             colour_type,
+            read_only,
         };
 
         // If we can't identify the image format then we cannot

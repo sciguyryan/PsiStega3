@@ -9,7 +9,7 @@ use crate::{
 
 use aes_gcm::{aead::Aead, Aes256Gcm, Key, KeyInit, Nonce};
 use rand::prelude::*;
-use rand_xoshiro::Xoshiro512PlusPlus;
+use rand_xoshiro::{Seed512, Xoshiro512PlusPlus};
 use std::convert::TryInto;
 use zeroize::Zeroizing;
 
@@ -107,21 +107,16 @@ impl StegaV3 {
         //   as they will have the same value at this point.
         let total_cells = StegaV3::get_total_cells(img);
 
-        // We DO NOT realistically need a cryptographically secure RNG here,
-        //   so we can use a faster RNG for shuffling the cells.
-        // The seed is generated from the key bytes, and we
-        //   make use of mixing to ensure that all bytes influence the final seed.
-        let seed: u64 = key.chunks_exact(8).fold(0, |acc, chunk| {
-            acc ^ u64::from_le_bytes(chunk.try_into().unwrap())
-        });
-        let mut rng = fastrand::Rng::with_seed(seed);
+        // We can use the entire key space by making use of it directly as the seed.
+        let key_array: [u8; 64] = key.try_into().unwrap();
+        let mut rng = Xoshiro512PlusPlus::from_seed(Seed512(key_array));
 
         // Pre-allocate vector and map for performance.
         self.data_cell_vec = Vec::with_capacity(total_cells);
         self.data_cell_vec.extend(0..total_cells);
 
         // Randomise the order of the cell IDs.
-        rng.shuffle(&mut self.data_cell_vec);
+        self.data_cell_vec.shuffle(&mut rng);
     }
 
     #[inline(always)]
@@ -247,9 +242,7 @@ impl StegaV3 {
         */
         let plaintext_bytes = match cipher.decrypt(nonce, ciphertext_bytes.as_ref()) {
             Ok(v) => v,
-            Err(_) => {
-                return Err(Error::DecryptionFailed);
-            }
+            Err(_) => return Err(Error::DecryptionFailed),
         };
 
         Ok(plaintext_bytes)
@@ -535,7 +528,6 @@ impl StegaV3 {
     /// * `img` - A mutable reference to the [`ImageWrapper`] in which the data should be encoded.
     /// * `data` - The byte value to be written to the image.
     /// * `data_index` - The index of the data byte to be written.
-    ///
     #[inline]
     fn write_u8_by_data_index(&mut self, img: &mut ImageWrapper, data: &u8, data_index: usize) {
         // There are four channels per pixel, so this corresponds to two pixels
@@ -597,10 +589,8 @@ impl Codec for StegaV3 {
         encoded_img_path: &str,
         output_file_path: &str,
     ) -> Result<()> {
-        // First, we need to extract the information from the target image.
         let bytes = self.decode_internal(original_img_path, key, encoded_img_path)?;
 
-        // Write the raw bytes directly to the output file.
         if self.output_files {
             file_utils::write_u8_slice_to_file(output_file_path, &bytes)
         } else {
@@ -704,7 +694,6 @@ mod tests_encode_decode_v3 {
             which prevented the decoding of any files created prior to that change.
           This will ensure backwards compatibility is maintained within a version.
         */
-
         let tu = TestUtils::new(&BASE);
 
         let input_path = tu.get_in_file("text-file.txt");

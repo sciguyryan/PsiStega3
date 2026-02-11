@@ -1,5 +1,5 @@
 use rand::SeedableRng;
-use rand_xoshiro::Xoshiro512PlusPlus;
+use rand_xoshiro::{Seed512, Xoshiro512PlusPlus};
 
 /// Precomputed u8 bit masks.
 pub const BIT_MASKS: [u8; 8] = [0x1, 0x2, 0x4, 0x8, 0x10, 0x20, 0x40, 0x80];
@@ -77,5 +77,5 @@ pub fn secure_random_seed() -> u64 {
 /// Create a securely seeded Xoshiro512PlusPlus PRNG.
 #[inline]
 pub fn secure_seeded_xoroshiro512() -> Xoshiro512PlusPlus {
-    Xoshiro512PlusPlus::seed_from_u64(secure_random_seed())
+    Xoshiro512PlusPlus::from_seed(Seed512(secure_random_bytes()))
 }
