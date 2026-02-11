@@ -87,7 +87,6 @@ impl StegaV2 {
     ///
     /// * `key` - The key bytes that should be used to seed the random number generator.
     /// * `img` - A reference to the [`ImageWrapper`] that holds the image.
-    ///
     fn build_data_to_cell_index_map(&mut self, img: &ImageWrapper, key: &[u8]) {
         /*
           When we can't use the Argon2 hash for the positional RNG
@@ -116,7 +115,6 @@ impl StegaV2 {
     /// Clear the lock on a file. Only used when use_file_locker is enabled.
     ///
     /// * `hash` - The hash of the file to be unlocked.
-    ///
     fn clear_file_lock(&mut self, hash: &Vec<u8>) {
         if !self.is_file_locker_enabled() {
             return;
@@ -132,7 +130,6 @@ impl StegaV2 {
     /// * `original_img_path` - The path to the reference image.
     /// * `key` - The key to be used when decrypting the information.
     /// * `encoded_img_path` - The path to the modified image.
-    ///
     fn decode_internal(
         &mut self,
         original_img_path: &str,
@@ -318,7 +315,6 @@ impl StegaV2 {
     /// * `key` - The key to be used when encrypting the information.
     /// * `data` - The data to be encrypted and encoded within the reference image.
     /// * `encoded_img_path` - The path that will be used to store the encoded image.
-    ///
     fn encode_internal(
         &mut self,
         original_img_path: &str,
@@ -444,7 +440,6 @@ impl StegaV2 {
     ///
     /// `Note:` this method will panic if the data cell is not present in the map.
     /// In practice this should never occur.
-    ///
     #[inline]
     fn get_data_cell_index(&self, data_index: &usize) -> usize {
         self.data_cell_vec[*data_index]
@@ -455,7 +450,6 @@ impl StegaV2 {
     /// # Arguments
     ///
     /// * `img` - A reference to the [`ImageWrapper`] that holds the image.
-    ///
     #[inline]
     fn get_total_cells(img: &ImageWrapper) -> usize {
         // 1 byte is 8 bits in length.
@@ -469,7 +463,6 @@ impl StegaV2 {
     ///
     /// * `original_path` - The path to the original image file.
     /// * `key` - The plaintext key.
-    ///
     #[inline]
     pub fn generate_composite_key(original_path: &str, key: String) -> Result<Vec<u8>> {
         /*
@@ -497,7 +490,6 @@ impl StegaV2 {
     /// - Only bytes 1, 3, 5 may store flags or metadata.
     /// - Bits in the safe bytes that are currently unused are set to random values
     ///   for entropy/obfuscation, but this is optional as those values aren't read.
-    ///
     fn generate_bkgd_chunk_data(&self) -> [u8; 6] {
         let mut rng = rand::rng();
         let mut data = [0u8; 6];
@@ -531,21 +523,18 @@ impl StegaV2 {
     }
 
     /// Is the file locker enabled for this file?
-    ///
     #[inline]
     fn is_file_locker_enabled(&self) -> bool {
         misc_utils::is_bit_set(&self.flags, 0)
     }
 
     /// Is the file locker system required for this task?
-    ///
     #[inline]
     fn is_locker_needed(&self) -> bool {
         self.is_file_locker_enabled() || self.is_read_once_enabled()
     }
 
     /// Is the read-once file locker enabled for this file?
-    ///
     #[inline]
     fn is_read_once_enabled(&self) -> bool {
         misc_utils::is_bit_set(&self.flags, 1)
@@ -563,7 +552,6 @@ impl StegaV2 {
     /// A [`Result`] containing a [`ImageWrapper`] if the image was successfully loaded and if the image is suitable for steganography.
     ///
     /// Otherwise an error will be returned.
-    ///
     fn load_image(file_path: &str, read_only: bool) -> Result<ImageWrapper> {
         let img = ImageWrapper::load_from_file(file_path, read_only)?;
 
@@ -578,7 +566,6 @@ impl StegaV2 {
     /// # Arguments
     ///
     /// * `file_path` - The path to the image file.
-    ///
     fn modify_png_file(&self, file_path: &str) -> Result<()> {
         // Generate the bKGD chunk containing our flags.
         let chunk = self.generate_bkgd_chunk_data();
@@ -591,7 +578,6 @@ impl StegaV2 {
     /// Process the bKGD chunk of a PNG file, and apply any flags that may be present.
     ///
     /// * `path` - The path to the PNG file.
-    ///
     pub fn process_bkgd_chunk(&mut self, path: &str) -> bool {
         let Some(chunk) = png_utils::read_chunk_raw(path, PngChunkType::Bkgd) else {
             return false;
@@ -628,7 +614,6 @@ impl StegaV2 {
     /// * `cell_start` - The index from which the encoded data should be read.
     ///
     /// `Note:` this method will read 8 channels worth of data, starting at the specified index.
-    ///
     #[inline]
     fn read_u8(&self, ref_img: &ImageWrapper, enc_img: &ImageWrapper, cell_start: usize) -> u8 {
         // Extract the bytes representing the pixel channels from the images.
@@ -648,7 +633,6 @@ impl StegaV2 {
     /// * `data_index` - The index of the data byte to be read.
     ///
     /// `Note:` this method will read 8 channels worth of data, starting at the specified index.
-    ///
     #[inline]
     fn read_u8_by_index(
         &self,
@@ -670,7 +654,6 @@ impl StegaV2 {
     ///
     /// * `index` - The index of the flag.
     /// * `state` - The intended state of the flag.
-    ///
     #[inline]
     fn set_feature_flag_state(&mut self, index: usize, state: bool) {
         misc_utils::set_bit_state(&mut self.flags, index, state);
@@ -682,7 +665,6 @@ impl StegaV2 {
     ///
     /// * `path` - The path to the image file.
     /// * `hash` - The hash of the image file.
-    ///
     fn update_file_lock(&mut self, path: &str, hash: &Vec<u8>) {
         if !self.is_locker_needed() {
             return;
@@ -697,7 +679,6 @@ impl StegaV2 {
     /// # Arguments
     ///
     /// * `img` - A reference to the [`ImageWrapper`] that holds the image.
-    ///
     fn validate_image(img: &ImageWrapper) -> Result<()> {
         // We only support PNG files.
         if img.get_image_format() != image::ImageFormat::Png {
@@ -720,7 +701,6 @@ impl StegaV2 {
     /// * `img` - A mutable reference to the [`ImageWrapper`] in which the data should be encoded.
     /// * `data` - The byte value to be encoded.
     /// * `cell_start` - The index of the first pixel of the cell into which the data will be encoded.
-    ///
     #[inline]
     fn write_u8(&mut self, img: &mut ImageWrapper, data: &u8, cell_start: usize) {
         let bytes = img.get_subcells_from_index_mut(cell_start, 2);
@@ -766,7 +746,6 @@ impl StegaV2 {
     /// * `img` - A mutable reference to the [`ImageWrapper`] in which the data should be encoded.
     /// * `data` - The byte value to be written to the image.
     /// * `data_index` - The index of the data byte to be written.
-    ///
     #[inline]
     fn write_u8_by_data_index(&mut self, img: &mut ImageWrapper, data: &u8, data_index: usize) {
         let start_index = self.get_data_cell_index(&data_index) * 2;
@@ -826,10 +805,8 @@ impl Codec for StegaV2 {
         encoded_img_path: &str,
         output_file_path: &str,
     ) -> Result<()> {
-        // First, we need to extract the information from the target image.
         let bytes = self.decode_internal(original_img_path, key, encoded_img_path)?;
 
-        // Write the raw bytes directly to the output file.
         if self.output_files {
             file_utils::write_u8_slice_to_file(output_file_path, &bytes)
         } else {

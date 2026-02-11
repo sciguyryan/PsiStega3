@@ -10,7 +10,6 @@ pub const BIT_MASKS: [u8; 8] = [0x1, 0x2, 0x4, 0x8, 0x10, 0x20, 0x40, 0x80];
 ///
 /// * `value` - The value against which the bit should be checked.
 /// * `index` - The bit index to be modified.
-///
 #[inline]
 pub fn is_bit_set(value: &u8, index: usize) -> bool {
     unsafe { (value & BIT_MASKS.get_unchecked(index)) != 0 }
@@ -22,7 +21,6 @@ pub fn is_bit_set(value: &u8, index: usize) -> bool {
 ///
 /// * `haystack` - The u8 slice within which the search should be performed.
 /// * `needle` - The u8 slice to search for.
-///
 #[inline]
 pub fn find_subsequence(haystack: &[u8], needle: &[u8]) -> Option<usize> {
     haystack
@@ -37,7 +35,6 @@ pub fn find_subsequence(haystack: &[u8], needle: &[u8]) -> Option<usize> {
 /// * `value` - The u8 value to be modified.
 /// * `index` - The bit index to be modified.
 /// * `state` - The final state of the bit.
-///
 #[inline]
 pub fn set_bit_state(value: &mut u8, index: usize, state: bool) {
     unsafe {
@@ -51,7 +48,6 @@ pub fn set_bit_state(value: &mut u8, index: usize, state: bool) {
 /// # Arguments
 ///
 /// * `bytes` - The slice of u8 values to be converted.
-///
 #[inline]
 pub fn u8_slice_to_u64(bytes: &[u8]) -> u64 {
     assert!(
@@ -71,6 +67,7 @@ pub fn secure_random_bytes<const N: usize>() -> [u8; N] {
     arr
 }
 
+/// Generate a 64-bit seed for a PRNG.
 #[inline]
 pub fn secure_random_seed() -> u64 {
     let buff: [u8; 8] = secure_random_bytes();

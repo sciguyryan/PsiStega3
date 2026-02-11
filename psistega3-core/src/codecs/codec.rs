@@ -9,7 +9,6 @@ pub trait Codec {
     /// * `key` - The key to be used when encrypting the information.
     /// * `plaintext` - The data to be encrypted and encoded within the reference image.
     /// * `encoded_img_path` - The path that will be used to store the encoded image.
-    ///
     fn encode(
         &mut self,
         original_img_path: &str,
@@ -26,7 +25,6 @@ pub trait Codec {
     /// * `key` - The key to be used when encrypting the information.
     /// * `input_file_path` - The path to the file to be encoded image.
     /// * `encoded_path` - The path that will be used to store the encoded image.
-    ///
     fn encode_file(
         &mut self,
         original_img_path: &str,
@@ -42,7 +40,6 @@ pub trait Codec {
     /// * `original_img_path` - The path to the reference image.
     /// * `key` - The key to be used when decrypting the information.
     /// * `encoded_img_path` - The path to the modified image.
-    ///
     fn decode(
         &mut self,
         original_img_path: &str,
@@ -56,7 +53,6 @@ pub trait Codec {
     /// * `key` - The key to be used when decrypting the information.
     /// * `encoded_img_path` - The path to the modified image.
     /// * `output_file_path` - The path to the file to be encoded image.
-    ///
     fn decode_file(
         &mut self,
         original_img_path: &str,
@@ -72,7 +68,6 @@ pub trait Codec {
     /// * `name` - A string containing the name of the application.
     ///
     /// `Note:` this is intended for custom applications that make use of the PsiStega3 crate.
-    ///
     fn set_application_name(&mut self, name: String);
 
     /// Enable or disable a specific configuration flags.
@@ -81,7 +76,6 @@ pub trait Codec {
     ///
     /// * `config` - The [`ConfigFlags`] option to be configured.
     /// * `state` - A boolean indicating whether the config option should be enabled or disabled.
-    ///
     fn set_flag_state(&mut self, config: ConfigFlags, state: bool);
 
     /// Enable or disable a specific configuration parameters.
@@ -89,7 +83,6 @@ pub trait Codec {
     /// # Arguments
     ///
     /// * `param` - The [`ConfigParams`] option to be configured.
-    ///
     fn set_parameter(&mut self, param: ConfigParams);
 }
 

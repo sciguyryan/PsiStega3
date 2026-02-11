@@ -23,7 +23,6 @@ const IDAT: [u8; 4] = [0x49, 0x44, 0x41, 0x54];
 ///
 /// * `path` - The path to the file.
 /// * `chunk_type` - The type of chunk to find.
-///
 pub fn find_chunk_start(path: &str, chunk_type: PngChunkType) -> Option<usize> {
     let Ok(file) = File::open(path) else {
         return None;
@@ -59,7 +58,6 @@ pub fn find_chunk_start(path: &str, chunk_type: PngChunkType) -> Option<usize> {
 ///
 /// `Note:` as PsiStega3 only outputs images with a 32-bit colour depth,
 /// this function will assert if there are not exactly 6 bytes provided as data.
-///
 pub fn generate_bkgd_chunk(data: &[u8]) -> Vec<u8> {
     assert_eq!(
         data.len(),
@@ -95,7 +93,6 @@ pub fn generate_bkgd_chunk(data: &[u8]) -> Vec<u8> {
 /// # Arguments
 ///
 /// * `data` - The contents of the PNG chunk.
-///
 pub fn get_chunk_data(data: &[u8]) -> Option<&[u8]> {
     let data_len = get_chunk_length(data)?;
 
@@ -115,7 +112,6 @@ pub fn get_chunk_data(data: &[u8]) -> Option<&[u8]> {
 /// # Arguments
 ///
 /// * `data` - The contents of the PNG chunk.
-///
 pub fn get_chunk_length(data: &[u8]) -> Option<u32> {
     if data.len() < 4 {
         return None;
@@ -134,7 +130,6 @@ pub fn get_chunk_length(data: &[u8]) -> Option<u32> {
 ///
 /// * `path` - The path to the file.
 /// * `data` - The contents of the chunk.
-///
 pub fn insert_or_replace_bkgd_chunk(path: &str, data: &[u8]) -> Result<()> {
     // bKGD chunk.
     // See: http://www.libpng.org/pub/png/spec/1.2/PNG-Structure.html
@@ -167,7 +162,6 @@ pub fn insert_or_replace_bkgd_chunk(path: &str, data: &[u8]) -> Result<()> {
 /// * `chunk_type` - The chunk type of be read.
 ///
 /// `Note:` this function is only designed to read the **first** instance of the chunk present within the file.
-///
 pub fn read_chunk_raw(path: &str, chunk_type: PngChunkType) -> Option<Vec<u8>> {
     // If we have a chunk present then the index of
     // the header will be returned.
@@ -218,7 +212,6 @@ pub fn read_chunk_raw(path: &str, chunk_type: PngChunkType) -> Option<Vec<u8>> {
 /// # Arguments
 ///
 /// * `path` - The path to the file.
-///
 pub fn remove_bkgd_chunk(path: &str) -> bool {
     // Do we have a valid bKGD chunk to remove?
     let Some(chunk) = read_chunk_raw(path, PngChunkType::Bkgd) else {
