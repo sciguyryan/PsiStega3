@@ -35,10 +35,16 @@ const CODED_VERSION: u8 = 0x2;
 
 /// The struct that holds the v2 steganography algorithm.
 pub struct StegaV2 {
-    /// The application name.
-    application_name: String,
     /// The data index to cell ID map.
     data_cell_vec: Vec<usize>,
+    /// The application name.
+    application_name: String,
+    // The RNG for the cell value adjustments.
+    position_rng: Xoshiro512PlusPlus,
+    /// The file locker instance for this codec.
+    locker: Locker,
+    /// The logger instance for this codec.
+    logger: Logger,
     /// If the noise layer should be applied to the output image.
     noise_layer: bool,
     /// If the resulting image file should be saved when encoding.
@@ -50,12 +56,6 @@ pub struct StegaV2 {
     /// Bit 1 indicates that the file is read-once.
     /// Bits 2 to 7 are reserved for future use.
     flags: u8,
-    /// The file locker instance for this codec.
-    locker: Locker,
-    /// The logger instance for this codec.
-    logger: Logger,
-    // The RNG for the cell value adjustments.
-    position_rng: Xoshiro512PlusPlus,
 }
 
 impl StegaV2 {
@@ -69,15 +69,15 @@ impl StegaV2 {
             Locker::new(application_name, "").expect("could not initialize the file locker");
 
         Self {
-            application_name: application_name.to_string(),
             data_cell_vec: Vec::new(),
+            application_name: application_name.to_string(),
+            position_rng: misc_utils::secure_seeded_xoroshiro512(),
+            locker,
+            logger: Logger::new(false),
             noise_layer: true,
             output_files: true,
             skip_version_checks: false,
             flags: 0,
-            locker,
-            logger: Logger::new(false),
-            position_rng: misc_utils::secure_seeded_xoroshiro512(),
         }
     }
 
@@ -914,15 +914,15 @@ mod tests_encode_decode_v2 {
 
         // Return a new StegaV2 instance.
         StegaV2 {
-            application_name: app_name.to_string(),
             data_cell_vec: Vec::new(),
+            application_name: app_name.to_string(),
+            position_rng: misc_utils::secure_seeded_xoroshiro512(),
+            locker,
+            logger: Logger::new(false),
             noise_layer: false, // We do not need this here.
             output_files: true,
             skip_version_checks: false,
             flags: 0,
-            locker,
-            logger: Logger::new(false),
-            position_rng: misc_utils::secure_seeded_xoroshiro512(),
         }
     }
 

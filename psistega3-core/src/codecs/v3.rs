@@ -62,33 +62,33 @@ const CIPHERTEXT_CELL_COUNT_SIZE: usize = 4;
 pub struct StegaV3 {
     /// The data index to cell ID map.
     data_cell_vec: Vec<usize>,
-    /// If the noise layer should be applied to the output image.
-    noise_layer: bool,
-    /// If the resulting image file should be saved when encoding.
-    output_files: bool,
-    /// The logger instance for this codec.
-    logger: Logger,
     // The RNG for the cell value adjustments.
     offset_bit_rng: Xoshiro512PlusPlus,
+    /// The logger instance for this codec.
+    logger: Logger,
     // The Argon2 time cost.
     t_cost: u32,
     // The Argon2 parallel cost.
     p_cost: u32,
     // The Argon2 memory cost.
     m_cost: u32,
+    // If the noise layer should be applied to the output image.
+    noise_layer: bool,
+    /// If the resulting image file should be saved when encoding.
+    output_files: bool,
 }
 
 impl StegaV3 {
     pub fn new() -> Self {
         Self {
             data_cell_vec: Vec::new(),
-            noise_layer: true,
-            output_files: true,
             logger: Logger::new(false),
             offset_bit_rng: misc_utils::secure_seeded_xoroshiro512(),
             t_cost: DEFAULT_T_COST,
             p_cost: DEFAULT_P_COST,
             m_cost: DEFAULT_M_COST,
+            noise_layer: true,
+            output_files: true,
         }
     }
 
@@ -686,13 +686,13 @@ mod tests_encode_decode_v3 {
         // Return a new StegaV3 instance.
         StegaV3 {
             data_cell_vec: Vec::new(),
-            noise_layer: false, // We do not need this here.
-            output_files: true,
-            logger: Logger::new(false),
             offset_bit_rng: misc_utils::secure_seeded_xoroshiro512(),
+            logger: Logger::new(false),
             t_cost: super::DEFAULT_T_COST,
             p_cost: super::DEFAULT_P_COST,
             m_cost: super::DEFAULT_M_COST,
+            noise_layer: false, // We do not need this here.
+            output_files: true,
         }
     }
 
