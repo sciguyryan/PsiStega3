@@ -14,16 +14,20 @@ publish = false
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-clap = { version = "4.5.57", features = ["derive"] }
-crossterm = "0.29.0"
+clap = { version = "4.5.58", features = ["derive"] }
+crossterm = { version = "0.29.0", optional = true }
 log = "0.4.29"
 psistega3-core = { path = "../psistega3-core" }
-sha3 = "0.10.8"
+sha3 = { version = "0.10.8", optional = true }
 rpassword = "7.4.0"
 simple_logger = "5.1.0"
 
 [target.'cfg(windows)'.build-dependencies]
 winres = "0.1.12"
+
+[features]
+default = ["secret-fun"]
+secret-fun = ["sha3", "crossterm"]
 
 [[bin]]
 name = "psistega3-cli"

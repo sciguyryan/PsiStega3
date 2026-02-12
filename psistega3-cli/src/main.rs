@@ -2,12 +2,14 @@
 mod error;
 use crate::error::{Error, Result};
 use clap::{Parser, Subcommand, ValueEnum};
+#[cfg(feature = "secret-fun")]
 use crossterm::terminal::size;
 use psistega3_core::codecs::{
     codec::{Codec, ConfigFlags, ConfigParams},
     v2::StegaV2,
     v3::StegaV3,
 };
+#[cfg(feature = "secret-fun")]
 use sha3::{Digest, Sha3_512};
 use simple_logger::SimpleLogger;
 use std::io::stdin;
@@ -15,6 +17,7 @@ use std::io::stdin;
 /// The prompt for confirming a yes/no option.
 const CONFIRM_PROMPT: &str = "Are you sure you wish to enable this feature?";
 
+#[cfg(feature = "secret-fun")]
 /// It's an easter egg... didn't you read the name?
 const EASTER_EGG_ENCODED: [u8; 27] = [
     236, 167, 178, 205, 108, 248, 194, 77, 10, 6, 135, 238, 116, 103, 39, 232, 230, 171, 109, 120,
@@ -187,6 +190,7 @@ enum Commands {
     /// Show example commands
     Examples,
     /// Do you know the secret?
+    #[cfg(feature = "secret-fun")]
     Secret {
         #[arg(value_name = "SECRET")]
         the_secret: String,
@@ -333,6 +337,7 @@ fn main() {
             Ok(())
         }
 
+        #[cfg(feature = "secret-fun")]
         Commands::Secret { the_secret } => {
             check_easter_egg(&the_secret);
             Ok(())
@@ -639,6 +644,7 @@ pub fn show_abort_message(error: Error) {
 }
 
 /// Check for the easter egg passphrase.
+#[cfg(feature = "secret-fun")]
 fn check_easter_egg(text: &str) {
     let mut hasher = Sha3_512::new();
     hasher.update(text.to_lowercase().as_bytes());
@@ -652,6 +658,7 @@ fn check_easter_egg(text: &str) {
 }
 
 /// Encode a message with a stateful rolling hash.
+#[cfg(feature = "secret-fun")]
 #[allow(dead_code)]
 fn encode(msg: &[u8], hash_bytes: &[u8]) -> Vec<u8> {
     let mut state: u8 = 0xAD;
@@ -669,6 +676,7 @@ fn encode(msg: &[u8], hash_bytes: &[u8]) -> Vec<u8> {
 }
 
 /// Decode a message with a stateful rolling hash.
+#[cfg(feature = "secret-fun")]
 fn decode(encoded: &[u8], hash_bytes: &[u8]) -> Vec<u8> {
     let mut state: u8 = 0xAD;
 
@@ -686,6 +694,7 @@ fn decode(encoded: &[u8], hash_bytes: &[u8]) -> Vec<u8> {
 }
 
 /// Print a string in a smooth rainbow gradient centered in the terminal.
+#[cfg(feature = "secret-fun")]
 fn rainbow_centered(text: &str) {
     let (width, _) = size().unwrap_or((80, 0));
     let text_len = text.chars().count() as u16;
@@ -705,7 +714,8 @@ fn rainbow_centered(text: &str) {
     println!("\x1b[0m");
 }
 
-/// Generate a smooth rainbow color from 0.0 to 1.0
+/// Generate a smooth rainbow color from 0.0 to 1.0.
+#[cfg(feature = "secret-fun")]
 fn rainbow_color(pos: f32) -> (u8, u8, u8) {
     let pi = std::f32::consts::PI;
     let two_pi = 2.0 * pi;
