@@ -343,7 +343,7 @@ impl StegaV3 {
         }
 
         // Attempt to save the modified image.
-        if let Err(e) = img.save(encoded_img_path) {
+        if let Err(e) = img.save_lossless(encoded_img_path) {
             Err(Error::ImageSaving(e.to_string()))
         } else {
             Ok(())
@@ -476,8 +476,12 @@ impl StegaV3 {
     ///
     /// * `img` - A reference to the [`ImageWrapper`] that holds the image.
     fn validate_image(img: &ImageWrapper) -> Result<()> {
-        // We only support PNG files.
-        if img.get_image_format() != image::ImageFormat::Png {
+        use image::ImageFormat;
+
+        if !matches!(
+            img.get_image_format(),
+            ImageFormat::Bmp | ImageFormat::Png | ImageFormat::Tiff | ImageFormat::WebP
+        ) {
             return Err(Error::ImageTypeInvalid);
         }
 
@@ -660,6 +664,9 @@ mod tests_encode_decode_v3 {
         utilities::{file_utils, misc_utils, test_utils::*},
     };
 
+    use image::ExtendedColorType;
+    use image::ImageFormat;
+
     use super::StegaV3;
 
     // The generic key used for encoding text.
@@ -668,6 +675,8 @@ mod tests_encode_decode_v3 {
     const TEXT: &str = "3.1415926535";
     /// The sub directory to the test files.
     const BASE: [&str; 1] = ["encoding_decoding_v3"];
+    /// Are we debugging?
+    const DEBUG: bool = false;
 
     /// Create a StegaV3 instance.
     fn create_instance() -> StegaV3 {
@@ -865,7 +874,7 @@ mod tests_encode_decode_v3 {
     }
 
     #[test]
-    fn test_decode_string_invalid_key() {
+    fn test_decode_fixed_string_invalid_key() {
         let tu = TestUtils::new(&BASE);
 
         let ref_path = tu.get_in_file("reference-valid.png");
@@ -881,7 +890,93 @@ mod tests_encode_decode_v3 {
     }
 
     #[test]
-    fn test_decode_string_wrong_ref_image() {
+    fn test_decode_fixed_string_marathon_all_formats() {
+        let formats = [
+            //ImageFormat::Bmp,
+            ImageFormat::Png,
+            //ImageFormat::Tiff
+            //ImageFormat::WebP
+        ];
+
+        let mut stega = create_instance();
+
+        // These parameters have been tweaked to make things run faster, but they don't
+        // otherwise impact the testing at all.
+        // TODO - should I tweak this for the other tests I wonder?
+        stega.set_parameter(ConfigParams::TCost(1));
+        stega.set_parameter(ConfigParams::PCost(1));
+        stega.set_parameter(ConfigParams::MCost(4_000));
+
+        for &format in &formats {
+            for &colour_type in supported_color_types(format) {
+                let colour_name = format!("{colour_type:?}").to_lowercase();
+                let ext = format!("{format:?}").to_lowercase();
+
+                if DEBUG {
+                    eprint!("Running test for colour_name = {colour_name}, format = {ext}...");
+                }
+
+                // Build our test instance and paths.
+                let tu = TestUtils::new(&vec![BASE[0], "formats", &ext]);
+                let ref_path = tu.get_in_file(&format!("test_{colour_name}_ref.{ext}"));
+                let enc_path = tu.get_in_file(&format!("test_{colour_name}_encoded.{ext}"));
+
+                let r = stega
+                    .decode(&ref_path, KEY.to_string(), &enc_path)
+                    .expect("failed to decode string");
+
+                // Stop immediately if we fail as running further tests is pointless.
+                assert_eq!(r, TEXT, "decrypted information does not match input for type {colour_name} and format {ext}");
+
+                if DEBUG {
+                    eprintln!(" PASSED!");
+                }
+            }
+        }
+    }
+
+    fn supported_color_types(format: ImageFormat) -> &'static [ExtendedColorType] {
+        match format {
+            ImageFormat::Bmp => &[
+                ExtendedColorType::L8,
+                ExtendedColorType::L16,
+                ExtendedColorType::Rgb8,
+                ExtendedColorType::Rgb16,
+            ],
+            ImageFormat::Png => &[
+                ExtendedColorType::L8,
+                ExtendedColorType::La8,
+                ExtendedColorType::L16,
+                ExtendedColorType::La16,
+                /*ExtendedColorType::Rgb8,
+                ExtendedColorType::Rgba8,
+                ExtendedColorType::Rgb16,
+                ExtendedColorType::Rgba16,*/
+            ],
+            ImageFormat::Tiff => &[
+                ExtendedColorType::L8,
+                ExtendedColorType::La8,
+                ExtendedColorType::L16,
+                ExtendedColorType::La16,
+                ExtendedColorType::Rgb8,
+                ExtendedColorType::Rgba8,
+                ExtendedColorType::Rgb16,
+                ExtendedColorType::Rgba16,
+                ExtendedColorType::Rgb32F,
+                ExtendedColorType::Rgba32F,
+            ],
+            ImageFormat::WebP => &[
+                ExtendedColorType::L8,
+                ExtendedColorType::La8,
+                ExtendedColorType::Rgb8,
+                ExtendedColorType::Rgba8,
+            ],
+            _ => &[],
+        }
+    }
+
+    #[test]
+    fn test_decode_fixed_string_wrong_ref_image() {
         let tu = TestUtils::new(&BASE);
 
         let ref_path = tu.get_in_file("reference-invalid.png");

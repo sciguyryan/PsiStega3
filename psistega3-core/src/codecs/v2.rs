@@ -425,7 +425,7 @@ impl StegaV2 {
         }
 
         // Attempt to save the modified image.
-        if let Err(e) = img.save(encoded_img_path) {
+        if let Err(e) = img.save_lossless(encoded_img_path) {
             Err(Error::ImageSaving(e.to_string()))
         } else {
             self.modify_png_file(encoded_img_path)
@@ -1249,7 +1249,7 @@ mod tests_encode_decode_v2 {
     }
 
     #[test]
-    fn test_decode_string_invalid_key() {
+    fn test_decode_fixed_string_invalid_key() {
         let tu = TestUtils::new(&BASE);
 
         let ref_path = tu.get_in_file("reference-valid.png");
@@ -1265,7 +1265,7 @@ mod tests_encode_decode_v2 {
     }
 
     #[test]
-    fn test_decode_string_wrong_ref_image() {
+    fn test_decode_fixed_string_wrong_ref_image() {
         let tu = TestUtils::new(&BASE);
 
         let ref_path = tu.get_in_file("reference-invalid.png");

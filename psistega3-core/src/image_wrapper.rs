@@ -1,9 +1,14 @@
+use std::{fs::File, io::BufWriter};
+
 use crate::{
     error::{Error, Result},
     utilities::misc_utils,
 };
 
-use image::{ColorType, ImageFormat};
+use image::{
+    codecs::{png::PngEncoder, tiff::TiffEncoder, webp::WebPEncoder},
+    ExtendedColorType, ImageEncoder, ImageError, ImageFormat,
+};
 
 #[derive(Clone)]
 pub struct ImageWrapper {
@@ -13,7 +18,7 @@ pub struct ImageWrapper {
     /// The dimensions of the original image.
     dimensions: (u32, u32),
     /// The underlying pixel colour type of the image.
-    colour_type: ColorType,
+    colour_type: ExtendedColorType,
     // A boolean indicating whether modifications to the image should be permitted.
     read_only: bool,
 }
@@ -81,55 +86,82 @@ impl ImageWrapper {
             return Err(Error::PathInvalid);
         }
 
+        // If we can't identify the image format then we cannot
+        // go any further here.
+        let format = if let Ok(f) = ImageFormat::from_path(path) {
+            f
+        } else {
+            return Err(Error::ImageTypeInvalid);
+        };
+
         let Ok(image) = image::open(path) else {
             return Err(Error::ImageOpening);
         };
 
         let colour_type = match &image {
-            ImageLuma8(_) => ColorType::L8,
-            ImageLumaA8(_) => ColorType::La8,
-            ImageLumaA16(_) => ColorType::La16,
-            ImageLuma16(_) => ColorType::L16,
-            ImageRgb8(_) => ColorType::Rgb8,
-            ImageRgba8(_) => ColorType::Rgba8,
-            ImageRgb16(_) => ColorType::Rgb16,
-            ImageRgba16(_) => ColorType::Rgba16,
-            ImageRgb32F(_) => ColorType::Rgb32F,
-            ImageRgba32F(_) => ColorType::Rgba32F,
+            ImageLuma8(_) => ExtendedColorType::L8,
+            ImageLumaA8(_) => ExtendedColorType::La8,
+            ImageLumaA16(_) => ExtendedColorType::La16,
+            ImageLuma16(_) => ExtendedColorType::L16,
+            ImageRgb8(_) => ExtendedColorType::Rgb8,
+            ImageRgba8(_) => ExtendedColorType::Rgba8,
+            ImageRgb16(_) => ExtendedColorType::Rgb16,
+            ImageRgba16(_) => ExtendedColorType::Rgba16,
+            ImageRgb32F(_) => ExtendedColorType::Rgb32F,
+            ImageRgba32F(_) => ExtendedColorType::Rgba32F,
             _ => return Err(Error::ImageFormatNotRecognized),
         };
 
         let dimensions = image.dimensions();
+        let image_bytes = image.into_bytes();
 
-        let mut w = ImageWrapper {
-            image_bytes: image.into_bytes(),
-            format: ImageFormat::Png,
+        Ok(ImageWrapper {
+            image_bytes,
+            format,
             dimensions,
             colour_type,
             read_only,
-        };
-
-        // If we can't identify the image format then we cannot
-        // go any further here.
-        if let Ok(f) = ImageFormat::from_path(path) {
-            w.format = f;
-        } else {
-            return Err(Error::ImageTypeInvalid);
-        }
-
-        Ok(w)
+        })
     }
 
-    /// Save the buffer to a file at the specified path.
+    // Save the underlying image data to a file at the specified path.
     ///
     /// # Arguments
     ///
     /// * `path` - The path to which the file should be saved.
-    pub fn save(&self, path: &str) -> image::ImageResult<()> {
+    pub fn save_lossless(&self, path: &str) -> image::ImageResult<()> {
         assert!(!self.read_only, "attempted to write to a read-only file");
 
+        let file = File::create(path)?;
+        let writer = BufWriter::new(file);
+
         let (w, h) = self.dimensions;
-        image::save_buffer_with_format(path, &self.image_bytes, w, h, self.colour_type, self.format)
+        let colour = self.colour_type;
+
+        match &self.format {
+            ImageFormat::Bmp => {
+                let encoder = PngEncoder::new(writer);
+                encoder.write_image(&self.image_bytes, w, h, colour)
+            }
+            ImageFormat::Png => {
+                let encoder = PngEncoder::new(writer);
+                encoder.write_image(&self.image_bytes, w, h, colour)
+            }
+            ImageFormat::Tiff => {
+                let encoder = TiffEncoder::new(writer);
+                encoder.write_image(&self.image_bytes, w, h, colour)
+            }
+            ImageFormat::WebP => {
+                let encoder = WebPEncoder::new_lossless(writer);
+                encoder.write_image(&self.image_bytes, w, h, colour)
+            }
+            _ => Err(ImageError::Unsupported(
+                image::error::UnsupportedError::from_format_and_kind(
+                    self.format.into(),
+                    image::error::UnsupportedErrorKind::Format(self.format.into()),
+                ),
+            )),
+        }
     }
 
     /// Scramble the data within the image file.

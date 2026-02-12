@@ -261,7 +261,7 @@ impl Locker {
 
         // If the file was successfully scrambled then it can be removed from
         // the entry list, otherwise we will need to try again later.
-        let res = img.save(path);
+        let res = img.save_lossless(path);
 
         // Next, we need to remove the bKGD chunk from the PNG file.
         // This will prevent the file from being decoded.
