@@ -480,7 +480,7 @@ impl StegaV3 {
 
         if !matches!(
             img.get_image_format(),
-            ImageFormat::Bmp | ImageFormat::Png | ImageFormat::Tiff | ImageFormat::WebP
+            ImageFormat::Farbfeld | ImageFormat::Png | ImageFormat::Tiff | ImageFormat::WebP
         ) {
             return Err(Error::ImageTypeInvalid);
         }
@@ -676,7 +676,7 @@ mod tests_encode_decode_v3 {
     /// The sub directory to the test files.
     const BASE: [&str; 1] = ["encoding_decoding_v3"];
     /// Are we debugging?
-    const DEBUG: bool = false;
+    const DEBUG: bool = true;
 
     /// Create a StegaV3 instance.
     fn create_instance() -> StegaV3 {
@@ -892,10 +892,10 @@ mod tests_encode_decode_v3 {
     #[test]
     fn test_decode_fixed_string_marathon_all_formats() {
         let formats = [
-            //ImageFormat::Bmp,
+            ImageFormat::Farbfeld,
             ImageFormat::Png,
-            //ImageFormat::Tiff
-            //ImageFormat::WebP
+            ImageFormat::Tiff,
+            ImageFormat::WebP,
         ];
 
         let mut stega = create_instance();
@@ -910,14 +910,18 @@ mod tests_encode_decode_v3 {
         for &format in &formats {
             for &colour_type in supported_color_types(format) {
                 let colour_name = format!("{colour_type:?}").to_lowercase();
-                let ext = format!("{format:?}").to_lowercase();
+                let ext = if format != ImageFormat::Farbfeld {
+                    format!("{format:?}").to_lowercase()
+                } else {
+                    "ff".to_string()
+                };
 
                 if DEBUG {
                     eprint!("Running test for colour_name = {colour_name}, format = {ext}...");
                 }
 
                 // Build our test instance and paths.
-                let tu = TestUtils::new(&vec![BASE[0], "formats", &ext]);
+                let tu = TestUtils::new(&vec![BASE[0], "format_tests", &ext]);
                 let ref_path = tu.get_in_file(&format!("test_{colour_name}_ref.{ext}"));
                 let enc_path = tu.get_in_file(&format!("test_{colour_name}_encoded.{ext}"));
 
@@ -937,27 +941,20 @@ mod tests_encode_decode_v3 {
 
     fn supported_color_types(format: ImageFormat) -> &'static [ExtendedColorType] {
         match format {
-            ImageFormat::Bmp => &[
-                ExtendedColorType::L8,
-                ExtendedColorType::L16,
-                ExtendedColorType::Rgb8,
-                ExtendedColorType::Rgb16,
-            ],
+            ImageFormat::Farbfeld => &[ExtendedColorType::Rgba16],
             ImageFormat::Png => &[
                 ExtendedColorType::L8,
                 ExtendedColorType::La8,
                 ExtendedColorType::L16,
                 ExtendedColorType::La16,
-                /*ExtendedColorType::Rgb8,
+                ExtendedColorType::Rgb8,
                 ExtendedColorType::Rgba8,
                 ExtendedColorType::Rgb16,
-                ExtendedColorType::Rgba16,*/
+                ExtendedColorType::Rgba16,
             ],
             ImageFormat::Tiff => &[
                 ExtendedColorType::L8,
-                ExtendedColorType::La8,
                 ExtendedColorType::L16,
-                ExtendedColorType::La16,
                 ExtendedColorType::Rgb8,
                 ExtendedColorType::Rgba8,
                 ExtendedColorType::Rgb16,

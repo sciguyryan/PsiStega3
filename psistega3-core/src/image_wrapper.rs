@@ -6,7 +6,7 @@ use crate::{
 };
 
 use image::{
-    codecs::{png::PngEncoder, tiff::TiffEncoder, webp::WebPEncoder},
+    codecs::{farbfeld::FarbfeldEncoder, png::PngEncoder, tiff::TiffEncoder, webp::WebPEncoder},
     ExtendedColorType, ImageEncoder, ImageError, ImageFormat,
 };
 
@@ -139,8 +139,8 @@ impl ImageWrapper {
         let colour = self.colour_type;
 
         match &self.format {
-            ImageFormat::Bmp => {
-                let encoder = PngEncoder::new(writer);
+            ImageFormat::Farbfeld => {
+                let encoder = FarbfeldEncoder::new(writer);
                 encoder.write_image(&self.image_bytes, w, h, colour)
             }
             ImageFormat::Png => {
