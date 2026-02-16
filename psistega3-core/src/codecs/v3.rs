@@ -214,9 +214,9 @@ impl StegaV3 {
         let ciphertext_bytes = &data[(SALT_SIZE + NONCE_SIZE)..];
 
         // Now we can compute the Argon2 hash.
-        let key_bytes_full = Zeroizing::new(hashers::argon2_string_v3(
+        let key_bytes_full = Zeroizing::new(hashers::argon2_string(
             &composite_key[..],
-            salt_bytes,
+            &salt_bytes,
             self.m_cost,
             self.p_cost,
             self.t_cost,
@@ -272,9 +272,9 @@ impl StegaV3 {
 
         // Generate a random salt for the Argon2 hashing function.
         let salt_bytes: [u8; SALT_SIZE] = misc_utils::secure_random_bytes();
-        let key_bytes_full = Zeroizing::new(hashers::argon2_string_v3(
+        let key_bytes_full = Zeroizing::new(hashers::argon2_string(
             &composite_key[..],
-            salt_bytes,
+            &salt_bytes,
             self.m_cost,
             self.p_cost,
             self.t_cost,

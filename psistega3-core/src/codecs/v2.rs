@@ -254,9 +254,9 @@ impl StegaV2 {
         let ciphertext_bytes = data.pop_vec(total_ciphertext_cells as usize);
 
         // Now we can compute the Argon2 hash.
-        let key_bytes_full = Zeroizing::new(hashers::argon2_string_v2(
+        let key_bytes_full = Zeroizing::new(hashers::argon2_string(
             &composite_key[..],
-            salt_bytes,
+            &salt_bytes,
             self.m_cost,
             self.p_cost,
             self.t_cost,
@@ -337,9 +337,9 @@ impl StegaV2 {
 
         // Generate a random salt for the Argon2 hashing function.
         let salt_bytes: [u8; 12] = misc_utils::secure_random_bytes();
-        let key_bytes_full = Zeroizing::new(hashers::argon2_string_v2(
+        let key_bytes_full = Zeroizing::new(hashers::argon2_string(
             &composite_key,
-            salt_bytes,
+            &salt_bytes,
             self.m_cost,
             self.p_cost,
             self.t_cost,
