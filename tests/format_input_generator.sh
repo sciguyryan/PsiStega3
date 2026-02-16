@@ -44,6 +44,10 @@ mkdir -p "$BASE_DIR"
 
 # Valid format/colour combos.
 COMBOS=(
+  "bmp:L8:8:0"
+  "bmp:Rgb8:8:0"
+  "bmp:Rgba8:8:1"
+
   "farbfeld:Rgba16:16:1"
 
   "png:L8:8:0"
@@ -85,6 +89,38 @@ for combo in "${COMBOS[@]}"; do
 
   REF_FILE="${DIR}/test_${type}_ref.${EXT}"; REF_FILE="${REF_FILE,,}"
   ENC_FILE="${DIR}/test_${type}_encoded.${EXT}"; ENC_FILE="${ENC_FILE,,}"
+
+  # BMP handled via FFmpeg (NOT ImageMagick), because ImageMagick is too smart and generates them using pallets.
+  # We don't want that.
+  if [ "$fmt" == "bmp" ]; then
+    case "$type" in
+      L8)
+        ffmpeg -f lavfi -i color=black:s=$SIZE -frames:v 1 \
+          -pix_fmt gray "$REF_FILE" -y -loglevel quiet
+        ;;
+      Rgb8)
+        ffmpeg -f lavfi -i color=black:s=$SIZE -frames:v 1 \
+          -pix_fmt bgr24 "$REF_FILE" -y -loglevel quiet
+        ;;
+      Rgba8)
+        ffmpeg -f lavfi -i color=black:s=$SIZE -frames:v 1 \
+          -pix_fmt bgra "$REF_FILE" -y -loglevel quiet
+        ;;
+      *)
+        echo "Skipping unsupported BMP type $type"
+        continue
+        ;;
+    esac
+
+    $CLI_PATH encode "$REF_FILE" "$ENC_FILE" "$INPUT_TEXT" \
+      -p "$KEY" -v $VERSION \
+      --t-cost 1 --p-cost 1 --m-cost 4000 --unattended
+
+    echo "Generated encoded $ENC_FILE"
+    echo "-------------"
+    continue
+  fi
+  # End BMP block.
 
   # Base arguments
   ARGS="-size $SIZE -depth $depth"

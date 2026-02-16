@@ -6,7 +6,10 @@ use crate::{
 };
 
 use image::{
-    codecs::{farbfeld::FarbfeldEncoder, png::PngEncoder, tiff::TiffEncoder, webp::WebPEncoder},
+    codecs::{
+        bmp::BmpEncoder, farbfeld::FarbfeldEncoder, png::PngEncoder, tiff::TiffEncoder,
+        webp::WebPEncoder,
+    },
     ExtendedColorType, ImageEncoder, ImageError, ImageFormat,
 };
 
@@ -133,12 +136,16 @@ impl ImageWrapper {
         assert!(!self.read_only, "attempted to write to a read-only file");
 
         let file = File::create(path)?;
-        let writer = BufWriter::new(file);
+        let mut writer = BufWriter::new(file);
 
         let (w, h) = self.dimensions;
         let colour = self.colour_type;
 
         match &self.format {
+            ImageFormat::Bmp => {
+                let encoder = BmpEncoder::new(&mut writer);
+                encoder.write_image(&self.image_bytes, w, h, colour)
+            }
             ImageFormat::Farbfeld => {
                 let encoder = FarbfeldEncoder::new(writer);
                 encoder.write_image(&self.image_bytes, w, h, colour)

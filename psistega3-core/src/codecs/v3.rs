@@ -480,7 +480,11 @@ impl StegaV3 {
 
         if !matches!(
             img.get_image_format(),
-            ImageFormat::Farbfeld | ImageFormat::Png | ImageFormat::Tiff | ImageFormat::WebP
+            ImageFormat::Bmp
+                | ImageFormat::Farbfeld
+                | ImageFormat::Png
+                | ImageFormat::Tiff
+                | ImageFormat::WebP
         ) {
             return Err(Error::ImageTypeInvalid);
         }
@@ -892,6 +896,7 @@ mod tests_encode_decode_v3 {
     #[test]
     fn test_decode_fixed_string_marathon_all_formats() {
         let formats = [
+            ImageFormat::Bmp,
             ImageFormat::Farbfeld,
             ImageFormat::Png,
             ImageFormat::Tiff,

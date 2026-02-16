@@ -1,6 +1,6 @@
 [package]
 name = "psistega3-core"
-version = "0.3.1"
+version = "0.3.2"
 authors = ["Ryan Jones-Ward <sciguyryan@gmail.com>"]
 edition = "2021"
 description = "A core crate for PsiStega3."
@@ -20,7 +20,7 @@ fastrand = "2.3.0"
 filetime = "0.2.27"
 getrandom = "0.4.1"
 hashbrown = "0.16.1"
-image = { version = "0.25.9", features = ["png", "ff", "tiff", "rayon", "webp"] }
+image = { version = "0.25.9", features = ["bmp", "png", "ff", "tiff", "rayon", "webp"] }
 log = "0.4.29"
 memmap2 = "0.9.9"
 rand = "0.10.0"
@@ -31,7 +31,7 @@ simple_logger = "5.1.0"
 zeroize = "1.8.2"
 
 [dev-dependencies]
-criterion = { version = "0.8.1", features = ["html_reports"] }
+criterion = { version = "0.8.2", features = ["html_reports"] }
 path-absolutize = "3.1.1"
 
 [features]
