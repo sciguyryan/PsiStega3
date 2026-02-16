@@ -16,20 +16,20 @@ use rand::prelude::*;
 use rand_core::SeedableRng;
 use rand_xoshiro::Xoshiro512PlusPlus;
 use std::convert::TryInto;
-use zeroize::Zeroize;
+use zeroize::Zeroizing;
 
 use self::misc_utils::BIT_MASKS;
 
 use super::codec::{ConfigFlags, ConfigParams};
 
 /// The time cost (iterations) for use with the Argon2 hashing algorithm.
-const T_COST: u32 = 8;
+const DEFAULT_T_COST: u32 = 8;
 /// The parallel cost (threads) for use with the Argon2 hashing algorithm.
-const P_COST: u32 = 8;
+const DEFAULT_P_COST: u32 = 8;
 /// The memory cost (kilobytes) for use with the Argon2 hashing algorithm.
-const M_COST: u32 = 65_536;
+const DEFAULT_M_COST: u32 = 65_536;
 /// The version of the Argon2 hashing algorithm to use.
-const ARGON_VER: argon2::Version = argon2::Version::V0x13;
+const ARGON_VERSION: argon2::Version = argon2::Version::V0x13;
 /// The version of this codec.
 const CODED_VERSION: u8 = 0x2;
 
@@ -45,6 +45,12 @@ pub struct StegaV2 {
     locker: Locker,
     /// The logger instance for this codec.
     logger: Logger,
+    // The Argon2 time cost.
+    t_cost: u32,
+    // The Argon2 parallel cost.
+    p_cost: u32,
+    // The Argon2 memory cost.
+    m_cost: u32,
     /// If the noise layer should be applied to the output image.
     noise_layer: bool,
     /// If the resulting image file should be saved when encoding.
@@ -74,6 +80,9 @@ impl StegaV2 {
             position_rng: misc_utils::secure_seeded_xoroshiro512(),
             locker,
             logger: Logger::new(false),
+            t_cost: DEFAULT_T_COST,
+            p_cost: DEFAULT_P_COST,
+            m_cost: DEFAULT_M_COST,
             noise_layer: true,
             output_files: true,
             skip_version_checks: false,
@@ -171,7 +180,8 @@ impl StegaV2 {
 
         // Generate the composite key from the hash of the original
         //   file and the key.
-        let mut composite_key = StegaV2::generate_composite_key(original_img_path, key)?;
+        let composite_key =
+            Zeroizing::new(StegaV2::generate_composite_key(original_img_path, key)?);
 
         // Build the data index to positional cell index map.
         self.build_data_to_cell_index_map(&enc_image, &composite_key);
@@ -244,14 +254,14 @@ impl StegaV2 {
         let ciphertext_bytes = data.pop_vec(total_ciphertext_cells as usize);
 
         // Now we can compute the Argon2 hash.
-        let mut key_bytes_full = hashers::argon2_string(
-            &composite_key,
+        let key_bytes_full = Zeroizing::new(hashers::argon2_string_v2(
+            &composite_key[..],
             salt_bytes,
-            M_COST,
-            P_COST,
-            T_COST,
-            ARGON_VER,
-        )?;
+            self.m_cost,
+            self.p_cost,
+            self.t_cost,
+            ARGON_VERSION,
+        )?);
 
         // The AES-256 key is 256-bits (32 bytes) in length.
         let key_bytes = &key_bytes_full[..32];
@@ -300,10 +310,6 @@ impl StegaV2 {
             self.locker.set_attempts(encoded_img_path, &enc_hash, 4);
         }
 
-        // Zero out sensitive material.
-        composite_key.zeroize();
-        key_bytes_full.zeroize();
-
         Ok(plaintext_bytes)
     }
 
@@ -326,18 +332,19 @@ impl StegaV2 {
         let mut img = StegaV2::load_image(original_img_path, false)?;
 
         // Generate the composite key from the hash of the original file and the key.
-        let mut composite_key = StegaV2::generate_composite_key(original_img_path, key)?;
+        let composite_key =
+            Zeroizing::new(StegaV2::generate_composite_key(original_img_path, key)?);
 
         // Generate a random salt for the Argon2 hashing function.
         let salt_bytes: [u8; 12] = misc_utils::secure_random_bytes();
-        let mut key_bytes_full = hashers::argon2_string(
+        let key_bytes_full = Zeroizing::new(hashers::argon2_string_v2(
             &composite_key,
             salt_bytes,
-            M_COST,
-            P_COST,
-            T_COST,
-            ARGON_VER,
-        )?;
+            self.m_cost,
+            self.p_cost,
+            self.t_cost,
+            ARGON_VERSION,
+        )?);
 
         // The AES-256 key is 256-bits (32 bytes) in length.
         let key_bytes = &key_bytes_full[..32];
@@ -411,9 +418,6 @@ impl StegaV2 {
 
         // Build the data index to positional cell index map.
         self.build_data_to_cell_index_map(&img, &composite_key);
-
-        composite_key.zeroize();
-        key_bytes_full.zeroize();
 
         // Iterate over each byte of data to be encoded.
         for (i, byte) in data.bytes.iter().enumerate() {
@@ -847,20 +851,14 @@ impl Codec for StegaV2 {
 
     fn set_parameter(&mut self, param: ConfigParams) {
         match param {
-            ConfigParams::TCost(_) => {
-                self.logger.log(
-                    "the time cost (TCost) parameter is fixed and cannot be modified for this codec.",
-                );
+            ConfigParams::TCost(t) => {
+                self.t_cost = t;
             }
-            ConfigParams::PCost(_) => {
-                self.logger.log(
-                    "the parallelism cost (PCost) parameter is fixed and cannot be modified for this codec.",
-                );
+            ConfigParams::PCost(p) => {
+                self.p_cost = p;
             }
-            ConfigParams::MCost(_) => {
-                self.logger.log(
-                    "the memory cost (MCost) parameter is fixed and cannot be modified for this codec.",
-                );
+            ConfigParams::MCost(m) => {
+                self.m_cost = m;
             }
         }
     }
@@ -919,6 +917,9 @@ mod tests_encode_decode_v2 {
             position_rng: misc_utils::secure_seeded_xoroshiro512(),
             locker,
             logger: Logger::new(false),
+            t_cost: 1,          // Minimal defaults to speed up encoding and decoding.
+            p_cost: 2,          // Minimal defaults to speed up encoding and decoding.
+            m_cost: 4_000,      // Minimal defaults to speed up encoding and decoding.
             noise_layer: false, // We do not need this here.
             output_files: true,
             skip_version_checks: false,

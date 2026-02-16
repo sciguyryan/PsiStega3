@@ -16,7 +16,7 @@ use std::fs::File;
 /// * `t_cost` - The time cost (in iterations) to be applied to the Argon2 hashing function.
 /// * `version` - The version of the Argon2 hashing function to be used.
 #[inline]
-pub fn argon2_string(
+pub fn argon2_string_v2(
     key_bytes: &[u8],
     salt: [u8; 12],
     m_cost: u32,

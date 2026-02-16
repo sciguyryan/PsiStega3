@@ -691,9 +691,9 @@ mod tests_encode_decode_v3 {
             data_cell_vec: Vec::new(),
             offset_bit_rng: misc_utils::secure_seeded_xoroshiro512(),
             logger: Logger::new(false),
-            t_cost: super::DEFAULT_T_COST,
-            p_cost: super::DEFAULT_P_COST,
-            m_cost: super::DEFAULT_M_COST,
+            t_cost: 1,          // Minimal defaults to speed up encoding and decoding.
+            p_cost: 2,          // Minimal defaults to speed up encoding and decoding.
+            m_cost: 4_000,      // Minimal defaults to speed up encoding and decoding.
             noise_layer: false, // We do not need this here.
             output_files: true,
         }
@@ -907,7 +907,6 @@ mod tests_encode_decode_v3 {
 
         // These parameters have been tweaked to make things run faster, but they don't
         // otherwise impact the testing at all.
-        // TODO - should I tweak this for the other tests I wonder?
         stega.set_parameter(ConfigParams::TCost(1));
         stega.set_parameter(ConfigParams::PCost(1));
         stega.set_parameter(ConfigParams::MCost(4_000));

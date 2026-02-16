@@ -217,7 +217,7 @@ fn main() {
             m_cost,
         } => {
             let mut codec = create_codec(&version);
-            check_version_compatibility(&version, locker, read_once, t_cost, p_cost, m_cost);
+            check_version_compatibility(&version, locker, read_once);
 
             apply_encode_settings(
                 &mut codec,
@@ -255,7 +255,7 @@ fn main() {
             m_cost,
         } => {
             let mut codec = create_codec(&version);
-            check_version_compatibility(&version, locker, read_once, t_cost, p_cost, m_cost);
+            check_version_compatibility(&version, locker, read_once);
 
             apply_encode_settings(
                 &mut codec,
@@ -479,20 +479,9 @@ fn create_codec(version: &Version) -> Box<dyn Codec> {
 }
 
 /// Check for version-specific feature compatibility and warn the user.
-fn check_version_compatibility(
-    version: &Version,
-    locker: bool,
-    read_once: bool,
-    t_cost: Option<u32>,
-    p_cost: Option<u32>,
-    m_cost: Option<u32>,
-) {
+fn check_version_compatibility(version: &Version, locker: bool, read_once: bool) {
     match version {
-        Version::V2 => {
-            if t_cost.is_some() || p_cost.is_some() || m_cost.is_some() {
-                eprintln!("WARNING: --t-cost, --p-cost, and --m-cost are only supported in v3. These flags will be ignored.");
-            }
-        }
+        Version::V2 => {}
         Version::V3 => {
             if locker || read_once {
                 eprintln!("WARNING: --locker and --read-once are only supported in v2. These flags will be ignored.");
@@ -535,8 +524,8 @@ fn apply_encode_settings(
         }
     }
 
-    // Argon2 parameters may only be specified with v3.
-    if matches!(version, Version::V3) {
+    // Argon2 parameters may only be specified with versions v2 and v3.
+    if matches!(version, Version::V2 | Version::V3) {
         if let Some(t) = t_cost {
             codec.set_parameter(ConfigParams::TCost(t));
         }
@@ -807,7 +796,7 @@ fn show_examples() {
     println!("  psistega3 --unattended encode ref.png out.png \"Text\" -p password\n");
 
     println!("{split}");
-    println!("{}ARGON2 TUNING (v3 only){}", bold, reset);
+    println!("{}ARGON2 TUNING (v2 and v3){}", bold, reset);
     println!("{split}");
 
     println!("The Argon2 parameters control the key derivation function:");
