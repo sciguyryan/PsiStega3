@@ -417,8 +417,6 @@ impl StegaV3 {
     /// Otherwise an error will be returned.
     fn load_image(file_path: &str, read_only: bool) -> Result<ImageWrapper> {
         let img = ImageWrapper::load_from_file(file_path, read_only)?;
-
-        // Validate if the image file can be used.
         StegaV3::validate_image(&img)?;
 
         Ok(img)
@@ -464,8 +462,6 @@ impl StegaV3 {
         enc_img: &ImageWrapper,
         data_index: usize,
     ) -> u8 {
-        // There are four channels per pixel, so this corresponds to two pixels
-        // worth of data.
         let start_index = self.data_cell_vec[data_index] * 2;
         self.read_u8(ref_img, enc_img, start_index)
     }
@@ -538,8 +534,6 @@ impl StegaV3 {
     /// * `data_index` - The index of the data byte to be written.
     #[inline]
     fn write_u8_by_data_index(&mut self, img: &mut ImageWrapper, data: &u8, data_index: usize) {
-        // There are four channels per pixel, so this corresponds to two pixels
-        // worth of data.
         let start_index = self.data_cell_vec[data_index] * 2;
         self.write_u8(img, data, start_index);
     }
