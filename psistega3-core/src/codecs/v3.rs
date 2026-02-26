@@ -9,7 +9,7 @@ use crate::{
 
 use aes_gcm::{aead::Aead, Aes256Gcm, Key, KeyInit, Nonce};
 use rand::prelude::*;
-use rand_xoshiro::{Seed512, Xoshiro512PlusPlus};
+use rand_chacha::ChaCha20Rng;
 use std::convert::TryInto;
 use zeroize::Zeroizing;
 
@@ -63,7 +63,7 @@ pub struct StegaV3 {
     /// The data index to cell ID map.
     data_cell_vec: Vec<usize>,
     // The RNG for the cell value adjustments.
-    offset_bit_rng: Xoshiro512PlusPlus,
+    offset_bit_rng: ChaCha20Rng,
     /// The logger instance for this codec.
     logger: Logger,
     // The Argon2 time cost.
@@ -83,7 +83,7 @@ impl StegaV3 {
         Self {
             data_cell_vec: Vec::new(),
             logger: Logger::new(false),
-            offset_bit_rng: misc_utils::secure_seeded_xoroshiro512(),
+            offset_bit_rng: misc_utils::secure_seeded_chacha20(),
             t_cost: DEFAULT_T_COST,
             p_cost: DEFAULT_P_COST,
             m_cost: DEFAULT_M_COST,
@@ -100,22 +100,16 @@ impl StegaV3 {
     /// * `img` - A reference to the [`ImageWrapper`] that holds the image.
     fn build_data_to_cell_index_map(&mut self, img: &ImageWrapper, key: &[u8]) {
         // The caller should have run the data through a hashing algorithm that will output
-        // exactly 512 bits (64 bytes) of data.
-        assert_eq!(key.len(), 64);
+        // exactly 256 bits (32 bytes) of data.
+        assert_eq!(key.len(), 32);
 
-        // It doesn't matter if we call this on reference or encoded
-        //   as they will have the same value at this point.
+        // Generate the data index to cell index map, preallocating for performance.
         let total_cells = StegaV3::get_total_cells(img);
-
-        // We can use the entire key space by making use of it directly as the seed.
-        let key_array: [u8; 64] = key.try_into().unwrap();
-        let mut rng = Xoshiro512PlusPlus::from_seed(Seed512(key_array));
-
-        // Pre-allocate vector and map for performance.
         self.data_cell_vec = Vec::with_capacity(total_cells);
         self.data_cell_vec.extend(0..total_cells);
 
-        // Randomise the order of the cell IDs.
+        // We can use the entire key space by making use of it directly as the seed.
+        let mut rng = ChaCha20Rng::from_seed(key.try_into().unwrap());
         self.data_cell_vec.shuffle(&mut rng);
     }
 
@@ -369,7 +363,7 @@ impl StegaV3 {
     /// * `original_path` - The path to the original image file.
     /// * `key` - The plaintext key.
     #[inline]
-    pub(crate) fn generate_composite_key(original_path: &str, key: String) -> Result<[u8; 64]> {
+    pub(crate) fn generate_composite_key(original_path: &str, key: String) -> Result<[u8; 32]> {
         let mut file_data = Zeroizing::new(hashers::sha3_512_file(original_path)?.to_vec());
         file_data.extend_from_slice(&FILE_DOMAIN_SEPARATOR);
         let file_hash = hashers::sha3_512_bytes(&file_data);
@@ -388,7 +382,8 @@ impl StegaV3 {
         combined[64..128].copy_from_slice(&key_hash);
         combined[128..].copy_from_slice(&version_hash);
 
-        Ok(hashers::sha3_512_bytes(&combined))
+        // We the combined key through a 256-bit hashing function to get the final composite key.
+        Ok(hashers::sha3_256_bytes(&combined))
     }
 
     /// Generate junk padding data.
@@ -396,9 +391,8 @@ impl StegaV3 {
     pub(crate) fn generate_junk_bytes(needed: usize) -> Vec<u8> {
         let mut vec = vec![0u8; needed];
 
-        // We do not need to worry about being cryptographically secure here.
-        // This is just junk data to fill the empty cells.
-        fastrand::fill(&mut vec);
+        let mut chacha = misc_utils::secure_seeded_chacha20();
+        chacha.fill(&mut vec);
 
         vec
     }
@@ -683,7 +677,7 @@ mod tests_encode_decode_v3 {
         // Return a new StegaV3 instance.
         StegaV3 {
             data_cell_vec: Vec::new(),
-            offset_bit_rng: misc_utils::secure_seeded_xoroshiro512(),
+            offset_bit_rng: misc_utils::secure_seeded_chacha20(),
             logger: Logger::new(false),
             t_cost: 1,          // Minimal defaults to speed up encoding and decoding.
             p_cost: 2,          // Minimal defaults to speed up encoding and decoding.
@@ -708,10 +702,8 @@ mod tests_encode_decode_v3 {
             .expect("failed to generate a composite key");
 
         let expected_key = [
-            201, 193, 197, 83, 21, 48, 205, 192, 213, 80, 179, 253, 65, 255, 18, 148, 86, 20, 37,
-            201, 243, 76, 36, 43, 208, 35, 46, 200, 81, 80, 120, 23, 88, 120, 237, 194, 17, 220,
-            185, 94, 95, 89, 153, 55, 134, 6, 88, 108, 252, 126, 38, 19, 36, 44, 136, 184, 65, 61,
-            21, 187, 151, 115, 213, 145,
+            84, 140, 159, 192, 175, 222, 217, 114, 145, 139, 69, 215, 230, 222, 10, 182, 108, 63,
+            238, 13, 129, 112, 243, 117, 98, 164, 27, 185, 40, 151, 189, 174,
         ];
 
         assert_eq!(

@@ -12,6 +12,7 @@ use image::{
     },
     ExtendedColorType, ImageEncoder, ImageError, ImageFormat,
 };
+use rand::RngExt;
 
 #[derive(Clone)]
 pub struct ImageWrapper {
@@ -173,7 +174,7 @@ impl ImageWrapper {
 
     /// Scramble the data within the image file.
     pub fn scramble(&mut self) {
-        let mut rng = fastrand::Rng::with_seed(misc_utils::secure_random_seed());
+        let mut rng = misc_utils::secure_seeded_xoroshiro512();
 
         // Iterate over each of the image bytes and modify them randomly.
         // The file will be visually the same, but will be modified such that
@@ -182,14 +183,14 @@ impl ImageWrapper {
             // If the value is 0 then the new value will always be 1.
             // If the value is 255 then the new value will always be 254.
             // Otherwise the value will be assigned to be ±1.
-            if !rng.bool() {
+            if !rng.random_bool(0.5) {
                 continue;
             }
 
             *b = match *b {
                 0 => 1,
                 1..=254 => {
-                    if rng.bool() {
+                    if rng.random_bool(0.5) {
                         *b + 1
                     } else {
                         *b - 1

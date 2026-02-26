@@ -2,7 +2,7 @@ use crate::error::{Error, Result};
 
 use argon2::Argon2;
 use memmap2::Mmap;
-use sha3::{Digest, Sha3_512};
+use sha3::{Digest, Sha3_256, Sha3_512};
 use std::fs::File;
 
 /// Get the Argon2 hash of a string slice.
@@ -51,6 +51,18 @@ pub fn crc32_slice(slice: &[u8]) -> u32 {
     let mut hasher = crc32fast::Hasher::new();
     hasher.update(slice);
     hasher.finalize()
+}
+
+/// Get the SHA3-256 hash of a u8 slice.
+///
+/// # Arguments
+///
+/// * `bytes` - The byte slice to be hashed.
+#[inline]
+pub fn sha3_256_bytes(bytes: &[u8]) -> [u8; 32] {
+    let mut hasher = Sha3_256::new();
+    hasher.update(bytes);
+    hasher.finalize().into()
 }
 
 /// Get the SHA3-512 hashing of a specified file.
