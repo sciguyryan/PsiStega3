@@ -979,7 +979,7 @@ mod tests_encode_decode_v3 {
     }
 
     #[test]
-    fn test_decode_fixed_file() {
+    fn test_decode_fixed_text_file() {
         let mut tu = TestUtils::new(&BASE);
 
         let ref_path = tu.get_in_file("reference-valid.png");
