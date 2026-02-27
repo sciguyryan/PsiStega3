@@ -10,6 +10,8 @@ pub enum Error {
     Argon2InvalidParams,
     /// Unable to create an Argon2 hash with the provided inputs.
     Argon2NoHash,
+    /// Animated image files are not currently supported.
+    AnimatedPngNotSupported,
     /// Unable to decode a base64 string.
     Base64Decoding,
     /// The total amount number of cells exceeds the maximum amount available.
@@ -69,6 +71,7 @@ impl fmt::Display for Error {
         f.write_str(match self {
             Error::Argon2InvalidParams => "One or more Argon2 parameters are invalid.",
             Error::Argon2NoHash => "An error occurred while creating an Argon2 hash.",
+            Error::AnimatedPngNotSupported => "Animated image files are not currently supported",
             Error::Base64Decoding => "The base64 string is invalid and could not be decoded.",
             Error::DataTooLarge => "The data is too large.",
             Error::DecodeStringInvalid => "The decoded data isn't valid Unicode.",

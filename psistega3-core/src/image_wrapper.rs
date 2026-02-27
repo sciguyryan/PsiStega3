@@ -2,7 +2,7 @@ use std::{fs::File, io::BufWriter};
 
 use crate::{
     error::{Error, Result},
-    utilities::misc_utils,
+    utilities::{file_utils, misc_utils, png_utils},
 };
 
 use image::{
@@ -10,7 +10,8 @@ use image::{
         bmp::BmpEncoder, farbfeld::FarbfeldEncoder, png::PngEncoder, tiff::TiffEncoder,
         webp::WebPEncoder,
     },
-    ExtendedColorType, ImageEncoder, ImageError, ImageFormat,
+    DynamicImage::*,
+    ExtendedColorType, GenericImageView, ImageEncoder, ImageError, ImageFormat,
 };
 use rand::RngExt;
 
@@ -81,10 +82,8 @@ impl ImageWrapper {
     /// # Arguments
     ///
     /// * `path` - The path to the image file.
+    /// * `read_only` - A boolean indicating whether the image should be loaded in read-only mode.
     pub fn load_from_file(path: &str, read_only: bool) -> Result<ImageWrapper> {
-        use crate::utilities::file_utils;
-        use image::{DynamicImage::*, GenericImageView};
-
         // We can't load an image that doesn't exist.
         if !file_utils::path_exists(path) {
             return Err(Error::PathInvalid);
@@ -101,6 +100,15 @@ impl ImageWrapper {
         let Ok(image) = image::open(path) else {
             return Err(Error::ImageOpening);
         };
+
+        if matches!(format, ImageFormat::Png)
+            && png_utils::find_chunk_start(path, png_utils::PngChunkType::Actl).is_some()
+        {
+            // If we ever handle these, we'll need to go through each frame and
+            // modify each of them separately.
+            // For now, we just don't support them at all.
+            return Err(Error::AnimatedPngNotSupported);
+        }
 
         let colour_type = match &image {
             ImageLuma8(_) => ExtendedColorType::L8,

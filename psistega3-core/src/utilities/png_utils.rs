@@ -5,17 +5,20 @@ use std::fs::File;
 
 use super::{file_utils, misc_utils};
 
-#[allow(dead_code)]
 pub enum PngChunkType {
     Bkgd,
     Idat,
+    Actl,
 }
 
 /// The bKGD chunk header of a PNG file.
-const BKGD: [u8; 4] = [0x62, 0x4b, 0x47, 0x44];
+const BKGD: &[u8; 4] = b"bKGD";
 
 /// The IDAT chunk header of a PNG file.
-const IDAT: [u8; 4] = [0x49, 0x44, 0x41, 0x54];
+const IDAT: &[u8; 4] = b"IDAT";
+
+/// The acTL chunk header of an APNG file.
+const ACTL: &[u8; 4] = b"acTL";
 
 /// Attempts to find the first position of a chunk type within a PNG file.
 ///
@@ -40,10 +43,11 @@ pub fn find_chunk_start(path: &str, chunk_type: PngChunkType) -> Option<usize> {
     let seq = match chunk_type {
         PngChunkType::Bkgd => &BKGD,
         PngChunkType::Idat => &IDAT,
+        PngChunkType::Actl => &ACTL,
     };
 
     // The chunk is present then the index of the header will be returned.
-    let index = misc_utils::find_subsequence(&mmap, seq)?;
+    let index = misc_utils::find_subsequence(&mmap, *seq)?;
 
     // The start of a chunk is always four bytes before the header.
     // The initial four bytes of the chunk give the length of the chunk.
@@ -69,7 +73,7 @@ pub fn generate_bkgd_chunk(data: &[u8]) -> Vec<u8> {
     // See: http://www.libpng.org/pub/png/spec/1.2/PNG-Structure.html
     // The first four bytes will hold the length, which will be updated below.
     let mut chunk = vec![0, 0, 0, 0];
-    chunk.extend_from_slice(&BKGD);
+    chunk.extend_from_slice(BKGD);
     chunk.extend_from_slice(data);
 
     // Update the chunk length data. This excludes the length
