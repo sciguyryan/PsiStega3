@@ -6,9 +6,9 @@ use std::fs::File;
 use super::{file_utils, misc_utils};
 
 pub enum PngChunkType {
+    Actl,
     Bkgd,
     Idat,
-    Actl,
 }
 
 /// The bKGD chunk header of a PNG file.

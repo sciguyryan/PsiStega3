@@ -8,6 +8,7 @@ use crate::{
 };
 
 use aes_gcm::{aead::Aead, Aes256Gcm, Key, KeyInit, Nonce};
+use image::ImageFormat;
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
 use std::convert::TryInto;
@@ -96,8 +97,8 @@ impl StegaV3 {
     ///
     /// # Arguments
     ///
-    /// * `key` - The key bytes that should be used to seed the random number generator.
     /// * `img` - A reference to the [`ImageWrapper`] that holds the image.
+    /// * `key` - The key bytes that should be used to seed the random number generator.
     fn build_data_to_cell_index_map(&mut self, img: &ImageWrapper, key: &[u8]) {
         // The caller should have run the data through a hashing algorithm that will output
         // exactly 256 bits (32 bytes) of data.
@@ -113,6 +114,13 @@ impl StegaV3 {
         self.data_cell_vec.shuffle(&mut rng);
     }
 
+    /// Compute the total number of cells needed to encode the data, given the total number of cipher-text cells.
+    ///
+    /// # Arguments
+    ///
+    /// * `total_ciphertext_cells` - The total number of cells that are needed to encode the cipher-text bytes.
+    ///
+    /// `Note:` this will include the additional cells needed to encode the salt, nonce, and total cipher-text cell count.
     #[inline(always)]
     fn compute_cells_needed(total_ciphertext_cells: usize) -> usize {
         /*
@@ -387,6 +395,10 @@ impl StegaV3 {
     }
 
     /// Generate junk padding data.
+    ///
+    /// # Arguments
+    ///
+    /// * `needed` - The number of junk bytes that need to be generated.
     #[inline]
     pub(crate) fn generate_junk_bytes(needed: usize) -> Vec<u8> {
         let mut vec = vec![0u8; needed];
@@ -407,7 +419,6 @@ impl StegaV3 {
     /// # Returns
     ///
     /// A [`Result`] containing a [`ImageWrapper`] if the image was successfully loaded and if the image is suitable for steganography.
-    ///
     /// Otherwise an error will be returned.
     fn load_image(file_path: &str, read_only: bool) -> Result<ImageWrapper> {
         let img = ImageWrapper::load_from_file(file_path, read_only)?;
@@ -427,7 +438,6 @@ impl StegaV3 {
     /// `Note:` this method will read 8 channels worth of data, starting at the specified index.
     #[inline]
     fn read_u8(&self, ref_img: &ImageWrapper, enc_img: &ImageWrapper, cell_start: usize) -> u8 {
-        // Extract the bytes representing the pixel channels from the images.
         let rb = ref_img.get_subcells_from_index(cell_start, 2);
         let eb = enc_img.get_subcells_from_index(cell_start, 2);
 
@@ -466,8 +476,6 @@ impl StegaV3 {
     ///
     /// * `img` - A reference to the [`ImageWrapper`] that holds the image.
     fn validate_image(img: &ImageWrapper) -> Result<()> {
-        use image::ImageFormat;
-
         if !matches!(
             img.get_image_format(),
             ImageFormat::Bmp
@@ -656,8 +664,7 @@ mod tests_encode_decode_v3 {
         utilities::{file_utils, misc_utils, test_utils::*},
     };
 
-    use image::ExtendedColorType;
-    use image::ImageFormat;
+    use image::{ExtendedColorType, ImageFormat};
 
     use super::StegaV3;
 
