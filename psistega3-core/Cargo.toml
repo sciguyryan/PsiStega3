@@ -21,7 +21,6 @@ getrandom = "0.4.1"
 hashbrown = "0.16.1"
 image = { version = "0.25.9", features = ["bmp", "png", "ff", "tiff", "rayon", "webp"] }
 log = "0.4.29"
-memmap2 = "0.9.9"
 rand = "0.10.0"
 rand_core = "0.10.0"
 rand_xoshiro = "0.8.0"

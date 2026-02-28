@@ -1215,7 +1215,7 @@ mod tests_encode_decode_v2 {
             .expect("failed to encode the data");
 
         assert!(
-            png_utils::find_chunk_start(&enc_path, PngChunkType::Bkgd).is_some(),
+            png_utils::read_chunk_raw(&enc_path, PngChunkType::Bkgd).is_some(),
             "bKGD chunk was not written to the PNG file"
         );
     }

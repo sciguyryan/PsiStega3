@@ -30,7 +30,7 @@ pub struct ImageWrapper {
 
 impl ImageWrapper {
     /// Return the image's dimension.
-    #[inline]
+    #[inline(always)]
     pub fn dimensions(&self) -> (u32, u32) {
         self.dimensions
     }
@@ -47,7 +47,7 @@ impl ImageWrapper {
     pub fn get_subcells_from_index(&self, start_index: usize, count: usize) -> &[u8] {
         let start = start_index * 4;
         let end = start + (count * 4) as usize;
-        unsafe { self.image_bytes.get_unchecked(start..end) }
+        &self.image_bytes[start..end]
     }
 
     /// Get a mutable reference slice for a specified number of subcells of data, starting from a given start index.
@@ -62,7 +62,7 @@ impl ImageWrapper {
     pub fn get_subcells_from_index_mut(&mut self, start_index: usize, count: usize) -> &mut [u8] {
         let start = start_index * 4;
         let end = start + (count * 4) as usize;
-        unsafe { self.image_bytes.get_unchecked_mut(start..end) }
+        &mut self.image_bytes[start..end]
     }
 
     /// Get the format of the image.
@@ -102,7 +102,7 @@ impl ImageWrapper {
         };
 
         if matches!(format, ImageFormat::Png)
-            && png_utils::find_chunk_start(path, png_utils::PngChunkType::Actl).is_some()
+            && png_utils::read_chunk_raw(path, png_utils::PngChunkType::Actl).is_some()
         {
             // If we ever handle these, we'll need to go through each frame and
             // modify each of them separately.

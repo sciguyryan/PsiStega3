@@ -29,6 +29,26 @@ pub fn find_subsequence(haystack: &[u8], needle: &[u8]) -> Option<usize> {
         .position(|window| window == needle)
 }
 
+/// Fill an array of a given length with securely generated random bytes.
+#[inline]
+pub fn secure_random_bytes<const N: usize>() -> [u8; N] {
+    let mut arr = [0u8; N];
+    getrandom::fill(&mut arr).expect("failed to generate random bytes");
+    arr
+}
+
+/// Create a securely seeded ChaCha20 PRNG.
+#[inline]
+pub fn secure_seeded_chacha20() -> ChaCha20Rng {
+    ChaCha20Rng::from_seed(secure_random_bytes())
+}
+
+/// Create a securely seeded Xoshiro512PlusPlus PRNG.
+#[inline]
+pub fn secure_seeded_xoroshiro512() -> Xoshiro512PlusPlus {
+    Xoshiro512PlusPlus::from_seed(Seed512(secure_random_bytes()))
+}
+
 /// Set the state of a bit in a u8 value.
 ///
 /// # Arguments
@@ -52,30 +72,9 @@ pub fn set_bit_state(value: &mut u8, index: usize, state: bool) {
 #[inline]
 pub fn u8_slice_to_u64(bytes: &[u8]) -> u64 {
     assert!(
-        bytes.len() == 64,
-        "Byte vector is not 64 bytes (512-bits) in length."
+        bytes.len() >= 8,
+        "Byte vector is not at least 8 bytes (64-bits) in length."
     );
 
-    let arr = <[u8; 8]>::try_from(&bytes[0..8]).expect("slice with incorrect length");
-    u64::from_le_bytes(arr)
-}
-
-/// Fill an array of a given length with securely generated random bytes.
-#[inline]
-pub fn secure_random_bytes<const N: usize>() -> [u8; N] {
-    let mut arr = [0u8; N];
-    getrandom::fill(&mut arr).expect("failed to generate random bytes");
-    arr
-}
-
-/// Create a securely seeded ChaCha20 PRNG.
-#[inline]
-pub fn secure_seeded_chacha20() -> ChaCha20Rng {
-    ChaCha20Rng::from_seed(secure_random_bytes())
-}
-
-/// Create a securely seeded Xoshiro512PlusPlus PRNG.
-#[inline]
-pub fn secure_seeded_xoroshiro512() -> Xoshiro512PlusPlus {
-    Xoshiro512PlusPlus::from_seed(Seed512(secure_random_bytes()))
+    u64::from_le_bytes(bytes[..8].try_into().unwrap())
 }

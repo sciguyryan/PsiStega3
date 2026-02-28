@@ -449,11 +449,7 @@ impl Drop for Locker {
 mod tests_locker {
     use crate::{
         hashers,
-        utilities::{
-            file_utils,
-            png_utils::{self, PngChunkType},
-            test_utils::*,
-        },
+        utilities::{file_utils, png_utils, test_utils::*},
     };
 
     use super::Locker;
@@ -623,9 +619,9 @@ mod tests_locker {
         );
 
         // The file should also no longer contain a bKGD chunk.
-        let kgd_start = png_utils::find_chunk_start(&copy_path, PngChunkType::Bkgd);
+        let chunk = png_utils::read_chunk_raw(&copy_path, png_utils::PngChunkType::Bkgd);
         assert!(
-            kgd_start.is_none(),
+            chunk.is_none(),
             "a zTXt chunk was found in the locked PNG file, it should have been removed"
         );
 

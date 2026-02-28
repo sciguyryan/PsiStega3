@@ -1,9 +1,8 @@
 use crate::error::{Error, Result};
 
 use argon2::Argon2;
-use memmap2::Mmap;
 use sha3::{Digest, Sha3_256, Sha3_512};
-use std::fs::File;
+use std::{fs::File, io};
 
 /// Get the Argon2 hash of a string slice.
 ///
@@ -72,24 +71,10 @@ pub fn sha3_256_bytes(bytes: &[u8]) -> [u8; 32] {
 /// * `path` - The path to the file.
 #[inline]
 pub fn sha3_512_file(path: &str) -> Result<[u8; 64]> {
-    let Ok(file) = File::open(path) else {
-        return Err(Error::FileHashingError);
-    };
-
-    // Create a read-only memory map of the file as it should improve
-    // the performance of this function.
-    let mmap = unsafe {
-        if let Ok(m) = Mmap::map(&file) {
-            m
-        } else {
-            return Err(Error::FileHashingError);
-        }
-    };
+    let mut file = File::open(path).map_err(|_| Error::FileHashingError)?;
 
     let mut hasher = Sha3_512::new();
-    for c in mmap.chunks(16 * 1024) {
-        hasher.update(c);
-    }
+    io::copy(&mut file, &mut hasher).map_err(|_| Error::FileHashingError)?;
 
     Ok(hasher.finalize().into())
 }

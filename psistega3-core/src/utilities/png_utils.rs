@@ -1,8 +1,5 @@
 use crate::error::{Error, Result};
 
-use memmap2::Mmap;
-use std::fs::File;
-
 use super::{file_utils, misc_utils};
 
 pub enum PngChunkType {
@@ -24,22 +21,9 @@ const ACTL: &[u8; 4] = b"acTL";
 ///
 /// # Arguments
 ///
-/// * `path` - The path to the file.
+/// * `buffer` - The file contents as a slice of u8 bytes.
 /// * `chunk_type` - The type of chunk to find.
-pub fn find_chunk_start(path: &str, chunk_type: PngChunkType) -> Option<usize> {
-    let Ok(file) = File::open(path) else {
-        return None;
-    };
-
-    // Create a read-only memory map of the file.
-    let mmap = unsafe {
-        if let Ok(m) = Mmap::map(&file) {
-            m
-        } else {
-            return None;
-        }
-    };
-
+pub fn find_chunk_start(buffer: &[u8], chunk_type: PngChunkType) -> Option<usize> {
     let seq = match chunk_type {
         PngChunkType::Bkgd => &BKGD,
         PngChunkType::Idat => &IDAT,
@@ -47,7 +31,7 @@ pub fn find_chunk_start(path: &str, chunk_type: PngChunkType) -> Option<usize> {
     };
 
     // The chunk is present then the index of the header will be returned.
-    let index = misc_utils::find_subsequence(&mmap, *seq)?;
+    let index = misc_utils::find_subsequence(&buffer, *seq)?;
 
     // The start of a chunk is always four bytes before the header.
     // The initial four bytes of the chunk give the length of the chunk.
@@ -140,7 +124,11 @@ pub fn insert_or_replace_bkgd_chunk(path: &str, data: &[u8]) -> Result<()> {
     // The chunk must be after the PLTE chunk, and before the first IDAT chunk.
     // As we do not create PLTE chunks, we can safely ignore those here.
 
-    let idat = find_chunk_start(path, PngChunkType::Idat);
+    let Ok(buffer) = file_utils::read_file_to_u8_vec(path) else {
+        return Err(Error::ImageMalformed);
+    };
+
+    let idat = find_chunk_start(&buffer, PngChunkType::Idat);
     if idat.is_none() {
         return Err(Error::ImageMalformed);
     }
@@ -150,7 +138,7 @@ pub fn insert_or_replace_bkgd_chunk(path: &str, data: &[u8]) -> Result<()> {
 
     // Does a bKGD chunk already exists within the PNG file?
     // If it does we want to remove it, before replacing it with our own data.
-    if find_chunk_start(path, PngChunkType::Bkgd).is_some() && !remove_bkgd_chunk(path) {
+    if find_chunk_start(&buffer, PngChunkType::Bkgd).is_some() && !remove_bkgd_chunk(path) {
         return Err(Error::FileWrite);
     }
 
@@ -167,26 +155,20 @@ pub fn insert_or_replace_bkgd_chunk(path: &str, data: &[u8]) -> Result<()> {
 ///
 /// `Note:` this function is only designed to read the **first** instance of the chunk present within the file.
 pub fn read_chunk_raw(path: &str, chunk_type: PngChunkType) -> Option<Vec<u8>> {
-    // If we have a chunk present then the index of
-    // the header will be returned.
-    let start = find_chunk_start(path, chunk_type)?;
-
-    // Create a read-only memory map of the file.
-    let Ok(file) = File::open(path) else {
+    let Ok(buffer) = file_utils::read_file_to_u8_vec(path) else {
         return None;
     };
-    let mmap = unsafe {
-        if let Ok(m) = Mmap::map(&file) {
-            m
-        } else {
-            return None;
-        }
+
+    // If we have a chunk present then the index of the header will be returned.
+    let start = find_chunk_start(&buffer, chunk_type)?;
+
+    let Ok(buffer) = file_utils::read_file_to_u8_vec(path) else {
+        return None;
     };
 
     // The start of a chunk is always four bytes before the chunk header.
-    // The initial four bytes of the chunk give the length of the data
-    // portion of the chunk.
-    let len_bytes = &mmap[start..start + 4];
+    // The initial four bytes of the chunk give the length of the data portion of the chunk.
+    let len_bytes = &buffer[start..start + 4];
     if len_bytes.len() < 4 {
         return None;
     }
@@ -203,12 +185,12 @@ pub fn read_chunk_raw(path: &str, chunk_type: PngChunkType) -> Option<Vec<u8>> {
     let end = start + 8 + chunk_len as usize + 4;
 
     // This should never happen, and it would indicate a malformed PNG file.
-    if end >= mmap.len() {
+    if end >= buffer.len() {
         return None;
     }
 
     // Return the chunk data, as a vector of u8 values.
-    Some(mmap[start..end].to_vec())
+    Some(buffer[start..end].to_vec())
 }
 
 /// Remove a bKGD chunk from within a PNG file.
@@ -237,7 +219,7 @@ pub fn remove_bkgd_chunk(path: &str) -> bool {
     let full_len = (8 + chunk_len + 4) as u64;
 
     // The unwrap is safe here since we know that the chunk must exist.
-    let start_index = find_chunk_start(path, PngChunkType::Bkgd).unwrap();
+    let start_index = find_chunk_start(&chunk, PngChunkType::Bkgd).unwrap();
 
     // Remove the file segment.
     file_utils::remove_file_segment(path, start_index as u64, full_len).is_ok()
