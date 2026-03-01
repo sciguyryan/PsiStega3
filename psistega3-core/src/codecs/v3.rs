@@ -527,6 +527,44 @@ impl StegaV3 {
         }
     }
 
+    /*
+        #[inline]
+    fn write_u8(&mut self, img: &mut ImageWrapper, data: &u8, cell_start: usize) {
+        // Get the target subcells (assume 8 bits per byte).
+        let bytes = img.get_subcells_from_index_mut(cell_start, 2);
+
+        // Random bit pool for per-bit decisions.
+        let mut random_bits: u8 = self.offset_bit_rng.random();
+
+        for (i, b) in bytes[..8].iter_mut().enumerate() {
+            // Only embed if the data bit is 1.
+            if (data >> i) & 1 == 0 {
+                continue;
+            }
+
+            // Take one random bit from the pool.
+            let r = (random_bits & 1) as i8;
+            random_bits >>= 1;
+
+            let mut delta: i8 = if r == 0 { -1 } else { 1 };
+
+            // Bias low values up, high values down.
+            if *b < 128 {
+                delta = delta.abs();
+            } else {
+                delta = -delta.abs();
+            }
+
+            // Apply safe delta.
+            if (*b == 0 && delta == -1) || (*b == 255 && delta == 1) {
+                delta = -delta;
+            }
+
+            *b = b.wrapping_add(delta as u8);
+
+        }
+    } */
+
     /// Write a byte of data into a specified cell within the image.
     ///
     /// # Arguments

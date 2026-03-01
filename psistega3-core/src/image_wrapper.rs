@@ -77,6 +77,15 @@ impl ImageWrapper {
         self.image_bytes.len() as u64
     }
 
+    /// Calculate the histogram of the image's byte values.
+    pub fn histogram(&self) -> [usize; 256] {
+        let mut histogram = [0; 256];
+        for &byte in &self.image_bytes {
+            histogram[byte as usize] += 1;
+        }
+        histogram
+    }
+
     /// Attempt to load an image from a file.
     ///
     /// # Arguments
