@@ -17,7 +17,7 @@ use rand::RngExt;
 
 #[derive(Clone)]
 pub struct ImageWrapper {
-    image_bytes: Vec<u8>,
+    pub image_bytes: Vec<u8>,
     /// The format of the image.
     format: ImageFormat,
     /// The dimensions of the original image.

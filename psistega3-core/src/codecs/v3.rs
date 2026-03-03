@@ -335,10 +335,39 @@ impl StegaV3 {
             ));
         }
 
+        let original_histogram = img.histogram();
+
         // Iterate over each byte of data to be encoded.
         for (i, byte) in to_encode.iter().enumerate() {
             self.write_u8_by_data_index(&mut img, byte, i);
         }
+
+        let modified_histogram = img.histogram();
+
+        //eprintln!("Original image histogram: {:#?}", original_histogram);
+        //eprintln!("Modified image histogram: {:#?}", modified_histogram);
+
+        let noise_ratio: f64 = (total_cells_needed as f64 / total_cells as f64) * 2.0;
+        eprintln!("{noise_ratio:.64}% of image cells will be tweaked via noise.");
+
+        let mut rng = ChaCha20Rng::from_seed(composite_key[..].try_into().unwrap());
+        for b in img.image_bytes.iter_mut() {
+            if !rng.random_bool(noise_ratio) {
+                continue;
+            }
+
+            let add = rng.random_bool(0.5);
+
+            if (*b == 0 && !add) || (*b == 255 && add) {
+                continue;
+            }
+
+            let delta = if add { 1 } else { 255 }; // 1 or -1 (255)
+            *b = b.wrapping_add(delta);
+        }
+
+        let tweaked_histogram = img.histogram();
+        eprintln!("Tweaked image histogram: {:#?}", tweaked_histogram);
 
         if !self.output_files {
             return Ok(());
