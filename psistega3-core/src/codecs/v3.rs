@@ -57,13 +57,19 @@ const NONCE_SIZE: usize = 12;
 /// The size of the ciphertext cell counter, in bytes.
 ///
 /// By default, this is an unsigned 32-bit integer, and is hence 4 bytes in size.
-const CIPHERTEXT_CELL_COUNT_SIZE: usize = 4;
+const CIPHERTEXT_BLOCK_COUNT_SIZE: usize = 4;
+
+// After a whole lot of experimenting I managed to get the encoder to work based on encoding a
+// single bit at a time, for better distribution, but the performance was abysmal, so that's not what we are doing here.
+// Instead, we are encoding a whole byte at a time, which is much faster, and still has good distribution due to the use of the randomised block mapping and the random bit offsets.
+//
+// However, I am going to implement compression for the input data to help reduce the amount of pixels that need to be modified.
 
 /// The struct that holds the v3 steganography algorithm.
 pub struct StegaV3 {
-    /// The data index to cell ID map.
-    data_cell_vec: Vec<usize>,
-    // The RNG for the cell value adjustments.
+    /// The data index to block ID map.
+    data_block_vec: Vec<usize>,
+    // The RNG for the invidual bit value variances.
     offset_bit_rng: ChaCha20Rng,
     /// The logger instance for this codec.
     logger: Logger,
@@ -80,7 +86,7 @@ pub struct StegaV3 {
 impl StegaV3 {
     pub fn new() -> Self {
         Self {
-            data_cell_vec: Vec::new(),
+            data_block_vec: Vec::new(),
             logger: Logger::new(false),
             offset_bit_rng: misc_utils::secure_seeded_chacha20(),
             t_cost: DEFAULT_T_COST,
@@ -90,49 +96,49 @@ impl StegaV3 {
         }
     }
 
-    /// Builds a map of data indices to cell indices.
+    /// Builds a map of data indices to block indices.
     ///
     /// # Arguments
     ///
     /// * `img` - A reference to the [`ImageWrapper`] that holds the image.
     /// * `key` - The key bytes that should be used to seed the random number generator.
-    fn build_data_to_cell_index_map(&mut self, img: &ImageWrapper, key: &[u8]) {
+    fn build_data_to_block_index_map(&mut self, img: &ImageWrapper, key: &[u8]) {
         // The caller should have run the data through a hashing algorithm that will output
         // exactly 256 bits (32 bytes) of data.
         assert_eq!(key.len(), 32);
 
-        // Generate the data index to cell index map, preallocating for performance.
-        let total_cells = StegaV3::get_total_cells(img);
-        self.data_cell_vec = Vec::with_capacity(total_cells);
-        self.data_cell_vec.extend(0..total_cells);
+        // Generate the data index to block index map, preallocating for performance.
+        let total_blocks = StegaV3::get_total_blocks(img);
+        self.data_block_vec = Vec::with_capacity(total_blocks);
+        self.data_block_vec.extend(0..total_blocks);
 
         // We can use the entire key space by making use of it directly as the seed.
         let mut rng = ChaCha20Rng::from_seed(key.try_into().unwrap());
-        self.data_cell_vec.shuffle(&mut rng);
+        self.data_block_vec.shuffle(&mut rng);
     }
 
-    /// Compute the total number of cells needed to encode the data, given the total number of cipher-text cells.
+    /// Compute the total number of blocks needed to encode the data, given the total number of cipher-text blocks.
     ///
     /// # Arguments
     ///
-    /// * `total_ciphertext_cells` - The total number of cells that are needed to encode the cipher-text bytes.
+    /// * `total_ciphertext_blocks` - The total number of blocks that are needed to encode the cipher-text bytes.
     ///
-    /// `Note:` this will include the additional cells needed to encode the salt, nonce, and total cipher-text cell count.
+    /// `Note:` this will include the additional blocks needed to encode the salt, nonce, and total cipher-text block count.
     #[inline(always)]
-    fn compute_cells_needed(total_ciphertext_cells: usize) -> usize {
+    fn compute_blocks_needed(total_ciphertext_blocks: usize) -> usize {
         /*
           This value must be held within a 64-bit value to prevent integer
             overflow from occurring in the when running this on a 32-bit architecture.
 
-          Note: a cell represents the space in which a byte of data can be encoded.
+          Note: a block represents the space in which a byte of data can be encoded.
         */
-        let sum = CIPHERTEXT_CELL_COUNT_SIZE as u64
+        let sum = CIPHERTEXT_BLOCK_COUNT_SIZE as u64
             + SALT_SIZE as u64
             + NONCE_SIZE as u64
-            + total_ciphertext_cells as u64;
+            + total_ciphertext_blocks as u64;
         assert!(
             sum < u32::MAX as u64,
-            "the total number of cells can't exceed the bounds of a 32-bit value"
+            "the total number of blocks can't exceed the bounds of a 32-bit value"
         );
 
         sum as usize
@@ -161,12 +167,12 @@ impl StegaV3 {
         let composite_key =
             Zeroizing::new(StegaV3::generate_composite_key(original_img_path, key)?);
 
-        // Build the data index to positional cell index map.
-        self.build_data_to_cell_index_map(&enc_image, &composite_key[..]);
+        // Build the data index to positional block index map.
+        self.build_data_to_block_index_map(&enc_image, &composite_key[..]);
 
         // Read the first 4 encoded bytes from the image.
         // This is done manually to avoid decoding the entire image.
-        let total_ciphertext_cells_bytes = [
+        let total_ciphertext_blocks_bytes = [
             self.read_u8_by_index(&ref_image, &enc_image, 0),
             self.read_u8_by_index(&ref_image, &enc_image, 1),
             self.read_u8_by_index(&ref_image, &enc_image, 2),
@@ -174,24 +180,24 @@ impl StegaV3 {
         ];
 
         // The next set of bytes should be the total number of cipher-text bytes
-        //   cells that have been encoded.
-        let total_ciphertext_cells = u32::from_le_bytes(total_ciphertext_cells_bytes);
+        //   blocks that have been encoded.
+        let total_ciphertext_blocks = u32::from_le_bytes(total_ciphertext_blocks_bytes);
 
         // Now we can calculate how many bytes we need to read.
-        let total_cells_needed = StegaV3::compute_cells_needed(total_ciphertext_cells as usize);
+        let total_blocks_needed = StegaV3::compute_blocks_needed(total_ciphertext_blocks as usize);
 
         /*
           In total we will never store more than 0xFFFFFFFF bytes of data.
-          This is done to keep the total number of cells below the maximum
+          This is done to keep the total number of blocks below the maximum
             possible value for an unsigned 32-bit integer.
         */
-        if total_cells_needed > u32::MAX as usize {
+        if total_blocks_needed > u32::MAX as usize {
             return Err(Error::DataTooLarge);
         }
 
         // Do we have enough space within the image to decode the data?
-        let total_cells = StegaV3::get_total_cells(&enc_image);
-        if total_cells_needed > total_cells {
+        let total_blocks = StegaV3::get_total_blocks(&enc_image);
+        if total_blocks_needed > total_blocks {
             return Err(Error::ImageInsufficientSpace);
         }
 
@@ -199,7 +205,7 @@ impl StegaV3 {
         // We could make a smaller array here, but we can save ourselves the
         // extra operations, at the cost of a few more bytes of reserved memory... which is fine.
         // But remember... all of these offsets are four less than the original due to the skipping.
-        let data: Vec<u8> = (4..total_cells_needed)
+        let data: Vec<u8> = (4..total_blocks_needed)
             .map(|i| self.read_u8_by_index(&ref_image, &enc_image, i))
             .collect();
 
@@ -280,8 +286,8 @@ impl StegaV3 {
             ARGON_VERSION,
         )?);
 
-        // Build the data index to positional cell index map.
-        self.build_data_to_cell_index_map(&img, &composite_key[..]);
+        // Build the data index to positional block index map.
+        self.build_data_to_block_index_map(&img, &composite_key[..]);
 
         // The AES-256 key is 256-bits (32 bytes) in length.
         let key_bytes = &key_bytes_full[..32];
@@ -297,24 +303,24 @@ impl StegaV3 {
             return Err(Error::EncryptionFailed);
         };
 
-        let total_ciphertext_cells = ciphertext_bytes.len();
-        let total_cells_needed = StegaV3::compute_cells_needed(total_ciphertext_cells);
+        let total_ciphertext_blocks = ciphertext_bytes.len();
+        let total_blocks_needed = StegaV3::compute_blocks_needed(total_ciphertext_blocks);
 
         // In total we can never store more than 0xFFFFFFFF bytes of data to
         //   ensure that the values of usize never exceeds the maximum value
         //   of the u32 type.
-        if total_cells_needed > u32::MAX as usize {
+        if total_blocks_needed > u32::MAX as usize {
             return Err(Error::DataTooLarge);
         }
 
         // Do we have enough space within the image to encode the data?
-        let total_cells = StegaV3::get_total_cells(&img);
-        if total_cells_needed > total_cells {
+        let total_blocks = StegaV3::get_total_blocks(&img);
+        if total_blocks_needed > total_blocks {
             return Err(Error::ImageInsufficientSpace);
         }
 
-        let mut to_encode = Vec::with_capacity(total_cells_needed);
-        to_encode.extend_from_slice(&(total_ciphertext_cells as u32).to_le_bytes());
+        let mut to_encode = Vec::with_capacity(total_blocks_needed);
+        to_encode.extend_from_slice(&(total_ciphertext_blocks as u32).to_le_bytes());
         to_encode.extend_from_slice(&salt_bytes);
         to_encode.extend_from_slice(&nonce_bytes);
         to_encode.extend_from_slice(&ciphertext_bytes);
@@ -336,13 +342,13 @@ impl StegaV3 {
         }
     }
 
-    /// Calculate the total number of cells available in a given image.
+    /// Calculate the total number of blocks available in a given image.
     ///
     /// # Arguments
     ///
     /// * `img` - A reference to the [`ImageWrapper`] that holds the image.
     #[inline]
-    fn get_total_cells(img: &ImageWrapper) -> usize {
+    fn get_total_blocks(img: &ImageWrapper) -> usize {
         // 1 byte is 8 bits in length.
         // We can store 1 bit per channel.
         (img.get_total_channels() / 8) as usize
@@ -435,7 +441,7 @@ impl StegaV3 {
         enc_img: &ImageWrapper,
         data_index: usize,
     ) -> u8 {
-        let start_index = self.data_cell_vec[data_index] * 2;
+        let start_index = self.data_block_vec[data_index] * 2;
         self.read_u8(ref_img, enc_img, start_index)
     }
 
@@ -505,7 +511,7 @@ impl StegaV3 {
     /// * `data_index` - The index of the data byte to be written.
     #[inline]
     fn write_u8_by_data_index(&mut self, img: &mut ImageWrapper, data: &u8, data_index: usize) {
-        let start_index = self.data_cell_vec[data_index] * 2;
+        let start_index = self.data_block_vec[data_index] * 2;
         self.write_u8(img, data, start_index);
     }
 }
@@ -653,12 +659,12 @@ mod tests_encode_decode_v3 {
 
         // Return a new StegaV3 instance.
         StegaV3 {
-            data_cell_vec: Vec::new(),
+            data_block_vec: Vec::new(),
             offset_bit_rng: misc_utils::secure_seeded_chacha20(),
             logger: Logger::new(false),
-            t_cost: 1,          // Minimal defaults to speed up encoding and decoding.
-            p_cost: 2,          // Minimal defaults to speed up encoding and decoding.
-            m_cost: 4_000,      // Minimal defaults to speed up encoding and decoding.
+            t_cost: 1,     // Minimal defaults to speed up encoding and decoding.
+            p_cost: 2,     // Minimal defaults to speed up encoding and decoding.
+            m_cost: 4_000, // Minimal defaults to speed up encoding and decoding.
             output_files: true,
         }
     }
