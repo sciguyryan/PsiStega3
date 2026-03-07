@@ -29,23 +29,6 @@ pub struct ImageWrapper {
 }
 
 impl ImageWrapper {
-    /// Returns the number of channels for the given colour type.
-    pub fn channel_count(&self) -> usize {
-        match self.colour_type {
-            // Luminance (grayscale)
-            ExtendedColorType::L8 | ExtendedColorType::L16 => 1,
-            // Luminance + alpha
-            ExtendedColorType::La8 | ExtendedColorType::La16 => 2,
-            // RGB
-            ExtendedColorType::Rgb8 | ExtendedColorType::Rgb16 | ExtendedColorType::Rgb32F => 3,
-            // RGBA
-            ExtendedColorType::Rgba8 | ExtendedColorType::Rgba16 | ExtendedColorType::Rgba32F => 4,
-            _ => {
-                panic!("Unsupported colour type: {:?}", self.colour_type)
-            }
-        }
-    }
-
     /// Return the image's dimension.
     #[inline(always)]
     pub fn dimensions(&self) -> (u32, u32) {

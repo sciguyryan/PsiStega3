@@ -59,14 +59,6 @@ const NONCE_SIZE: usize = 12;
 /// By default, this is an unsigned 32-bit integer, and is hence 4 bytes in size.
 const CIPHERTEXT_CELL_COUNT_SIZE: usize = 4;
 
-/// Reversible pseudo-compression profiles
-#[derive(Clone, Copy)]
-enum PseudoProfile {
-    Light,  // minimal artefacts
-    Medium, // visible compression-style
-    Heavy,  // stronger effects
-}
-
 /// The struct that holds the v3 steganography algorithm.
 pub struct StegaV3 {
     /// The data index to cell ID map.
@@ -161,7 +153,7 @@ impl StegaV3 {
         encoded_img_path: &str,
     ) -> Result<Vec<u8>> {
         let ref_image = StegaV3::load_image(original_img_path, true)?;
-        let mut enc_image = StegaV3::load_image(encoded_img_path, true)?;
+        let enc_image = StegaV3::load_image(encoded_img_path, true)?;
 
         // The reference and encoded images must have the same dimensions.
         if enc_image.dimensions() != ref_image.dimensions() {
@@ -171,15 +163,6 @@ impl StegaV3 {
         // Generate the composite key from the hash of the original file and the key.
         let composite_key =
             Zeroizing::new(StegaV3::generate_composite_key(original_img_path, key)?);
-
-        // We can use the entire key space by making use of it directly as the seed.
-        let mut rng = ChaCha20Rng::from_seed(composite_key[..32].try_into().unwrap());
-
-        Self::pseudo_decompress_in_place(
-            &mut enc_image.image_bytes,
-            ref_image.channel_count(),
-            &mut rng,
-        );
 
         // Build the data index to positional cell index map.
         self.build_data_to_cell_index_map(&enc_image, &composite_key[..]);
@@ -289,9 +272,6 @@ impl StegaV3 {
         let composite_key =
             Zeroizing::new(StegaV3::generate_composite_key(original_img_path, key)?);
 
-        // We can use the entire key space by making use of it directly as the seed.
-        let mut rng = ChaCha20Rng::from_seed(composite_key[..32].try_into().unwrap());
-
         // Generate a random salt for the Argon2 hashing function.
         let salt_bytes: [u8; SALT_SIZE] = misc_utils::secure_random_bytes();
         let key_bytes_full = Zeroizing::new(hashers::argon2_string(
@@ -359,9 +339,6 @@ impl StegaV3 {
         for (i, byte) in to_encode.iter().enumerate() {
             self.write_u8_by_data_index(&mut img, byte, i);
         }
-
-        let channel_count = img.channel_count();
-        Self::pseudo_compress_in_place(&mut img.image_bytes, channel_count, &mut rng);
 
         if !self.output_files {
             return Ok(());
@@ -433,184 +410,6 @@ impl StegaV3 {
         StegaV3::validate_image(&img)?;
 
         Ok(img)
-    }
-
-    /// Reversible pseudo-compression.
-    ///
-    /// # Arguments
-    ///
-    /// * `image` - The image bytes to be "compressed" in place.
-    /// * `channels` - The number of channels in the image.
-    /// * `rng` - The random number generator.
-    ///
-    /// # Notes
-    ///
-    /// This is a reversible transformation that applies random adjustments to the pixel values, based on a randomly selected profile. The same profile and adjustments will be applied during decompression, allowing the original image to be perfectly reconstructed.
-    ///
-    /// *pseudo_decompress_in_place* must be the exact inverse of this function to ensure that the original image can be perfectly reconstructed.
-    fn pseudo_compress_in_place<R: Rng + ?Sized>(image: &mut [u8], channels: usize, rng: &mut R) {
-        // Choose a profile.
-        let profile = match rng.random_range(0..3) {
-            0 => PseudoProfile::Light,
-            1 => PseudoProfile::Medium,
-            _ => PseudoProfile::Heavy,
-        };
-
-        // Per-profile settings.
-        let (quant_range, dither_prob, smooth_prob, mask_prob) = match profile {
-            PseudoProfile::Light => (vec![2, 4], 0.2, 0.1, 0.1),
-            PseudoProfile::Medium => (vec![2, 4, 8], 0.8, 0.7, 0.5),
-            PseudoProfile::Heavy => (vec![4, 8], 1.0, 1.0, 0.8),
-        };
-
-        // Toggles.
-        let do_quantization = rng.random_bool(1.0);
-        let do_dither = rng.random_bool(dither_prob);
-        let do_smoothing = rng.random_bool(smooth_prob);
-        let do_masking = rng.random_bool(mask_prob);
-
-        // Per-channel parameter generation.
-        let quant_levels: Vec<u8> = (0..channels)
-            .map(|_| *quant_range.choose(rng).unwrap())
-            .collect();
-
-        let dither_multiplier: u8 = rng.random_range(5..50);
-        let smooth_mod: u8 = rng.random_range(2..6);
-        let channel_masks: Vec<u8> = (0..channels)
-            .map(|_| {
-                if do_masking {
-                    rng.random_range(0b11110000..=0b11111111)
-                } else {
-                    0xFF
-                }
-            })
-            .collect();
-
-        let mut prev_channels = vec![0u8; channels];
-
-        for (i, byte) in image.iter_mut().enumerate() {
-            let channel_idx = i % channels;
-            let mut val = *byte;
-
-            // Channel masking.
-            val &= channel_masks[channel_idx];
-
-            // Quantization.
-            if do_quantization {
-                let level = quant_levels[channel_idx] as u16;
-                let step = 256u16 / level; // Use u16 to avoid overflow.
-                let residual = (val as u16 % step) as u8;
-                val = ((val as u16 / step * step) as u8) & 0xFF;
-
-                // Deterministic dither.
-                if do_dither {
-                    let noise = ((i as u8)
-                        .wrapping_mul(dither_multiplier)
-                        .wrapping_add(channel_idx as u8))
-                        & ((step as u8) - 1);
-                    val = val.wrapping_add(residual ^ noise);
-                } else {
-                    val = val.wrapping_add(residual);
-                }
-            }
-
-            // Reversible smoothing.
-            if do_smoothing {
-                val = val
-                    .wrapping_sub((prev_channels[channel_idx].wrapping_add(i as u8)) % smooth_mod);
-            }
-
-            prev_channels[channel_idx] = val;
-            *byte = val;
-        }
-    }
-
-    /// Reversible pseudo-decompression.
-    ///
-    /// # Arguments
-    ///
-    /// * `image` - The image bytes to be "decompressed" in place.
-    /// * `channels` - The number of channels in the image.
-    /// * `rng` - The random number generator.
-    ///
-    /// # Notes
-    ///
-    /// This must be the exact inverse of `pseudo_compress_in_place` to ensure that the original image can be perfectly reconstructed.
-    fn pseudo_decompress_in_place<R: Rng + ?Sized>(image: &mut [u8], channels: usize, rng: &mut R) {
-        // Choose the same profile.
-        let profile = match rng.random_range(0..3) {
-            0 => PseudoProfile::Light,
-            1 => PseudoProfile::Medium,
-            _ => PseudoProfile::Heavy,
-        };
-
-        // Per-profile settings.
-        let (quant_range, dither_prob, smooth_prob, mask_prob) = match profile {
-            PseudoProfile::Light => (vec![2, 4], 0.2, 0.1, 0.1),
-            PseudoProfile::Medium => (vec![2, 4, 8], 0.8, 0.7, 0.5),
-            PseudoProfile::Heavy => (vec![4, 8], 1.0, 1.0, 0.8),
-        };
-
-        // Toggles (must match compress).
-        let do_quantization = rng.random_bool(1.0);
-        let do_dither = rng.random_bool(dither_prob);
-        let do_smoothing = rng.random_bool(smooth_prob);
-        let do_masking = rng.random_bool(mask_prob);
-
-        // Per-channel parameter generation (same as compress).
-        let quant_levels: Vec<u8> = (0..channels)
-            .map(|_| *quant_range.choose(rng).unwrap())
-            .collect();
-
-        let dither_multiplier: u8 = rng.random_range(5..50);
-        let smooth_mod: u8 = rng.random_range(2..6);
-        let _channel_masks: Vec<u8> = (0..channels)
-            .map(|_| {
-                if do_masking {
-                    rng.random_range(0b11110000..=0b11111111)
-                } else {
-                    0xFF
-                }
-            })
-            .collect();
-
-        let mut prev_channels = vec![0u8; channels];
-
-        for (i, byte) in image.iter_mut().enumerate() {
-            let channel_idx = i % channels;
-            let mut val = *byte;
-
-            // Reverse smoothing.
-            if do_smoothing {
-                val = val
-                    .wrapping_add((prev_channels[channel_idx].wrapping_add(i as u8)) % smooth_mod);
-            }
-
-            // Reverse quantization and dither.
-            if do_quantization {
-                let level = quant_levels[channel_idx] as u16;
-                let step = 256u16 / level;
-
-                // Reconstruct deterministic dither.
-                let noise = if do_dither {
-                    ((i as u8)
-                        .wrapping_mul(dither_multiplier)
-                        .wrapping_add(channel_idx as u8))
-                        & ((step as u8) - 1)
-                } else {
-                    0
-                };
-
-                let quantized = (val as u16 / step * step) as u8;
-                let residual = (val.wrapping_sub(quantized)) ^ noise;
-                val = quantized.wrapping_add(residual);
-            }
-
-            // Channel mask has no effect on decompression. It's just a visual artefact.
-
-            prev_channels[channel_idx] = val;
-            *byte = val;
-        }
     }
 
     /// Read a byte of encoded data, starting at a specified index.
@@ -793,7 +592,8 @@ impl Codec for StegaV3 {
     fn set_flag_state(&mut self, config: ConfigFlags, state: bool) {
         match config {
             ConfigFlags::NoiseLayer => {
-                self.noise_layer = state;
+                self.logger
+                    .log("noise layer functionality is not supported for this codec.");
             }
             ConfigFlags::Verbose => {
                 if state {

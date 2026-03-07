@@ -217,7 +217,7 @@ fn main() {
             m_cost,
         } => {
             let mut codec = create_codec(&version);
-            check_version_compatibility(&version, locker, read_once);
+            check_version_compatibility(&version, locker, no_noise, read_once);
 
             apply_encode_settings(
                 &mut codec,
@@ -255,7 +255,7 @@ fn main() {
             m_cost,
         } => {
             let mut codec = create_codec(&version);
-            check_version_compatibility(&version, locker, read_once);
+            check_version_compatibility(&version, locker, no_noise, read_once);
 
             apply_encode_settings(
                 &mut codec,
@@ -479,12 +479,15 @@ fn create_codec(version: &Version) -> Box<dyn Codec> {
 }
 
 /// Check for version-specific feature compatibility and warn the user.
-fn check_version_compatibility(version: &Version, locker: bool, read_once: bool) {
+fn check_version_compatibility(version: &Version, locker: bool, no_noise: bool, read_once: bool) {
     match version {
         Version::V2 => {}
         Version::V3 => {
             if locker || read_once {
                 eprintln!("WARNING: --locker and --read-once are only supported in v2. These flags will be ignored.");
+            }
+            if no_noise {
+                eprintln!("WARNING: --no-noise is not supported in v3. This flag will be ignored.");
             }
         }
     }
@@ -723,80 +726,62 @@ fn show_examples() {
     let reset = "\x1b[0m";
 
     println!("\n{split}");
-    println!("{}ENCODING EXAMPLES{}", bold, reset);
+    println!("{bold}ENCODING EXAMPLES{reset}");
     println!("{split}");
 
-    println!("{}Encode text into an image (v3 - default):{}", bold, reset);
+    println!("{bold}Encode text into an image (v3 - default):{reset}");
     println!("  psistega3 encode reference.png encoded.png \"A very important message.\"");
     println!("  (You will be prompted for a password)\n");
 
-    println!(
-        "{}Encode text with password provided (not recommended):{}",
-        bold, reset
-    );
+    println!("{bold}Encode text with password provided (not recommended):{reset}");
     println!("  psistega3 encode reference.png encoded.png \"Secret message\" -p password\n");
 
-    println!("{}Encode using v2 codec:{}", bold, reset);
+    println!("{bold}Encode using v2 codec:{reset}");
     println!("  psistega3 encode reference.png encoded.png \"Secret\" --version v2\n");
 
-    println!("{}Encode a file:{}", bold, reset);
+    println!("{bold}Encode a file:{reset}");
     println!("  psistega3 encode-file reference.png encoded.png input.txt\n");
 
-    println!(
-        "{}Encode with file locker enabled (v2 only):{}",
-        bold, reset
-    );
+    println!("{bold}Encode with file locker enabled (v2 only):{reset}");
     println!("  psistega3 encode reference.png encoded.png \"Secret\" --version v2 --locker\n");
 
     println!("{split}");
-    println!("{}DECODING EXAMPLES{}", bold, reset);
+    println!("{bold}DECODING EXAMPLES{reset}");
     println!("{split}");
 
-    println!("{}Decode text from an image:{}", bold, reset);
+    println!("{bold}Decode text from an image:{reset}");
     println!("  psistega3 decode reference.png encoded.png");
     println!("  (Automatically tries v3, then v2 if v3 fails)\n");
 
-    println!(
-        "{}Decode with password provided (not recommended):{}",
-        bold, reset
-    );
+    println!("{bold}Decode with password provided (not recommended):{reset}");
     println!("  psistega3 decode reference.png encoded.png -p password\n");
 
-    println!(
-        "{}Decode with custom Argon2 parameters (v3):{}",
-        bold, reset
-    );
+    println!("{bold}Decode with custom Argon2 parameters (v3):{reset}");
     println!("  psistega3 decode reference.png encoded.png -p password --t-cost 8 --p-cost 8 --m-cost 65536\n");
 
-    println!("{}Decode a file:{}", bold, reset);
+    println!("{bold}Decode a file:{reset}");
     println!("  psistega3 decode-file reference.png encoded.png output.txt\n");
 
     println!("{split}");
-    println!("{}ADVANCED OPTIONS{}", bold, reset);
+    println!("{bold}ADVANCED OPTIONS{reset}");
     println!("{split}");
 
-    println!(
-        "{}Disable noise layer (faster, less secure):{}",
-        bold, reset
-    );
+    println!("{bold}Disable noise layer (faster, less secure) (v2 only):{reset}");
     println!("  psistega3 encode reference.png output.png \"Text\" --no-noise\n");
 
-    println!("{}Enable read-once protection (v2 only):{}", bold, reset);
+    println!("{bold}Enable read-once protection (v2 only):{reset}");
     println!("  psistega3 encode reference.png output.png \"Text\" --version v2 --read-once\n");
 
-    println!(
-        "{}Custom Argon2 parameters for stronger encryption (v3 only):{}",
-        bold, reset
-    );
+    println!("{bold}Custom Argon2 parameters for stronger encryption (v3 only):{reset}");
     println!(
         "  psistega3 encode ref.png out.png \"Secret\" --t-cost 4 --p-cost 4 --m-cost 65536\n"
     );
 
-    println!("{}Unattended mode (no prompts):{}", bold, reset);
+    println!("{bold}Unattended mode (no prompts):{reset}");
     println!("  psistega3 --unattended encode ref.png out.png \"Text\" -p password\n");
 
     println!("{split}");
-    println!("{}ARGON2 TUNING (v2 and v3){}", bold, reset);
+    println!("{bold}ARGON2 TUNING (v2 and v3){reset}");
     println!("{split}");
 
     println!("The Argon2 parameters control the key derivation function:");
@@ -814,9 +799,9 @@ fn show_examples() {
     println!("  psistega3 decode ref.png out.png --t-cost 10 --p-cost 10 --m-cost 131072\n");
 
     println!("{split}");
-    println!("{}NOTES{}", bold, reset);
+    println!("{bold}NOTES{reset}");
     println!("{split}");
 
     println!("When decoding, if the data isn't valid Unicode, an error will be returned.\n");
-    println!("This {}usually{} means the decoded data is binary rather than text. Using a file output (e.g., via `decode-file`) is recommended.", bold, reset);
+    println!("This {bold}usually{reset} means the decoded data is binary rather than text. Using a file output (e.g., via `decode-file`) is recommended.");
 }
