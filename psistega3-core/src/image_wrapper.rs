@@ -29,6 +29,23 @@ pub struct ImageWrapper {
 }
 
 impl ImageWrapper {
+    /// Returns the number of channels for the given colour type.
+    pub fn channel_count(&self) -> usize {
+        match self.colour_type {
+            // Luminance (grayscale)
+            ExtendedColorType::L8 | ExtendedColorType::L16 => 1,
+            // Luminance + alpha
+            ExtendedColorType::La8 | ExtendedColorType::La16 => 2,
+            // RGB
+            ExtendedColorType::Rgb8 | ExtendedColorType::Rgb16 | ExtendedColorType::Rgb32F => 3,
+            // RGBA
+            ExtendedColorType::Rgba8 | ExtendedColorType::Rgba16 | ExtendedColorType::Rgba32F => 4,
+            _ => {
+                panic!("Unsupported colour type: {:?}", self.colour_type)
+            }
+        }
+    }
+
     /// Return the image's dimension.
     #[inline(always)]
     pub fn dimensions(&self) -> (u32, u32) {
@@ -75,15 +92,6 @@ impl ImageWrapper {
     #[inline(always)]
     pub fn get_total_channels(&self) -> u64 {
         self.image_bytes.len() as u64
-    }
-
-    /// Calculate the histogram of the image's byte values.
-    pub fn histogram(&self) -> [usize; 256] {
-        let mut histogram = [0; 256];
-        for &byte in &self.image_bytes {
-            histogram[byte as usize] += 1;
-        }
-        histogram
     }
 
     /// Attempt to load an image from a file.
