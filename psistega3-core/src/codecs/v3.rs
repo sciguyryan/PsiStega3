@@ -73,8 +73,6 @@ pub struct StegaV3 {
     p_cost: u32,
     // The Argon2 memory cost.
     m_cost: u32,
-    // If the noise layer should be applied to the output image.
-    noise_layer: bool,
     /// If the resulting image file should be saved when encoding.
     output_files: bool,
 }
@@ -88,7 +86,6 @@ impl StegaV3 {
             t_cost: DEFAULT_T_COST,
             p_cost: DEFAULT_P_COST,
             m_cost: DEFAULT_M_COST,
-            noise_layer: true,
             output_files: true,
         }
     }
@@ -316,24 +313,11 @@ impl StegaV3 {
             return Err(Error::ImageInsufficientSpace);
         }
 
-        let capacity = if self.noise_layer {
-            total_cells
-        } else {
-            total_cells_needed
-        };
-
-        let mut to_encode = Vec::with_capacity(capacity);
+        let mut to_encode = Vec::with_capacity(total_cells_needed);
         to_encode.extend_from_slice(&(total_ciphertext_cells as u32).to_le_bytes());
         to_encode.extend_from_slice(&salt_bytes);
         to_encode.extend_from_slice(&nonce_bytes);
         to_encode.extend_from_slice(&ciphertext_bytes);
-
-        // Fill the unused cells with junk random data, if needed.
-        //if self.noise_layer {
-        //    to_encode.extend_from_slice(&StegaV3::generate_junk_bytes(
-        //        to_encode.capacity() - to_encode.len(),
-        //    ));
-        //}
 
         // Iterate over each byte of data to be encoded.
         for (i, byte) in to_encode.iter().enumerate() {
@@ -675,7 +659,6 @@ mod tests_encode_decode_v3 {
             t_cost: 1,          // Minimal defaults to speed up encoding and decoding.
             p_cost: 2,          // Minimal defaults to speed up encoding and decoding.
             m_cost: 4_000,      // Minimal defaults to speed up encoding and decoding.
-            noise_layer: false, // We do not need this here.
             output_files: true,
         }
     }
