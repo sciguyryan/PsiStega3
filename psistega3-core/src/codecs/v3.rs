@@ -69,7 +69,7 @@ const CIPHERTEXT_BLOCK_COUNT_SIZE: usize = 4;
 pub struct StegaV3 {
     /// The data index to block ID map.
     data_block_vec: Vec<usize>,
-    // The RNG for the invidual bit value variances.
+    // The RNG for the individual bit value variances.
     offset_bit_rng: ChaCha20Rng,
     /// The logger instance for this codec.
     logger: Logger,
