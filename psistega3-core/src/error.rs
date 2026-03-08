@@ -14,10 +14,14 @@ pub enum Error {
     AnimatedPngNotSupported,
     /// Unable to decode a base64 string.
     Base64Decoding,
+    /// An error occurred while compressing data.
+    CompressionFailed,
     /// The total amount number of cells exceeds the maximum amount available.
     DataTooLarge,
     /// The decoded string isn't valid.
     DecodeStringInvalid,
+    /// An error occurred while decompressing data.
+    DecompressionFailed,
     /// The data could not be decrypted; the data was invalid.
     DecryptionFailed,
     /// The data could not be encrypted.
@@ -74,9 +78,11 @@ impl fmt::Display for Error {
             Error::Argon2InvalidParams => "One or more Argon2 parameters are invalid.",
             Error::Argon2NoHash => "An error occurred while creating an Argon2 hash.",
             Error::AnimatedPngNotSupported => "Animated image files are not currently supported",
+            Error::CompressionFailed => "An error occurred while compressing data.",
             Error::Base64Decoding => "The base64 string is invalid and could not be decoded.",
             Error::DataTooLarge => "The data is too large.",
             Error::DecodeStringInvalid => "The decoded data isn't valid Unicode.",
+            Error::DecompressionFailed => "An error occurred while decompressing data.",
             Error::DecryptionFailed => "The data could not be decrypted; the data is invalid.",
             Error::EncryptionFailed => "The data could not be encrypted.",
             Error::FileCreate => "An error occurred when attempting to create a file.",

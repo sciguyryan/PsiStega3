@@ -90,6 +90,12 @@ enum Commands {
         /// Argon2 memory cost parameter (KiB) [v3 only].
         #[arg(long)]
         m_cost: Option<u32>,
+        /// Disable compression [v3 only].
+        #[arg(long)]
+        use_compression: Option<bool>,
+        /// Compression level [v3 only].
+        #[arg(long)]
+        compression_level: Option<i32>,
     },
     /// Decode a string from a target image.
     #[command(visible_alias = "d")]
@@ -157,6 +163,12 @@ enum Commands {
         /// Argon2 memory cost parameter (KiB) [v3 only].
         #[arg(long)]
         m_cost: Option<u32>,
+        /// Disable compression [v3 only].
+        #[arg(long)]
+        use_compression: Option<bool>,
+        /// Compression level [v3 only].
+        #[arg(long)]
+        compression_level: Option<i32>,
     },
     /// Decode a file from a target image.
     #[command(visible_alias = "df")]
@@ -215,9 +227,18 @@ fn main() {
             t_cost,
             p_cost,
             m_cost,
+            use_compression,
+            compression_level,
         } => {
             let mut codec = create_codec(&version);
-            check_version_compatibility(&version, locker, no_noise, read_once);
+            check_version_compatibility(
+                &version,
+                locker,
+                no_noise,
+                read_once,
+                use_compression,
+                compression_level,
+            );
 
             apply_encode_settings(
                 &mut codec,
@@ -229,6 +250,8 @@ fn main() {
                 t_cost,
                 p_cost,
                 m_cost,
+                use_compression,
+                compression_level,
                 cli.verbose,
                 cli.unattended,
             );
@@ -253,9 +276,18 @@ fn main() {
             t_cost,
             p_cost,
             m_cost,
+            use_compression,
+            compression_level,
         } => {
             let mut codec = create_codec(&version);
-            check_version_compatibility(&version, locker, no_noise, read_once);
+            check_version_compatibility(
+                &version,
+                locker,
+                no_noise,
+                read_once,
+                use_compression,
+                compression_level,
+            );
 
             apply_encode_settings(
                 &mut codec,
@@ -267,6 +299,8 @@ fn main() {
                 t_cost,
                 p_cost,
                 m_cost,
+                use_compression,
+                compression_level,
                 cli.verbose,
                 cli.unattended,
             );
@@ -479,12 +513,28 @@ fn create_codec(version: &Version) -> Box<dyn Codec> {
 }
 
 /// Check for version-specific feature compatibility and warn the user.
-fn check_version_compatibility(version: &Version, locker: bool, no_noise: bool, read_once: bool) {
+fn check_version_compatibility(
+    version: &Version,
+    locker: bool,
+    no_noise: bool,
+    read_once: bool,
+    use_compression: Option<bool>,
+    compression_level: Option<i32>,
+) {
     match version {
-        Version::V2 => {}
+        Version::V2 => {
+            if use_compression.is_some() {
+                eprintln!(
+                    "WARNING: --use-compression is not supported in v2. This flag will be ignored."
+                );
+            }
+            if compression_level.is_some() {
+                eprintln!("WARNING: --compression-level is not supported in v2. This flag will be ignored.");
+            }
+        }
         Version::V3 => {
             if locker || read_once {
-                eprintln!("WARNING: --locker and --read-once are only supported in v2. These flags will be ignored.");
+                eprintln!("WARNING: --locker and --read-once are not supported v3. These flags will be ignored.");
             }
             if no_noise {
                 eprintln!("WARNING: --no-noise is not supported in v3. This flag will be ignored.");
@@ -504,10 +554,12 @@ fn apply_encode_settings(
     t_cost: Option<u32>,
     p_cost: Option<u32>,
     m_cost: Option<u32>,
+    use_compression: Option<bool>,
+    compression_level: Option<i32>,
     verbose: bool,
     unattended: bool,
 ) {
-    // locker and read_once may only be specified with v2.
+    // locker, read_once and no_noise may only be specified with v2.
     if matches!(version, Version::V2) {
         if locker {
             let mut enabled = true;
@@ -525,6 +577,9 @@ fn apply_encode_settings(
             }
             codec.set_flag_state(ConfigFlags::ReadOnce, enabled);
         }
+        if no_noise {
+            codec.set_flag_state(ConfigFlags::NoiseLayer, false);
+        }
     }
 
     // Argon2 parameters may only be specified with versions v2 and v3.
@@ -540,9 +595,16 @@ fn apply_encode_settings(
         }
     }
 
-    if no_noise {
-        codec.set_flag_state(ConfigFlags::NoiseLayer, false);
+    if matches!(version, Version::V3) {
+        // Compression is enabled by default, so we only need to worry about it being disabled.
+        if let Some(c) = use_compression {
+            codec.set_flag_state(ConfigFlags::UseCompression, c);
+        }
+        if let Some(cl) = compression_level {
+            codec.set_parameter(ConfigParams::CompressionLevel(cl));
+        }
     }
+
     if no_files {
         codec.set_flag_state(ConfigFlags::OutputFiles, false);
     }
@@ -779,6 +841,12 @@ fn show_examples() {
 
     println!("{bold}Unattended mode (no prompts):{reset}");
     println!("  psistega3 --unattended encode ref.png out.png \"Text\" -p password\n");
+
+    println!("{bold}Disable compression (v3 only):{reset}");
+    println!("  psistega3 encode ref.png out.png \"Secret\" --use-compression false\n");
+
+    println!("{bold}Set compression level (v3 only):{reset}");
+    println!("  psistega3 encode ref.png out.png \"Secret\" --compression-level 10\n");
 
     println!("{split}");
     println!("{bold}ARGON2 TUNING (v2 and v3){reset}");

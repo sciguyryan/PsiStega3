@@ -60,6 +60,10 @@ const NONCE_SIZE: usize = 12;
 const CIPHERTEXT_BYTE_COUNT_SIZE: usize = 4;
 /// The maximum size of the data that can be encoded, in bytes.
 const ENCODE_FILE_SIZE_CAP: u64 = 250 * 1024; // 250 KiB
+/// Should compression and decompression be applied to the encoded data?
+const USE_COMPRESSION: bool = true;
+/// Zstd compression level to be used when compressing data before encryption.
+const DEFAULT_COMPRESSION_LEVEL: i32 = 3;
 
 /// The struct that holds the v3 steganography algorithm.
 pub struct StegaV3 {
@@ -73,6 +77,10 @@ pub struct StegaV3 {
     p_cost: u32,
     // The Argon2 memory cost.
     m_cost: u32,
+    /// The level of compression to be applied to the data.
+    compression_level: i32,
+    /// Whether or not compression/decompression should be applied to the data.
+    use_compression: bool,
     /// If the resulting image file should be saved when encoding.
     output_files: bool,
 }
@@ -85,6 +93,8 @@ impl StegaV3 {
             t_cost: DEFAULT_T_COST,
             p_cost: DEFAULT_P_COST,
             m_cost: DEFAULT_M_COST,
+            use_compression: USE_COMPRESSION,
+            compression_level: DEFAULT_COMPRESSION_LEVEL,
             output_files: true,
         }
     }
@@ -95,17 +105,18 @@ impl StegaV3 {
     ///
     /// * `img` - A reference to the [`ImageWrapper`] that holds the image.
     /// * `key` - The key bytes that should be used to seed the random number generator.
+    #[inline]
     fn build_data_to_bit_index_map(&mut self, img: &ImageWrapper, key: &[u8]) {
         // The caller should have run the data through a hashing algorithm that will output
-        // exactly 256 bits (32 bytes) of data.
-        assert_eq!(key.len(), 32);
+        // at least 256 bits (32 bytes) of data.
+        // If more is supplied then only the first 32 bytes will be used.
+
+        // We can use the entire key space by making use of it directly as the seed.
+        let mut rng = ChaCha20Rng::from_seed(key[..32].try_into().unwrap());
 
         // Generate the data index to bit index map, preallocating for performance.
         let total_bits = StegaV3::get_total_storable_bits(img) as u32;
         self.data_bit_map = (0..total_bits).collect();
-
-        // We can use the entire key space by making use of it directly as the seed.
-        let mut rng = ChaCha20Rng::from_seed(key.try_into().unwrap());
         self.data_bit_map.shuffle(&mut rng);
     }
 
@@ -117,21 +128,21 @@ impl StegaV3 {
     ///
     /// `Note:` this will include the bytes needed to encode the salt, nonce, and total cipher-text byte count.
     #[inline(always)]
-    fn compute_bytes_needed(total_ciphertext_bytes: usize) -> usize {
+    fn compute_payload_bits(total_ciphertext_bytes: usize) -> Result<usize> {
         /*
           This value must be held within a 64-bit value to prevent integer
             overflow from occurring in the when running this on a 32-bit architecture.
         */
-        let bytes_needed = CIPHERTEXT_BYTE_COUNT_SIZE as u64
+        let bits_needed = (CIPHERTEXT_BYTE_COUNT_SIZE as u64
             + SALT_SIZE as u64
             + NONCE_SIZE as u64
-            + total_ciphertext_bytes as u64;
-        assert!(
-            bytes_needed < u32::MAX as u64,
-            "the total number of bytes can't exceed the bounds of a 32-bit value"
-        );
-
-        bytes_needed as usize
+            + total_ciphertext_bytes as u64)
+            * 8;
+        if bits_needed < u32::MAX as u64 {
+            Ok(bits_needed as usize)
+        } else {
+            Err(Error::DataTooLarge)
+        }
     }
 
     /// The internal implementation of the decoding algorithm.
@@ -175,30 +186,20 @@ impl StegaV3 {
         //   blocks that have been encoded.
         let total_ciphertext_bytes = u32::from_le_bytes(total_ciphertext_bytes_parts);
 
-        // Now we can calculate how many bytes we need to read.
-        let total_bytes_needed = StegaV3::compute_bytes_needed(total_ciphertext_bytes as usize);
-
-        /*
-          In total we will never store more than 0xFFFFFFFF bytes of data.
-          This is done to keep the total number of blocks below the maximum
-            possible value for an unsigned 32-bit integer.
-        */
-        if total_bytes_needed > u32::MAX as usize {
-            return Err(Error::DataTooLarge);
-        }
+        // Now we can calculate how many bytes of data we need to read.
+        let total_bits_needed = StegaV3::compute_payload_bits(total_ciphertext_bytes as usize)?;
 
         // Do we have enough space within the image to decode the data?
-        let total_available_bytes = StegaV3::get_total_storable_bits(&enc_image);
-        if total_bytes_needed > total_available_bytes {
+        let total_available_bits = StegaV3::get_total_storable_bits(&enc_image);
+        if total_bits_needed > total_available_bits {
             return Err(Error::ImageInsufficientSpace);
         }
 
         // We can skip the first four bytes as we have already read them, above.
-        // We could make a smaller array here, but we can save ourselves the
-        // extra operations, at the cost of a few more bytes of reserved memory... which is fine.
-        // But remember... all of these offsets are four less than the original due to the skipping.
-        let mut data = Vec::with_capacity(total_bytes_needed - 4);
-        for _ in 4..total_bytes_needed {
+        let remaining_bytes = (total_bits_needed / 8) - CIPHERTEXT_BYTE_COUNT_SIZE;
+        let mut data = Vec::with_capacity(remaining_bytes);
+
+        for _ in 0..remaining_bytes {
             let byte = self.read_u8_by_index(&ref_image, &enc_image, &mut bit_counter);
             data.push(byte);
         }
@@ -209,7 +210,7 @@ impl StegaV3 {
             .try_into()
             .unwrap();
 
-        // Finally, extract the ciphertext bytes.
+        // Extract the ciphertext bytes.
         let ciphertext_bytes = &data[(SALT_SIZE + NONCE_SIZE)..];
 
         // Now we can compute the Argon2 hash.
@@ -239,12 +240,21 @@ impl StegaV3 {
             * One or more of the files were modified.
             * The decrypted key was incorrect.
         */
-        let plaintext_bytes = match cipher.decrypt(nonce, ciphertext_bytes.as_ref()) {
+        let decrypted_data = match cipher.decrypt(nonce, ciphertext_bytes.as_ref()) {
             Ok(v) => v,
             Err(_) => return Err(Error::DecryptionFailed),
         };
 
-        Ok(plaintext_bytes)
+        // Decompress the data, if required.
+        if self.use_compression {
+            let Ok(decompressed_data) = misc_utils::decompress(&decrypted_data) else {
+                return Err(Error::DecompressionFailed);
+            };
+
+            Ok(decompressed_data)
+        } else {
+            Ok(decrypted_data)
+        }
     }
 
     /// The internal implementation of the encoding algorithm.
@@ -264,7 +274,6 @@ impl StegaV3 {
     ) -> Result<()> {
         // We don't need to hold a separate reference image instance here.
         let mut img = StegaV3::load_image(original_img_path, false)?;
-        let ref_img = img.clone();
 
         // Generate the composite key from the hash of the original file and the key.
         let composite_key =
@@ -293,28 +302,33 @@ impl StegaV3 {
         let nonce_bytes: [u8; NONCE_SIZE] = misc_utils::secure_random_bytes();
         let nonce = Nonce::from_slice(&nonce_bytes);
 
-        // Encrypt the data.
-        let Ok(ciphertext_bytes) = cipher.encrypt(nonce, data) else {
+        // Compress the data, if required.
+        let maybe_compressed_data = if self.use_compression {
+            let Ok(compressed_data) = misc_utils::compress(data, self.compression_level) else {
+                return Err(Error::CompressionFailed);
+            };
+
+            compressed_data
+        } else {
+            data.to_vec()
+        };
+
+        // Encrypt the data. We want to do this _after_ the compression because encrypted
+        // data should appear random, and so be significantly harder to effectively compress.
+        let Ok(ciphertext_bytes) = cipher.encrypt(nonce, &maybe_compressed_data[..]) else {
             return Err(Error::EncryptionFailed);
         };
 
         let total_ciphertext_bytes = ciphertext_bytes.len();
-        let total_bytes_needed = StegaV3::compute_bytes_needed(total_ciphertext_bytes);
-
-        // In total we can never store more than 0xFFFFFFFF bytes of data to
-        //   ensure that the values of usize never exceeds the maximum value
-        //   of the u32 type.
-        if total_bytes_needed > u32::MAX as usize {
-            return Err(Error::DataTooLarge);
-        }
+        let total_bits_needed = StegaV3::compute_payload_bits(total_ciphertext_bytes)?;
 
         // Do we have enough space within the image to encode the data?
-        let total_available_bytes = StegaV3::get_total_storable_bits(&img);
-        if total_bytes_needed > total_available_bytes {
+        let total_available_bits = StegaV3::get_total_storable_bits(&img);
+        if total_bits_needed > total_available_bits {
             return Err(Error::ImageInsufficientSpace);
         }
 
-        let mut to_encode = Vec::with_capacity(total_bytes_needed);
+        let mut to_encode = Vec::with_capacity(total_bits_needed / 8);
         to_encode.extend_from_slice(&(total_ciphertext_bytes as u32).to_le_bytes());
         to_encode.extend_from_slice(&salt_bytes);
         to_encode.extend_from_slice(&nonce_bytes);
@@ -323,7 +337,7 @@ impl StegaV3 {
         // Iterate over each byte of data to be encoded.
         let mut bit_counter = 0;
         for byte in &to_encode {
-            self.write_u8_by_data_index(&ref_img, &mut img, byte, &mut bit_counter);
+            self.write_u8_by_data_index(&mut img, byte, &mut bit_counter);
         }
 
         if !self.output_files {
@@ -405,18 +419,18 @@ impl StegaV3 {
     /// * `ref_img` - A reference to the [`ImageWrapper`] that holds the reference image.
     /// * `enc_img` - A reference to the [`ImageWrapper`] that holds the encoded image.
     /// * `data_index` - The index of the data byte to be read.
-    /// * `bit_counter` - The index of the bit to be read, which will be updated to the next bit index after reading.
+    /// * `start_bit` - The starting index of the first bit to be written, which will be updated after writing.
     #[inline]
     fn read_u8_by_index(
         &self,
         ref_img: &ImageWrapper,
         enc_img: &ImageWrapper,
-        bit_counter: &mut usize,
+        start_bit: &mut usize,
     ) -> u8 {
         let mut out = 0u8;
 
         for i in 0..8 {
-            let mapped_index = self.data_bit_map[*bit_counter + i] as usize;
+            let mapped_index = self.data_bit_map[*start_bit + i] as usize;
             let byte_index = mapped_index / 8;
             let bit_index = mapped_index % 8;
             let mask = 1u8 << bit_index;
@@ -428,7 +442,7 @@ impl StegaV3 {
             out |= bit << i;
         }
 
-        *bit_counter += 8;
+        *start_bit += 8;
 
         out
     }
@@ -469,29 +483,22 @@ impl StegaV3 {
     ///
     /// * `img` - A mutable reference to the [`ImageWrapper`] in which the data should be encoded.
     /// * `data` - The byte value to be written to the image.
-    /// * `bit_counter` - The index of the bit to be written, which will be updated to the next bit index after writing.
+    /// * `start_bit` - The starting index of the first bit to be written, which will be updated after writing.
     #[inline]
-    fn write_u8_by_data_index(
-        &mut self,
-        ref_img: &ImageWrapper,
-        img: &mut ImageWrapper,
-        data: &u8,
-        bit_counter: &mut usize,
-    ) {
+    fn write_u8_by_data_index(&mut self, img: &mut ImageWrapper, data: &u8, start_bit: &mut usize) {
         for i in 0..8 {
-            let mapped_index = self.data_bit_map[*bit_counter + i] as usize;
+            let mapped_index = self.data_bit_map[*start_bit + i] as usize;
             let byte_index = mapped_index / 8;
             let bit_index = mapped_index % 8;
             let mask = 1u8 << bit_index;
 
             let b = img.get_channel_mut(byte_index);
-            let ref_b = ref_img.get_channel(byte_index);
 
-            let xor_bit = ((ref_b & mask) >> bit_index) ^ ((data >> i) & 1);
+            let xor_bit = ((*b & mask) >> bit_index) ^ ((data >> i) & 1);
             *b = (*b & !mask) | (xor_bit << bit_index);
         }
 
-        *bit_counter += 8;
+        *start_bit += 8;
     }
 }
 
@@ -540,9 +547,17 @@ impl Codec for StegaV3 {
         encoded_img_path: &str,
     ) -> Result<String> {
         let bytes = self.decode_internal(original_img_path, key, encoded_img_path)?;
+        let maybe_zstd = misc_utils::is_zstd_frame(&bytes);
+
         if let Ok(s) = String::from_utf8(bytes) {
             Ok(s)
         } else {
+            if maybe_zstd {
+                self.logger.log("Decryption failed, but a zstd frame magic header was detected at index 0 of the decoded data.");
+                self.logger
+                    .log("Verifying that compression is enabled when decoding may help.");
+            }
+
             Err(Error::DecodeStringInvalid)
         }
     }
@@ -593,6 +608,9 @@ impl Codec for StegaV3 {
                 self.logger
                     .log("skipping version checks is not supported for this codec.");
             }
+            ConfigFlags::UseCompression => {
+                self.use_compression = state;
+            }
         }
     }
 
@@ -607,6 +625,9 @@ impl Codec for StegaV3 {
             ConfigParams::MCost(m) => {
                 self.m_cost = m;
             }
+            ConfigParams::CompressionLevel(c) => {
+                self.compression_level = c;
+            }
         }
     }
 }
@@ -620,7 +641,10 @@ impl Default for StegaV3 {
 #[cfg(test)]
 mod tests_encode_decode_v3 {
     use crate::{
-        codecs::codec::{Codec, ConfigParams},
+        codecs::{
+            codec::{Codec, ConfigFlags, ConfigParams},
+            v3::DEFAULT_COMPRESSION_LEVEL,
+        },
         error::Error,
         hashers,
         utilities::{file_utils, test_utils::*},
@@ -650,6 +674,8 @@ mod tests_encode_decode_v3 {
             t_cost: 1,     // Minimal defaults to speed up encoding and decoding.
             p_cost: 2,     // Minimal defaults to speed up encoding and decoding.
             m_cost: 4_000, // Minimal defaults to speed up encoding and decoding.
+            compression_level: DEFAULT_COMPRESSION_LEVEL,
+            use_compression: false,
             output_files: true,
         }
     }
@@ -1057,6 +1083,56 @@ mod tests_encode_decode_v3 {
 
         let result = stega.decode(&ref_path, KEY.to_string(), &enc_path);
         assert_eq!(result, Err(Error::DecodeStringInvalid));
+    }
+
+    #[test]
+    fn test_compression_roundtrip() {
+        let mut tu = TestUtils::new(&BASE);
+
+        let ref_path = tu.get_in_file("reference-valid.png");
+        let enc_path = tu.get_out_file("png", true);
+
+        // Define a lovely compressible string.
+        const TEST_STRING: &str = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\nAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+
+        let mut stega = create_instance();
+
+        // Encode the data using compression.
+        stega.set_flag_state(ConfigFlags::UseCompression, true);
+        stega.set_parameter(ConfigParams::CompressionLevel(5));
+        stega
+            .encode(&ref_path, KEY.to_string(), TEST_STRING, &enc_path)
+            .expect("failed to encode the data");
+
+        // The data should be successfully decoded as compression is still enabled.
+        let result = stega
+            .decode(&ref_path, KEY.to_string(), &enc_path)
+            .expect("failed to decode the data");
+        assert_eq!(result, TEST_STRING, "failed to decode the data");
+
+        // If we set the wrong compression level, decoding should NOT fail. Why?
+        // ZSH is smart and encodes the compression level in the encoded data.
+        stega.set_parameter(ConfigParams::CompressionLevel(3));
+
+        let result_2 = stega
+            .decode(&ref_path, KEY.to_string(), &enc_path)
+            .expect("failed to decode the data");
+        assert_eq!(
+            result_2, TEST_STRING,
+            "failed to decoded the data with the wrong compression level"
+        );
+
+        // Now if we disable compression, decoding should fail. Why?
+        // This should yield invalid unicode data when the compressed bytes are interpreted as unicode,
+        // which should lead the decoder to thinking that the decryption failed - yielding only junk data.
+        stega.set_flag_state(ConfigFlags::UseCompression, false);
+
+        let result_3 = stega.decode(&ref_path, KEY.to_string(), &enc_path);
+        assert_eq!(
+            result_3,
+            Err(Error::DecodeStringInvalid),
+            "successfully decoded the data with compression disabled ex post facto"
+        );
     }
 }
 

@@ -846,6 +846,9 @@ impl Codec for StegaV2 {
             ConfigFlags::SkipVersionChecks => {
                 self.skip_version_checks = state;
             }
+            ConfigFlags::UseCompression => {
+                self.logger.log("compression is supported for this codec");
+            }
         }
     }
 
@@ -859,6 +862,10 @@ impl Codec for StegaV2 {
             }
             ConfigParams::MCost(m) => {
                 self.m_cost = m;
+            }
+            ConfigParams::CompressionLevel(_) => {
+                self.logger
+                    .log("compression levels are not supported for this codec");
             }
         }
     }

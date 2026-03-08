@@ -90,29 +90,32 @@ pub trait Codec {
 pub enum ConfigFlags {
     /// Enable or disable the noise map.
     ///
-    /// Applicable to: v1+.
+    /// Applicable to: v2.
     NoiseLayer,
     /// Enable or disable verbose mode.
     ///
-    /// Applicable to: v1+.
+    /// Applicable to: v2+.
     Verbose,
     /// Enable or disable the saving of files when encoding or decoding.
     ///
-    /// Applicable to: v1+.
+    /// Applicable to: v2+.
     OutputFiles,
     /// Enable or disable the file access locking system for this file.
     ///
-    /// Applicable to: v1, v2.
+    /// Applicable to: v2.
     Locker,
     /// Enable or disable the single-read locker system.
     ///
-    /// Applicable to: v1, v2.
+    /// Applicable to: v2.
     ReadOnce,
     /// Enable or disable version checking.
     ///
     /// Applicable to: v2.
-    /// This is not applicable to v1 and v2 as checks are never performed.
     SkipVersionChecks,
+    /// Disable compression and decompression of the input data.
+    ///
+    /// Applicable to: v3.
+    UseCompression,
 }
 
 /// A list of configuration parameters that are applicable to a [`Codec`].
@@ -135,4 +138,8 @@ pub enum ConfigParams {
     ///
     /// `Note:` If unspecified then the default value for the codec will be used.
     MCost(u32),
+    /// The level of compression that should be applied to the input data.
+    ///
+    /// Applicable to: v3.
+    CompressionLevel(i32),
 }

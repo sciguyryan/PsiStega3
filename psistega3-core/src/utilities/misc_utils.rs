@@ -1,8 +1,51 @@
 use rand::SeedableRng;
 use rand_xoshiro::{Seed512, Xoshiro512PlusPlus};
+use std::io::{self, Read, Write};
+use zstd::{
+    stream::{Decoder, Encoder},
+    zstd_safe,
+};
 
 /// Precomputed u8 bit masks.
 pub const BIT_MASKS: [u8; 8] = [0x1, 0x2, 0x4, 0x8, 0x10, 0x20, 0x40, 0x80];
+
+const ZSTD_MAGIC: u32 = 0xFD2FB528;
+const ZSTD_SKIPPABLE_START: u32 = 0x184D2A50;
+const ZSTD_SKIPPABLE_END: u32 = 0x184D2A5F;
+
+/// Validate a zstd compression level and panic if the level is invalid.
+fn assert_valid_zstd_level(level: i32) {
+    let min_level = zstd_safe::min_c_level();
+    let max_level = zstd_safe::max_c_level();
+    assert!(
+        (min_level..=max_level).contains(&level),
+        "Invalid zstd compression level: {level} which must be: (level > {min_level} and level <= {max_level})",
+    );
+}
+
+/// Compress a byte slice and return the compressed data as a Vec<u8>.
+///
+/// # Arguments
+/// * `data` - The byte slice to be compressed.
+/// * `level` - The compression level to be used, which can be an integer from 1 to 22, where higher levels indicate better compression at the cost of increased time and memory usage.
+pub fn compress(data: &[u8], level: i32) -> io::Result<Vec<u8>> {
+    assert_valid_zstd_level(level);
+
+    let mut compressed = Vec::new();
+    let mut encoder = Encoder::new(&mut compressed, level)?;
+    encoder.write_all(data)?;
+    encoder.finish()?;
+
+    Ok(compressed)
+}
+
+/// Compress a byte slice and return the compressed data as a Vec<u8>.
+pub fn decompress(data: &[u8]) -> io::Result<Vec<u8>> {
+    let mut decompressed = Vec::new();
+    let mut decoder = Decoder::new(data)?;
+    decoder.read_to_end(&mut decompressed)?;
+    Ok(decompressed)
+}
 
 /// Check if a bit is set for a given u8 value.
 ///
@@ -13,6 +56,17 @@ pub const BIT_MASKS: [u8; 8] = [0x1, 0x2, 0x4, 0x8, 0x10, 0x20, 0x40, 0x80];
 #[inline]
 pub fn is_bit_set(value: &u8, index: usize) -> bool {
     unsafe { (value & BIT_MASKS.get_unchecked(index)) != 0 }
+}
+
+/// Returns true if the buffer begins with a valid Zstd frame magic.
+pub fn is_zstd_frame(data: &[u8]) -> bool {
+    if data.len() < 4 {
+        return false;
+    }
+
+    let magic = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
+
+    magic == ZSTD_MAGIC || (ZSTD_SKIPPABLE_START..=ZSTD_SKIPPABLE_END).contains(&magic)
 }
 
 /// Attempt to find a u8 slice within a u8 slice.

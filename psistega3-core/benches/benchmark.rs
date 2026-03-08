@@ -170,7 +170,7 @@ fn benchmark_v3_decoding(c: &mut Criterion) {
                     || {
                         let output_path = get_temp_output_path();
 
-                        let mut stega = StegaV2::new("benchmark");
+                        let mut stega = StegaV3::new();
                         stega
                             .encode(
                                 img_path,
@@ -199,17 +199,58 @@ fn benchmark_v3_decoding(c: &mut Criterion) {
     group.finish();
 }
 
-/*fn benchmark_v3_generate_junk_bytes(c: &mut Criterion) {
-    let mut group = c.benchmark_group("junk_bytes_v3");
+fn benchmark_v3_decoding_compression(c: &mut Criterion) {
+    let mut group = c.benchmark_group("decoding_v3_compression");
 
-    for size in [1_000usize, 10_000, 100_000, 1_000_000] {
-        group.bench_with_input(BenchmarkId::from_parameter(size), &size, |b, &size| {
-            b.iter(|| black_box(StegaV3::generate_junk_bytes(size)));
-        });
+    let test_configs = [
+        ("medium", get_sample_file_path("ref_medium.png")),
+        ("large", get_sample_file_path("ref_large.png")),
+    ];
+
+    let compression_options = [(true, "compressed"), (false, "uncompressed")];
+
+    group.sample_size(15);
+    group.measurement_time(Duration::from_secs(180));
+    group.warm_up_time(Duration::from_secs(10));
+
+    let key = "we're benchmarking!!!".to_string();
+    let input = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Quisque diam tortor, ultrices quis augue eu, semper congue justo. Sed pharetra dui nec magna dignissim, sit amet placerat sem elementum. Pellentesque in purus sed risus tincidunt ultrices at id dui. Aenean vitae lacinia nisl. Donec tortor ante, vehicula non hendrerit nec, hendrerit eget mi. Aliquam erat volutpat. Nullam blandit dui dui. Phasellus a iaculis quam, quis egestas ex. In non porttitor nisi, vitae tempor lorem. Maecenas sed elit eu tortor tincidunt euismod.\nMorbi tincidunt felis ut purus tempus dapibus. Donec quis scelerisque velit. Maecenas placerat, turpis eget malesuada placerat, nunc mauris consectetur turpis, a aliquam eros leo eu nibh. Curabitur fermentum metus vel turpis vestibulum luctus. Ut egestas finibus enim, nec rhoncus dolor sodales eu. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Cras fringilla at nisi dictum mattis. Quisque id congue nisl, ut commodo lorem. Morbi aliquam vel quam sed aliquet. Etiam gravida diam eget rhoncus porttitor.\nFusce blandit id mi imperdiet placerat. Suspendisse eu arcu non orci commodo interdum ut quis lectus. Maecenas turpis enim, ullamcorper nec enim quis, semper pharetra erat. Morbi augue augue, bibendum et ornare viverra, rhoncus a sem. Vivamus ut diam aliquam, molestie neque nec, sollicitudin tortor. Curabitur vehicula magna eu ante pulvinar malesuada. Pellentesque ultricies egestas dignissim. Aliquam lorem lectus, sagittis hendrerit felis vitae, lacinia tempor elit. In semper ullamcorper est. Curabitur auctor eros in enim convallis accumsan sit amet et sapien. Etiam pharetra lectus volutpat arcu maximus sollicitudin. Maecenas gravida efficitur dolor, vitae tempus neque. Donec dignissim vel nunc a maximus. Integer egestas congue magna, non auctor lectus ornare malesuada.";
+
+    for (name, img_path) in test_configs.iter() {
+        for (use_compression, suffix) in compression_options.iter() {
+            let benchmark_name = format!("{name}_{suffix}");
+            group.bench_with_input(
+                BenchmarkId::from_parameter(&benchmark_name),
+                &(img_path, *use_compression),
+                |b, (img_path, use_compression)| {
+                    b.iter_batched(
+                        || {
+                            let output_path = get_temp_output_path();
+
+                            let mut stega = StegaV3::new();
+                            stega.set_flag_state(ConfigFlags::DisableCompression, !state);
+                            stega
+                                .encode(img_path, key.clone(), input, &output_path)
+                                .expect("encode failed");
+
+                            (output_path, stega)
+                        },
+                        |(output_path, mut stega)| {
+                            stega.decode(
+                                black_box(&img_path),
+                                black_box(key.clone()),
+                                black_box(&output_path),
+                            )
+                        },
+                        BatchSize::SmallInput,
+                    )
+                },
+            );
+        }
     }
 
     group.finish();
-}*/
+}
 
 fn get_sample_file_path(name: &str) -> String {
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
@@ -239,6 +280,6 @@ criterion_group!(
     benchmark_v2_decoding,
     benchmark_v3_encoding,
     benchmark_v3_decoding,
-    //benchmark_v3_generate_junk_bytes,
+    benchmark_v3_decoding_compression,
 );
 criterion_main!(benches);
