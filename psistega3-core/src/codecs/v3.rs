@@ -20,7 +20,7 @@ use super::codec::{ConfigFlags, ConfigParams};
 const CODED_VERSION: u8 = 0x3;
 /// The time cost (iterations) for use with the Argon2 hashing algorithm.
 const DEFAULT_T_COST: u32 = 8;
-/// The parallel cost (threadreads) for use with the Argon2 hashing algorithm.
+/// The parallel cost (threads) for use with the Argon2 hashing algorithm.
 const DEFAULT_P_COST: u32 = 8;
 /// The memory cost (kilobytes) for use with the Argon2 hashing algorithm.
 const DEFAULT_M_COST: u32 = 131_072;
@@ -59,12 +59,12 @@ const NONCE_SIZE: usize = 12;
 /// By default, this is an unsigned 32-bit integer, and is hence 4 bytes in size.
 const CIPHERTEXT_BYTE_COUNT_SIZE: usize = 4;
 /// The maximum size of the data that can be encoded, in bytes.
-const FILE_SIZE_CAP: u64 = 200 * 1024; // 200 KiB
+const ENCODE_FILE_SIZE_CAP: u64 = 250 * 1024; // 250 KiB
 
 /// The struct that holds the v3 steganography algorithm.
 pub struct StegaV3 {
     /// The data index to bit index map.
-    data_bit_map: Vec<usize>,
+    data_bit_map: Vec<u32>,
     /// The logger instance for this codec.
     logger: Logger,
     // The Argon2 time cost.
@@ -101,9 +101,8 @@ impl StegaV3 {
         assert_eq!(key.len(), 32);
 
         // Generate the data index to bit index map, preallocating for performance.
-        let total_bits = StegaV3::get_total_storable_bits(img);
-        self.data_bit_map = Vec::with_capacity(total_bits);
-        self.data_bit_map.extend(0..total_bits);
+        let total_bits = StegaV3::get_total_storable_bits(img) as u32;
+        self.data_bit_map = (0..total_bits).collect();
 
         // We can use the entire key space by making use of it directly as the seed.
         let mut rng = ChaCha20Rng::from_seed(key.try_into().unwrap());
@@ -417,7 +416,7 @@ impl StegaV3 {
         let mut out = 0u8;
 
         for i in 0..8 {
-            let mapped_index = self.data_bit_map[*bit_counter + i];
+            let mapped_index = self.data_bit_map[*bit_counter + i] as usize;
             let byte_index = mapped_index / 8;
             let bit_index = mapped_index % 8;
             let mask = 1u8 << bit_index;
@@ -480,7 +479,7 @@ impl StegaV3 {
         bit_counter: &mut usize,
     ) {
         for i in 0..8 {
-            let mapped_index = self.data_bit_map[*bit_counter + i];
+            let mapped_index = self.data_bit_map[*bit_counter + i] as usize;
             let byte_index = mapped_index / 8;
             let bit_index = mapped_index % 8;
             let mask = 1u8 << bit_index;
@@ -526,7 +525,7 @@ impl Codec for StegaV3 {
         // This limit is somewhat arbitrary, but it is meant to prevent users from trying to encode
         // files that are too large and will produce performance complications.
         let size = file_utils::get_file_size(input_file_path)?;
-        if size > FILE_SIZE_CAP {
+        if size > ENCODE_FILE_SIZE_CAP {
             return Err(Error::FileTooLarge);
         }
 
