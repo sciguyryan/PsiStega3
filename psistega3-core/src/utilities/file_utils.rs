@@ -33,6 +33,23 @@ pub fn get_file_metadata(path: &str) -> Result<Metadata> {
     p.metadata().map_or_else(|_| Err(Error::FileMetadata), Ok)
 }
 
+/// Get the size of a file, in bytes.
+///
+/// # Arguments
+/// * `path` - The path to the file.
+///
+/// # Returns
+///
+/// The size of the file, in bytes.
+pub fn get_file_size(path: &str) -> Result<u64> {
+    if !path_exists(path) {
+        return Err(Error::PathInvalid);
+    }
+
+    let meta = get_file_metadata(path)?;
+    Ok(meta.len())
+}
+
 /// Get the read-only state of a file.
 ///
 /// # Arguments

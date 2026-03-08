@@ -54,10 +54,12 @@ const VERSION_DOMAIN_SEPARATOR: [u8; 64] = [
 const SALT_SIZE: usize = 32;
 /// The size of the AES nonce, in bytes.
 const NONCE_SIZE: usize = 12;
-/// The size of the ciphertext cell counter, in bytes.
+/// The size of the ciphertext byte counter, in bytes.
 ///
 /// By default, this is an unsigned 32-bit integer, and is hence 4 bytes in size.
 const CIPHERTEXT_BYTE_COUNT_SIZE: usize = 4;
+/// The maximum size of the data that can be encoded, in bytes.
+const FILE_SIZE_CAP: u64 = 200 * 1024; // 200 KiB
 
 /// The struct that holds the v3 steganography algorithm.
 pub struct StegaV3 {
@@ -519,6 +521,13 @@ impl Codec for StegaV3 {
     ) -> Result<()> {
         if !file_utils::path_exists(input_file_path) {
             return Err(Error::PathInvalid);
+        }
+
+        // This limit is somewhat arbitrary, but it is meant to prevent users from trying to encode
+        // files that are too large and will produce performance complications.
+        let size = file_utils::get_file_size(input_file_path)?;
+        if size > FILE_SIZE_CAP {
+            return Err(Error::FileTooLarge);
         }
 
         let bytes = file_utils::read_file_to_u8_vec(input_file_path)?;

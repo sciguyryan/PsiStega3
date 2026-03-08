@@ -32,6 +32,8 @@ pub enum Error {
     FileOpen,
     /// Error reading from a file.
     FileRead,
+    /// The file is too large to be encoded.
+    FileTooLarge,
     /// Error truncating a file.
     FileTruncate,
     /// Error writing to a file.
@@ -79,9 +81,10 @@ impl fmt::Display for Error {
             Error::EncryptionFailed => "The data could not be encrypted.",
             Error::FileCreate => "An error occurred when attempting to create a file.",
             Error::FileHashingError => "An error occurred when attempting to hash a file.",
-            Error::FileOpen => "An error occurred when attempting open a file.",
             Error::FileMetadata => "An error occurred when attempting to read or write a file's metadata.",
+            Error::FileOpen => "An error occurred when attempting open a file.",
             Error::FileRead => "An error occurred when attempting to read from a file.",
+            Error::FileTooLarge => "The file is too large to be encoded.",
             Error::FileTruncate => "An error occurred when attempting to truncate a file.",
             Error::FileWrite => "An error occurred when attempting to write to a file.",
             Error::ImageDimensionsInvalid => {
