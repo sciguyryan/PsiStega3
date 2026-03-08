@@ -1,5 +1,4 @@
 use rand::SeedableRng;
-use rand_chacha::ChaCha20Rng;
 use rand_xoshiro::{Seed512, Xoshiro512PlusPlus};
 
 /// Precomputed u8 bit masks.
@@ -35,12 +34,6 @@ pub fn secure_random_bytes<const N: usize>() -> [u8; N] {
     let mut arr = [0u8; N];
     getrandom::fill(&mut arr).expect("failed to generate random bytes");
     arr
-}
-
-/// Create a securely seeded ChaCha20 PRNG.
-#[inline]
-pub fn secure_seeded_chacha20() -> ChaCha20Rng {
-    ChaCha20Rng::from_seed(secure_random_bytes())
 }
 
 /// Create a securely seeded Xoshiro512PlusPlus PRNG.

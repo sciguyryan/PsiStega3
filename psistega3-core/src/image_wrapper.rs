@@ -35,6 +35,30 @@ impl ImageWrapper {
         self.dimensions
     }
 
+    /// Get a reference to the channel value at a given index.
+    ///
+    /// # Arguments
+    /// * `index` - The index of the channel to be returned.
+    #[inline(always)]
+    pub fn get_channel(&self, index: usize) -> &u8 {
+        &self.image_bytes[index]
+    }
+
+    /// Get a mutable reference to the channel value at a given index.
+    ///
+    /// # Arguments
+    /// * `index` - The index of the channel to be returned.
+    #[inline(always)]
+    pub fn get_channel_mut(&mut self, index: usize) -> &mut u8 {
+        &mut self.image_bytes[index]
+    }
+
+    /// Get the format of the image.
+    #[inline(always)]
+    pub fn get_image_format(&self) -> ImageFormat {
+        self.format
+    }
+
     /// Get a reference slice for a specified number of subcells of data, starting from a given start index.
     ///
     /// # Arguments
@@ -63,12 +87,6 @@ impl ImageWrapper {
         let start = start_index * 4;
         let end = start + (count * 4) as usize;
         &mut self.image_bytes[start..end]
-    }
-
-    /// Get the format of the image.
-    #[inline(always)]
-    pub fn get_image_format(&self) -> ImageFormat {
-        self.format
     }
 
     /// Calculate the total number of channels available in the image.
