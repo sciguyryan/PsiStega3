@@ -528,10 +528,6 @@ impl Codec for StegaV3 {
         input_file_path: &str,
         encoded_img_path: &str,
     ) -> Result<()> {
-        if !file_utils::path_exists(input_file_path) {
-            return Err(Error::PathInvalid);
-        }
-
         // This limit is somewhat arbitrary, but it is meant to prevent users from trying to encode
         // files that are too large and will produce performance complications.
         let size = file_utils::get_file_size(input_file_path)?;
