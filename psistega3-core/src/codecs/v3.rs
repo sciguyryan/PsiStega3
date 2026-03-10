@@ -509,6 +509,8 @@ impl Codec for StegaV3 {
         plaintext: &str,
         encoded_img_path: &str,
     ) -> Result<()> {
+        // Realistically, the limit could be higher, but I just want to prevent silly people
+        // doing silly things.
         if plaintext.len() as u64 > ENCODE_DATA_SIZE_CAP {
             return Err(Error::DataTooLarge);
         }
@@ -529,7 +531,9 @@ impl Codec for StegaV3 {
         encoded_img_path: &str,
     ) -> Result<()> {
         // This limit is somewhat arbitrary, but it is meant to prevent users from trying to encode
-        // files that are too large and will produce performance complications.
+        // files that are too large.
+        // Realistically, the limit could be higher, but I just want to prevent silly people
+        // doing silly things.
         let size = file_utils::get_file_size(input_file_path)?;
         if size > ENCODE_DATA_SIZE_CAP {
             return Err(Error::DataTooLarge);
