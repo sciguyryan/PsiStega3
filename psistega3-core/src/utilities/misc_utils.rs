@@ -14,12 +14,13 @@ const ZSTD_SKIPPABLE_START: u32 = 0x184D2A50;
 const ZSTD_SKIPPABLE_END: u32 = 0x184D2A5F;
 
 /// Validate a zstd compression level and panic if the level is invalid.
+#[inline]
 fn assert_valid_zstd_level(level: i32) {
     let min_level = zstd_safe::min_c_level();
     let max_level = zstd_safe::max_c_level();
     assert!(
         (min_level..=max_level).contains(&level),
-        "Invalid zstd compression level: {level} which must be: (level > {min_level} and level <= {max_level})",
+        "Invalid zstd compression level: {level}. Level which must be => {min_level} and <= {max_level})",
     );
 }
 
@@ -28,6 +29,7 @@ fn assert_valid_zstd_level(level: i32) {
 /// # Arguments
 /// * `data` - The byte slice to be compressed.
 /// * `level` - The compression level to be used, which can be an integer from 1 to 22, where higher levels indicate better compression at the cost of increased time and memory usage.
+#[inline]
 pub fn compress(data: &[u8], level: i32) -> io::Result<Vec<u8>> {
     assert_valid_zstd_level(level);
 
@@ -40,6 +42,7 @@ pub fn compress(data: &[u8], level: i32) -> io::Result<Vec<u8>> {
 }
 
 /// Compress a byte slice and return the compressed data as a Vec<u8>.
+#[inline]
 pub fn decompress(data: &[u8]) -> io::Result<Vec<u8>> {
     let mut decompressed = Vec::new();
     let mut decoder = Decoder::new(data)?;
@@ -58,14 +61,14 @@ pub fn is_bit_set(value: &u8, index: usize) -> bool {
     unsafe { (value & BIT_MASKS.get_unchecked(index)) != 0 }
 }
 
-/// Returns true if the buffer begins with a valid Zstd frame magic.
+/// Returns true if the buffer begins with a valid zstd frame magic value.
+#[inline]
 pub fn is_zstd_frame(data: &[u8]) -> bool {
     if data.len() < 4 {
         return false;
     }
 
     let magic = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
-
     magic == ZSTD_MAGIC || (ZSTD_SKIPPABLE_START..=ZSTD_SKIPPABLE_END).contains(&magic)
 }
 

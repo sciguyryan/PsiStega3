@@ -59,7 +59,7 @@ const NONCE_SIZE: usize = 12;
 /// By default, this is an unsigned 32-bit integer, and is hence 4 bytes in size.
 const CIPHERTEXT_BYTE_COUNT_SIZE: usize = 4;
 /// The maximum size of the data that can be encoded, in bytes.
-const ENCODE_FILE_SIZE_CAP: u64 = 250 * 1024; // 250 KiB
+const ENCODE_DATA_SIZE_CAP: u64 = 250 * 1024; // 250 KiB
 /// Should compression and decompression be applied to the encoded data?
 const USE_COMPRESSION: bool = true;
 /// Zstd compression level to be used when compressing data before encryption.
@@ -230,8 +230,7 @@ impl StegaV3 {
         let nonce = Nonce::from_slice(&nonce_bytes);
 
         /*
-          Attempt to decrypt the cipher-text bytes with
-            the extracted information.
+          Attempt to decrypt the cipher-text bytes with the extracted information.
 
           This will fail if the decryption does not yield valid data.
 
@@ -239,6 +238,7 @@ impl StegaV3 {
             * There was no information stored.
             * One or more of the files were modified.
             * The decrypted key was incorrect.
+            * The data was encoded with compression, but not decoded with compression enabled.
         */
         let decrypted_data = match cipher.decrypt(nonce, ciphertext_bytes.as_ref()) {
             Ok(v) => v,
@@ -359,8 +359,7 @@ impl StegaV3 {
     /// * `img` - A reference to the [`ImageWrapper`] that holds the image.
     #[inline]
     fn get_total_storable_bits(img: &ImageWrapper) -> usize {
-        // 1 byte is 8 bits in length.
-        // We can store 1 bit per channel.
+        // 1 byte is 8 bits in length. We can store 1 bit per channel.
         img.get_total_channels() as usize
     }
 
@@ -510,6 +509,10 @@ impl Codec for StegaV3 {
         plaintext: &str,
         encoded_img_path: &str,
     ) -> Result<()> {
+        if plaintext.len() as u64 > ENCODE_DATA_SIZE_CAP {
+            return Err(Error::DataTooLarge);
+        }
+
         self.encode_internal(
             original_img_path,
             key,
@@ -532,8 +535,8 @@ impl Codec for StegaV3 {
         // This limit is somewhat arbitrary, but it is meant to prevent users from trying to encode
         // files that are too large and will produce performance complications.
         let size = file_utils::get_file_size(input_file_path)?;
-        if size > ENCODE_FILE_SIZE_CAP {
-            return Err(Error::FileTooLarge);
+        if size > ENCODE_DATA_SIZE_CAP {
+            return Err(Error::DataTooLarge);
         }
 
         let bytes = file_utils::read_file_to_u8_vec(input_file_path)?;

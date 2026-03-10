@@ -16,8 +16,6 @@ pub enum Error {
     Base64Decoding,
     /// An error occurred while compressing data.
     CompressionFailed,
-    /// The total amount number of cells exceeds the maximum amount available.
-    DataTooLarge,
     /// The decoded string isn't valid.
     DecodeStringInvalid,
     /// An error occurred while decompressing data.
@@ -36,8 +34,8 @@ pub enum Error {
     FileOpen,
     /// Error reading from a file.
     FileRead,
-    /// The file is too large to be encoded.
-    FileTooLarge,
+    /// The data is too large to be encoded.
+    DataTooLarge,
     /// Error truncating a file.
     FileTruncate,
     /// Error writing to a file.
@@ -90,7 +88,6 @@ impl fmt::Display for Error {
             Error::FileMetadata => "An error occurred when attempting to read or write a file's metadata.",
             Error::FileOpen => "An error occurred when attempting open a file.",
             Error::FileRead => "An error occurred when attempting to read from a file.",
-            Error::FileTooLarge => "The file is too large to be encoded.",
             Error::FileTruncate => "An error occurred when attempting to truncate a file.",
             Error::FileWrite => "An error occurred when attempting to write to a file.",
             Error::ImageDimensionsInvalid => {
