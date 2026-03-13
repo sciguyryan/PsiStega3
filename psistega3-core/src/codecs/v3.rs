@@ -27,6 +27,7 @@ const DEFAULT_P_COST: u32 = 8;
 const DEFAULT_M_COST: u32 = 131_072;
 /// The version of the Argon2 hashing algorithm to use.
 const ARGON_VERSION: argon2::Version = argon2::Version::V0x13;
+
 /// The domain separator for the file component of the composite key.
 /// `Note:` It should be changed with new versions of the algorithm.
 const FILE_DOMAIN_SEPARATOR: [u8; 64] = [
@@ -51,6 +52,7 @@ const VERSION_DOMAIN_SEPARATOR: [u8; 64] = [
     40, 53, 175, 199, 197, 9, 111, 186, 61, 94, 104, 150, 185, 120, 149, 52, 254, 82, 164, 69, 156,
     195,
 ];
+
 /// The size of the Argon2 salt, in bytes.
 const SALT_SIZE: usize = 32;
 /// The size of the AES nonce, in bytes.
@@ -61,6 +63,7 @@ const NONCE_SIZE: usize = 12;
 const CIPHERTEXT_BYTE_COUNT_SIZE: usize = 4;
 /// The maximum size of the data that can be encoded, in bytes.
 const ENCODE_DATA_SIZE_CAP: u64 = 250 * 1024; // 250 KiB
+
 /// Should compression and decompression be applied to the encoded data?
 const USE_COMPRESSION: bool = true;
 /// Zstd compression level to be used when compressing data before encryption.
