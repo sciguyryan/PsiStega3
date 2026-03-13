@@ -11,6 +11,7 @@ use aes_gcm::{aead::Aead, Aes256Gcm, Key, KeyInit, Nonce};
 use image::ImageFormat;
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
+use sha3::{Digest, Sha3_256};
 use std::convert::TryInto;
 use zeroize::Zeroizing;
 
@@ -359,7 +360,7 @@ impl StegaV3 {
     /// * `img` - A reference to the [`ImageWrapper`] that holds the image.
     #[inline]
     fn get_total_storable_bits(img: &ImageWrapper) -> usize {
-        // 1 byte is 8 bits in length. We can store 1 bit per channel.
+        // We can store 1 bit per channel.
         img.get_total_channels() as usize
     }
 
@@ -371,26 +372,22 @@ impl StegaV3 {
     /// * `key` - The plaintext key.
     #[inline]
     pub(crate) fn generate_composite_key(original_path: &str, key: String) -> Result<[u8; 32]> {
-        let mut file_data = Zeroizing::new(hashers::sha3_512_file(original_path)?.to_vec());
-        file_data.extend_from_slice(&FILE_DOMAIN_SEPARATOR);
-        let file_hash = hashers::sha3_512_bytes(&file_data);
+        let mut hasher = Sha3_256::new();
 
-        let mut key_bytes = Zeroizing::new(key.into_bytes());
-        key_bytes.extend_from_slice(&KEY_DOMAIN_SEPARATOR);
-        let key_hash = hashers::sha3_512_bytes(&key_bytes);
+        let file_hash_arr = hashers::sha3_512_file(original_path)?;
+        let file_hash = hashers::sha3_512_hash_slices(&[&file_hash_arr, &FILE_DOMAIN_SEPARATOR]);
+        hasher.update(file_hash);
 
-        let mut version_data = Zeroizing::new(vec![CODED_VERSION]);
-        version_data.extend_from_slice(&VERSION_DOMAIN_SEPARATOR);
-        let version_hash = hashers::sha3_512_bytes(&version_data);
+        let key_bytes = Zeroizing::new(key.into_bytes());
+        let key_hash =
+            hashers::sha3_512_hash_slices(&[key_bytes.as_slice(), &KEY_DOMAIN_SEPARATOR]);
+        hasher.update(key_hash);
 
-        // Combine the component hashes and hash the final composite key.
-        let mut combined = [0u8; 64 * 3]; // 3 x SHA3-512 hashes.
-        combined[..64].copy_from_slice(&file_hash);
-        combined[64..128].copy_from_slice(&key_hash);
-        combined[128..].copy_from_slice(&version_hash);
+        let version_hash =
+            hashers::sha3_512_hash_slices(&[&[CODED_VERSION], &VERSION_DOMAIN_SEPARATOR]);
+        hasher.update(version_hash);
 
-        // We the combined key through a 256-bit hashing function to get the final composite key.
-        Ok(hashers::sha3_256_bytes(&combined))
+        Ok(hasher.finalize().into())
     }
 
     /// Loads an image from file and validates that the image is suitable for steganography.

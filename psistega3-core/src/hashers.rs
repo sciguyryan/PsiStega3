@@ -1,10 +1,10 @@
 use crate::error::{Error, Result};
 
 use argon2::Argon2;
-use sha3::{Digest, Sha3_256, Sha3_512};
+use sha3::{Digest, Sha3_512};
 use std::{fs::File, io};
 
-/// Get the Argon2 hash of a string slice.
+/// Compute the Argon2 hash of a string slice.
 ///
 /// # Arguments
 ///
@@ -28,10 +28,8 @@ pub fn argon2_string(
         return Err(Error::Argon2InvalidParams);
     };
 
-    // Construct the hasher.
     let hasher = Argon2::new(argon2::Algorithm::Argon2id, version, params);
 
-    // Nom!
     let mut hashed_bytes = [0u8; 128];
     let Ok(_) = hasher.hash_password_into(key_bytes, &salt, &mut hashed_bytes) else {
         return Err(Error::Argon2NoHash);
@@ -40,7 +38,7 @@ pub fn argon2_string(
     Ok(hashed_bytes)
 }
 
-/// Get the CRC32 hash of a u8 slice.
+/// Compute the CRC32 hash of a u8 slice.
 ///
 /// # Arguments
 ///
@@ -52,19 +50,23 @@ pub fn crc32_slice(slice: &[u8]) -> u32 {
     hasher.finalize()
 }
 
-/// Get the SHA3-256 hash of a u8 slice.
+/// Compute the SHA3-512 over a sequence of byte slices without allocating a combined buffer.
 ///
 /// # Arguments
 ///
-/// * `bytes` - The byte slice to be hashed.
+/// * `slice` - A slide of u8 slices to be hashed.
 #[inline]
-pub fn sha3_256_bytes(bytes: &[u8]) -> [u8; 32] {
-    let mut hasher = Sha3_256::new();
-    hasher.update(bytes);
+pub fn sha3_512_hash_slices(slices: &[&[u8]]) -> [u8; 64] {
+    let mut hasher = Sha3_512::new();
+
+    for slice in slices {
+        hasher.update(slice);
+    }
+
     hasher.finalize().into()
 }
 
-/// Get the SHA3-512 hashing of a specified file.
+/// Compute the SHA3-512 hashing of a specified file.
 ///
 /// # Arguments
 ///
@@ -79,7 +81,7 @@ pub fn sha3_512_file(path: &str) -> Result<[u8; 64]> {
     Ok(hasher.finalize().into())
 }
 
-/// Get the SHA3-512 hash of a string slice.
+/// Compute the SHA3-512 hash of a string slice.
 ///
 /// # Arguments
 ///
@@ -92,7 +94,7 @@ pub fn sha3_512_string(str: &str) -> [u8; 64] {
     hasher.finalize().into()
 }
 
-/// Get the SHA3-512 hash of a u8 slice.
+/// Compute the SHA3-512 hash of a u8 slice.
 ///
 /// # Arguments
 ///
