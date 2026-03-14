@@ -1,11 +1,27 @@
-use crate::error::{Error, Result};
+use crate::{
+    error::{Error, Result},
+    utilities::misc_utils,
+};
 
 use filetime::FileTime;
 use std::{
     fs::{self, File, Metadata},
-    io::{Read, Seek, SeekFrom, Write},
+    io::{self, Read, Seek, SeekFrom, Write},
     path::Path,
 };
+
+/// Check whether WebP file is animated.
+///
+/// # Arguments
+///
+/// * `path` - The path to the file.
+pub fn is_animated_webp(path: &str) -> io::Result<bool> {
+    let f = File::open(path)?;
+    let mut buf = Vec::new();
+    f.take(1024 * 16).read_to_end(&mut buf)?; // The first 16 KB should be plenty.
+
+    Ok(misc_utils::find_subsequence(&buf, b"ANIM").is_some())
+}
 
 /// Get the last modified timestamp as a [`FileTime`] instance.
 ///

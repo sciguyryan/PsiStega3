@@ -131,8 +131,7 @@ impl StegaV3 {
     /// * `total_ciphertext_bytes` - The total number of bytes that are needed to encode the cipher-text.
     ///
     /// `Note:` this will include the bytes needed to encode the salt, nonce, and total cipher-text byte count.
-    #[inline(always)]
-    fn compute_payload_bits(total_ciphertext_bytes: usize) -> Result<usize> {
+    const fn compute_payload_bits(total_ciphertext_bytes: usize) -> Result<usize> {
         /*
           This value must be held within a 64-bit value to prevent integer
             overflow from occurring in the when running this on a 32-bit architecture.
@@ -378,16 +377,14 @@ impl StegaV3 {
         let mut hasher = Sha3_256::new();
 
         let file_hash_arr = hashers::sha3_512_file(original_path)?;
-        let file_hash = hashers::sha3_512_hash_slices(&[&file_hash_arr, &FILE_DOMAIN_SEPARATOR]);
+        let file_hash = hashers::sha3_512_slices(&[&file_hash_arr, &FILE_DOMAIN_SEPARATOR]);
         hasher.update(file_hash);
 
         let key_bytes = Zeroizing::new(key.into_bytes());
-        let key_hash =
-            hashers::sha3_512_hash_slices(&[key_bytes.as_slice(), &KEY_DOMAIN_SEPARATOR]);
+        let key_hash = hashers::sha3_512_slices(&[&key_bytes, &KEY_DOMAIN_SEPARATOR]);
         hasher.update(key_hash);
 
-        let version_hash =
-            hashers::sha3_512_hash_slices(&[&[CODED_VERSION], &VERSION_DOMAIN_SEPARATOR]);
+        let version_hash = hashers::sha3_512_slices(&[&[CODED_VERSION], &VERSION_DOMAIN_SEPARATOR]);
         hasher.update(version_hash);
 
         Ok(hasher.finalize().into())

@@ -7,7 +7,10 @@ use crate::{
 
 use image::{
     codecs::{
-        bmp::BmpEncoder, farbfeld::FarbfeldEncoder, png::PngEncoder, tiff::TiffEncoder,
+        bmp::BmpEncoder,
+        farbfeld::FarbfeldEncoder,
+        png::{CompressionType, FilterType, PngEncoder},
+        tiff::TiffEncoder,
         webp::WebPEncoder,
     },
     DynamicImage::*,
@@ -128,6 +131,15 @@ impl ImageWrapper {
             return Err(Error::AnimatedPngNotSupported);
         }
 
+        if matches!(format, ImageFormat::WebP)
+            && file_utils::is_animated_webp(path).is_ok_and(|f| f)
+        {
+            // If we ever handle these, we'll need to go through each frame and
+            // modify each of them separately.
+            // For now, we just don't support them at all.
+            return Err(Error::AnimatedWebPNotSupported);
+        }
+
         let colour_type = match &image {
             ImageLuma8(_) => ExtendedColorType::L8,
             ImageLumaA8(_) => ExtendedColorType::La8,
@@ -178,7 +190,11 @@ impl ImageWrapper {
                 encoder.write_image(&self.image_bytes, w, h, colour)
             }
             ImageFormat::Png => {
-                let encoder = PngEncoder::new(writer);
+                let encoder = PngEncoder::new_with_quality(
+                    writer,
+                    CompressionType::Best,
+                    FilterType::Adaptive,
+                );
                 encoder.write_image(&self.image_bytes, w, h, colour)
             }
             ImageFormat::Tiff => {

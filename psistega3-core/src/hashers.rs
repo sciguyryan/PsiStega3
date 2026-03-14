@@ -50,19 +50,15 @@ pub fn crc32_slice(slice: &[u8]) -> u32 {
     hasher.finalize()
 }
 
-/// Compute the SHA3-512 over a sequence of byte slices without allocating a combined buffer.
+/// Compute the SHA3-512 hash of a u8 slice.
 ///
 /// # Arguments
 ///
-/// * `slice` - A slide of u8 slices to be hashed.
+/// * `bytes` - The byte slice to be hashed.
 #[inline]
-pub fn sha3_512_hash_slices(slices: &[&[u8]]) -> [u8; 64] {
+pub fn sha3_512_bytes(bytes: &[u8]) -> [u8; 64] {
     let mut hasher = Sha3_512::new();
-
-    for slice in slices {
-        hasher.update(slice);
-    }
-
+    hasher.update(bytes);
     hasher.finalize().into()
 }
 
@@ -81,6 +77,22 @@ pub fn sha3_512_file(path: &str) -> Result<[u8; 64]> {
     Ok(hasher.finalize().into())
 }
 
+/// Compute the SHA3-512 over a sequence of byte slices.
+///
+/// # Arguments
+///
+/// * `slices` - A slide of u8 slices to be hashed.
+#[inline]
+pub fn sha3_512_slices(slices: &[&[u8]]) -> [u8; 64] {
+    let mut hasher = Sha3_512::new();
+
+    for slice in slices {
+        hasher.update(slice);
+    }
+
+    hasher.finalize().into()
+}
+
 /// Compute the SHA3-512 hash of a string slice.
 ///
 /// # Arguments
@@ -91,17 +103,5 @@ pub fn sha3_512_file(path: &str) -> Result<[u8; 64]> {
 pub fn sha3_512_string(str: &str) -> [u8; 64] {
     let mut hasher = Sha3_512::new();
     hasher.update(str);
-    hasher.finalize().into()
-}
-
-/// Compute the SHA3-512 hash of a u8 slice.
-///
-/// # Arguments
-///
-/// * `bytes` - The byte slice to be hashed.
-#[inline]
-pub fn sha3_512_bytes(bytes: &[u8]) -> [u8; 64] {
-    let mut hasher = Sha3_512::new();
-    hasher.update(bytes);
     hasher.finalize().into()
 }
