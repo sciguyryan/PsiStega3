@@ -2,7 +2,7 @@ use crate::error::{Error, Result};
 
 use argon2::Argon2;
 use sha3::{Digest, Sha3_512};
-use std::{fs::File, io};
+use std::{fs::File, io::Read};
 
 /// Compute the Argon2 hash of a string slice.
 ///
@@ -72,7 +72,16 @@ pub fn sha3_512_file(path: &str) -> Result<[u8; 64]> {
     let mut file = File::open(path).map_err(|_| Error::FileHashingError)?;
 
     let mut hasher = Sha3_512::new();
-    io::copy(&mut file, &mut hasher).map_err(|_| Error::FileHashingError)?;
+    let mut buffer = [0u8; 8192];
+    loop {
+        let bytes_read = file
+            .read(&mut buffer)
+            .map_err(|_| Error::FileHashingError)?;
+        if bytes_read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..bytes_read]);
+    }
 
     Ok(hasher.finalize().into())
 }
