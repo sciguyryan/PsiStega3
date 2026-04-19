@@ -89,7 +89,7 @@ for fmt, typ, depth, alpha in COMBOS:
     run([
         str(CLI), "encode", str(ref), str(enc), INPUT,
         "-p", KEY, "-v", args.version,
-        "--t-cost","1","--p-cost","1","--m-cost","4000","--unattended"
+        "--t-cost","1","--p-cost","1","--m-cost","4000","--use-compression","false","--unattended"
     ])
 
     print(f"Generated encoded {enc}")
