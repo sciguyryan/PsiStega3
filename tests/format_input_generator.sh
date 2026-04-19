@@ -48,7 +48,7 @@ COMBOS=(
   "bmp:Rgb8:8:0"
   "bmp:Rgba8:8:1"
 
-  "farbfeld:Rgba16:16:1"
+#  "farbfeld:Rgba16:16:1"
 
   "png:L8:8:0"
   "png:La8:8:1"

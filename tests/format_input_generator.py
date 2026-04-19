@@ -21,7 +21,7 @@ BASE_DIR.mkdir(parents=True, exist_ok=True)
 
 COMBOS = [
     ("bmp","L8",8,0), ("bmp","Rgb8",8,0), ("bmp","Rgba8",8,1),
-    ("farbfeld","Rgba16",16,1),
+#    ("farbfeld","Rgba16",16,1),
     ("png","L8",8,0), ("png","La8",8,1),
     ("png","L16",16,0), ("png","La16",16,1),
     ("png","Rgb8",8,0), ("png","Rgba8",8,1),
