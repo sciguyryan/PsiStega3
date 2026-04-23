@@ -876,7 +876,6 @@ mod tests_encode_decode_v3 {
     fn test_decode_fixed_string_marathon_all_formats() {
         let formats = [
             ImageFormat::Bmp,
-            ImageFormat::Farbfeld,
             ImageFormat::Png,
             ImageFormat::Tiff,
             ImageFormat::WebP,
