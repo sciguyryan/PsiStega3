@@ -228,9 +228,10 @@ impl StegaV3 {
 
         // The AES-256 key is 256-bits (32 bytes) in length.
         let key_bytes = &key_bytes_full[..32];
-        let key = Key::<Aes256Gcm>::from_slice(key_bytes);
-        let cipher = Aes256Gcm::new(key);
-        let nonce = Nonce::from_slice(&nonce_bytes);
+        let key = Key::<Aes256Gcm>::try_from(key_bytes)
+            .expect("AES-256 key must be exactly 32 bytes");
+        let cipher = Aes256Gcm::new(&key);
+        let nonce = Nonce::from(nonce_bytes);
 
         /*
           Attempt to decrypt the cipher-text bytes with the extracted information.
@@ -243,7 +244,7 @@ impl StegaV3 {
             * The decrypted key was incorrect.
             * The data was encoded with compression, but not decoded with compression enabled.
         */
-        let decrypted_data = match cipher.decrypt(nonce, ciphertext_bytes.as_ref()) {
+        let decrypted_data = match cipher.decrypt(&nonce, ciphertext_bytes.as_ref()) {
             Ok(v) => v,
             Err(_) => return Err(Error::DecryptionFailed),
         };
@@ -298,12 +299,12 @@ impl StegaV3 {
 
         // The AES-256 key is 256-bits (32 bytes) in length.
         let key_bytes = &key_bytes_full[..32];
-        let key = Key::<Aes256Gcm>::from_slice(key_bytes);
-        let cipher = Aes256Gcm::new(key);
+        let key = Key::<Aes256Gcm>::try_from(key_bytes).expect("AES-256 key must be exactly 32 bytes");
+        let cipher = Aes256Gcm::new(&key);
 
         // Generate a random nonce.
         let nonce_bytes: [u8; NONCE_SIZE] = misc_utils::secure_random_bytes();
-        let nonce = Nonce::from_slice(&nonce_bytes);
+        let nonce = Nonce::from(nonce_bytes);
 
         // Compress the data, if required.
         let maybe_compressed_data = if self.use_compression {
@@ -318,7 +319,7 @@ impl StegaV3 {
 
         // Encrypt the data. We want to do this _after_ the compression because encrypted
         // data should appear random, and so be significantly harder to effectively compress.
-        let Ok(ciphertext_bytes) = cipher.encrypt(nonce, &maybe_compressed_data[..]) else {
+        let Ok(ciphertext_bytes) = cipher.encrypt(&nonce, &maybe_compressed_data[..]) else {
             return Err(Error::EncryptionFailed);
         };
 

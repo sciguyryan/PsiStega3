@@ -266,9 +266,10 @@ impl StegaV2 {
         // The AES-256 key is 256-bits (32 bytes) in length.
         let key_bytes = &key_bytes_full[..32];
 
-        let key = Key::<Aes256Gcm>::from_slice(key_bytes);
-        let cipher = Aes256Gcm::new(key);
-        let nonce = Nonce::from_slice(&nonce_bytes);
+        let key = Key::<Aes256Gcm>::try_from(key_bytes)
+            .expect("AES-256 key must be exactly 32 bytes");
+        let cipher = Aes256Gcm::new(&key);
+        let nonce = Nonce::from(nonce_bytes);
 
         /*
           Attempt to decrypt the cipher-text bytes with
@@ -281,7 +282,7 @@ impl StegaV2 {
             * One or more of the files were modified.
             * The decrypted key was incorrect.
         */
-        let plaintext_bytes = match cipher.decrypt(nonce, ciphertext_bytes.as_ref()) {
+        let plaintext_bytes = match cipher.decrypt(&nonce, ciphertext_bytes.as_ref()) {
             Ok(v) => v,
             Err(_) => {
                 // This error counts as a failed decryption attempt.
@@ -349,16 +350,17 @@ impl StegaV2 {
         // The AES-256 key is 256-bits (32 bytes) in length.
         let key_bytes = &key_bytes_full[..32];
 
-        let key = Key::<Aes256Gcm>::from_slice(key_bytes);
-        let cipher = Aes256Gcm::new(key);
+        let key = Key::<Aes256Gcm>::try_from(key_bytes)
+            .expect("AES-256 key must be exactly 32 bytes");
+        let cipher = Aes256Gcm::new(&key);
 
         // Generate a unique random 96-bit (12 byte) nonce (IV).
         let nonce_bytes: [u8; 12] = misc_utils::secure_random_bytes();
-        let nonce = Nonce::from_slice(&nonce_bytes);
+        let nonce = Nonce::from(nonce_bytes);
 
         // We will convert the input data byte vector into a base64 string.
         //let plaintext = misc_utils::encode_u8_slice_to_base64_str(data);
-        let Ok(ct_bytes) = cipher.encrypt(nonce, data) else {
+        let Ok(ct_bytes) = cipher.encrypt(&nonce, data) else {
             return Err(Error::EncryptionFailed);
         };
 
