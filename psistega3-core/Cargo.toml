@@ -12,22 +12,22 @@ publish = false
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-aes-gcm = "0.10.3"
+aes-gcm = "0.11.0"
 argon2 = "0.5.3"
 crc32fast = "1.5.0"
 dirs = "6.0.0"
 filetime = "0.2.29"
-getrandom = "0.4.2"
+getrandom = "0.4.3"
 hashbrown = "0.17.1"
 image = { version = "0.25.10", features = ["bmp", "png", "tiff", "rayon", "webp"] }
-log = "0.4.30"
-rand = "0.10.1"
+log = "0.4.33"
+rand = "0.10.2"
 rand_core = "0.10.1"
 rand_xoshiro = "0.8.1"
 rand_chacha = "0.10.0"
 sha3 = "0.12.0"
 simple_logger = "5.2.0"
-zeroize = "1.8.2"
+zeroize = "1.9.0"
 zstd = "0.13.3"
 
 [dev-dependencies]
