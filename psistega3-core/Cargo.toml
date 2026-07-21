@@ -32,7 +32,7 @@ zstd = "0.13.3"
 
 [dev-dependencies]
 criterion = { version = "0.8.2", features = ["html_reports"] }
-path-absolutize = "3.1.1"
+path-absolutize = "4.0.1"
 
 [features]
 bench = []

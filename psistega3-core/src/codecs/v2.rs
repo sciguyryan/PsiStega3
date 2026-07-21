@@ -359,7 +359,6 @@ impl StegaV2 {
         let nonce = Nonce::from(nonce_bytes);
 
         // We will convert the input data byte vector into a base64 string.
-        //let plaintext = misc_utils::encode_u8_slice_to_base64_str(data);
         let Ok(ct_bytes) = cipher.encrypt(&nonce, data) else {
             return Err(Error::EncryptionFailed);
         };
