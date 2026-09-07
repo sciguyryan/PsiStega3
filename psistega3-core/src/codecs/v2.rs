@@ -266,8 +266,8 @@ impl StegaV2 {
         // The AES-256 key is 256-bits (32 bytes) in length.
         let key_bytes = &key_bytes_full[..32];
 
-        let key = Key::<Aes256Gcm>::try_from(key_bytes)
-            .expect("AES-256 key must be exactly 32 bytes");
+        let key =
+            Key::<Aes256Gcm>::try_from(key_bytes).expect("AES-256 key must be exactly 32 bytes");
         let cipher = Aes256Gcm::new(&key);
         let nonce = Nonce::from(nonce_bytes);
 
@@ -350,8 +350,8 @@ impl StegaV2 {
         // The AES-256 key is 256-bits (32 bytes) in length.
         let key_bytes = &key_bytes_full[..32];
 
-        let key = Key::<Aes256Gcm>::try_from(key_bytes)
-            .expect("AES-256 key must be exactly 32 bytes");
+        let key =
+            Key::<Aes256Gcm>::try_from(key_bytes).expect("AES-256 key must be exactly 32 bytes");
         let cipher = Aes256Gcm::new(&key);
 
         // Generate a unique random 96-bit (12 byte) nonce (IV).
